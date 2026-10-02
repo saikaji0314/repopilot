@@ -1,0 +1,18 @@
+# 隔离的本地测试环境快照（Python 3.12 / Windows），不是生产依赖建议。
+# pytest 与 Werkzeug/Click 固定以复现 Flask 3.1.3 上游测试。
+asgiref==3.12.1
+blinker==1.9.0
+click==8.3.1
+colorama==0.4.6
+Flask==3.1.3
+greenlet==3.5.6
+iniconfig==2.3.0
+itsdangerous==2.2.0
+Jinja2==3.1.6
+MarkupSafe==3.0.3
+packaging==26.3
+pluggy==1.6.0
+Pygments==2.21.0
+pytest==8.4.2
+python-dotenv==1.2.3
+Werkzeug==3.1.5

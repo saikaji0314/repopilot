@@ -1,0 +1,42 @@
+schema_version: "1.0"
+id: flaskr-validation-003
+title: 创建文章时空标题被接受
+task_type: bug_diagnosis
+language: zh-CN
+
+repository:
+  name: flaskr-tutorial
+  version: "3.1.3"
+  baseline_path: target-repos/flaskr-tutorial
+  workspace: runtime-provided
+
+user_request: |
+  用户在新建文章页面不填写标题直接提交，系统仍然跳转到首页并保存文章；
+  编辑文章时同样的空标题仍能得到正确校验提示。
+  请定位创建流程中的根因，给出证据、最小修复计划和验证方式。
+
+initial_evidence:
+  command: python -m pytest tests/test_blog.py -q -p no:cacheprovider
+  summary: 1 failed, 11 passed
+  failures:
+    - test: tests/test_blog.py::test_create_update_validate[/create]
+      observed: 响应为 302，且不包含 Title is required.
+      expected: 应显示校验提示，并且不创建文章
+
+constraints:
+  mode: read_only
+  max_steps: 10
+  timeout_seconds: 120
+  allowed_tools: [list_files, search_code, search_symbols, read_file, run_test]
+  forbidden_actions: [write_file, install_dependency, network_access]
+
+required_output:
+  format: structured_object
+  fields:
+    status: 取值为 diagnosed 或 insufficient_evidence
+    summary: 简洁的诊断结论
+    root_cause: 根因及因果解释
+    evidence: 由 source 和 observation 组成的证据列表
+    proposed_fix: 最小修复步骤列表
+    verification: 确定性验证步骤列表
+    risks: 边界、风险或未经验证的假设列表

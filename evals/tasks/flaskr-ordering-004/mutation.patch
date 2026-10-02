@@ -1,0 +1,11 @@
+diff --git a/flaskr/blog.py b/flaskr/blog.py
+--- a/flaskr/blog.py
++++ b/flaskr/blog.py
+@@ -20,7 +20,6 @@ def index():
+     posts = db.execute(
+         "SELECT p.id, title, body, created, author_id, username"
+         " FROM post p JOIN user u ON p.author_id = u.id"
+-        " ORDER BY created DESC"
+     ).fetchall()
+     return render_template("blog/index.html", posts=posts)
+ 

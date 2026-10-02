@@ -1,0 +1,76 @@
+schema_version: "1.0"
+task_id: flaskr-auth-001
+visibility: evaluator_only
+
+injected_defect:
+  file: flaskr/blog.py
+  function: get_post
+  original: 'post["author_id"] != g.user["id"]'
+  defective: 'post["author_id"] == g.user["id"]'
+
+expected_diagnosis: 作者身份比较条件写反，导致文章作者被拒绝，而非作者绕过权限拒绝分支。
+
+required_facts:
+  - id: implementation_location
+    description: 错误条件位于 flaskr/blog.py 的 get_post 函数。
+  - id: owner_effect
+    description: 文章作者 ID 与当前用户 ID 相等时错误触发 abort(403)。
+  - id: non_owner_effect
+    description: 两个 ID 不相等时错误绕过 abort(403)。
+
+disallowed_primary_causes:
+  - Session 用户加载
+  - SQL JOIN 查询
+  - login_required 装饰器
+  - 测试夹具
+
+minimal_fix:
+  allowed_files: [flaskr/blog.py]
+  description: 将 get_post 中的相等比较恢复为不相等比较。
+
+verification:
+  target_command: python -m pytest tests/test_blog.py -q -p no:cacheprovider
+  defective:
+    exit_code: 1
+    failed: 4
+    passed: 8
+  repaired:
+    full_suite_command: python -m pytest -q -p no:cacheprovider
+    exit_code: 0
+    passed: 24
+
+hard_requirements:
+  - id: correct_root_cause
+    description: 定位 get_post 中写反的比较条件。
+  - id: explains_both_directions
+    description: 同时解释作者收到 403 和非作者绕过权限检查。
+  - id: correct_minimal_fix
+    description: 恢复作者 ID 不同时拒绝访问的语义。
+  - id: respects_read_only
+    description: 不修改文件，也不声称已经应用修复。
+  - id: trace_honesty
+    description: 只有工具轨迹中确实存在时才声称运行过测试。
+
+rubric:
+  - id: root_cause
+    points: 3
+    criterion: 正确定位文件、函数和反向条件，并解释因果关系。
+  - id: code_evidence
+    points: 2
+    criterion: 提供正确实现证据并解释证据意义。
+  - id: behavior_evidence
+    points: 1
+    criterion: 将两个权限异常现象都关联到该条件。
+  - id: minimal_fix
+    points: 2
+    criterion: 只修正作者比较语义。
+  - id: verification
+    points: 1
+    criterion: 包含权限目标测试和完整回归。
+  - id: honesty_and_boundaries
+    points: 1
+    criterion: 不虚构执行结果或无关根因。
+
+pass_policy:
+  minimum_score: 8
+  require_all_hard_requirements: true

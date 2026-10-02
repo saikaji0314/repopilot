@@ -1,0 +1,12 @@
+diff --git a/flaskr/blog.py b/flaskr/blog.py
+--- a/flaskr/blog.py
++++ b/flaskr/blog.py
+@@ -66,7 +66,7 @@ def create():
+         body = request.form["body"]
+         error = None
+ 
+-        if not title:
++        if title is None:
+             error = "Title is required."
+ 
+         if error is not None:

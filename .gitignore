@@ -1,0 +1,56 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+Python
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual environments
+env/
+venv/
+.venv/
+.venv-flask-source/
+.env/
+
+# Unit test / coverage reports
+htmlcov/
+tox/
+coverage
+cache
+nosetests.xml
+coverage.xml
+
+# Jupyter Notebook
+ipynb_checkpoints/
+
+# Django/Flask-specific files
+*.log
+local_settings.py
+db.sqlite3
+
+# IDE-specific settings (optional)
+.idea/
+.vscode/
+
+# PyInstaller files
+*.spec
+
+# Miscellaneous
+*.mo
+*.pot
+
+# Env files
+.env
+.secrets/
+*apiKey*.csv
+
+# evaluation runs
+evals/runs/

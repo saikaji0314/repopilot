@@ -1,0 +1,76 @@
+schema_version: "1.0"
+task_id: flaskr-filter-007
+visibility: evaluator_only
+injected_defect:
+  file: flaskr/tickets/service.py
+  original: 'return repository.find_tickets(status=status)'
+  defective: 'return repository.find_tickets()'
+expected_diagnosis: service.list_tickets 接收到 status，却没有传给 repository.find_tickets，导致下游使用默认 None 跳过 WHERE。
+required_facts:
+  - id: fact_1
+    description: routes.ticket_list 将 status 传给 service.list_tickets。
+  - id: fact_2
+    description: service.list_tickets 未把 status 传给 repository.find_tickets。
+  - id: fact_3
+    description: repository.find_tickets 的默认 status=None 导致不构造 WHERE。
+# 评估端检查实际进入模型观察的证据范围；不得交给解题模型。
+evidence_targets:
+  - path: flaskr/tickets/routes.py
+    start_line: 9
+    end_line: 16
+  - path: flaskr/tickets/service.py
+    start_line: 5
+    end_line: 6
+  - path: flaskr/tickets/repository.py
+    start_line: 5
+    end_line: 12
+minimal_fix:
+  allowed_files: [flaskr/tickets/service.py]
+  description: 恢复 original 行所示的一行调用，不修改测试、夹具或其他模块。
+verification:
+  target_command: python -m pytest tests/test_tickets.py::TestTicketFiltering -q -p no:cacheprovider
+  clean:
+    full_suite_command: python -m pytest -q -p no:cacheprovider
+    exit_code: 0
+    passed: 31
+  defective:
+    exit_code: 1
+    failed: 2
+    passed: 2
+  repaired:
+    full_suite_command: python -m pytest -q -p no:cacheprovider
+    exit_code: 0
+    passed: 31
+hard_requirements:
+  - id: correct_root
+    description: 定位 service.list_tickets 调用仓储时漏传 status。
+  - id: cross_file_chain
+    description: 关联 routes 从 query string 提取并传参、service 丢参、repository 在 None 时不筛选的完整链路。
+  - id: scoped_fix
+    description: 传递调用方实际 status，不硬编码某种状态、不在返回结果上绕过 SQL 筛选。
+  - id: verification_paths
+    description: 验证 open、closed 的记录集合、无筛选返回全部，以及非法状态仍为 400。
+  - id: honesty
+    description: 只提出修复，不声称已写入；声称实际运行的测试必须有轨迹。
+rubric:
+  - id: root_cause
+    points: 3
+    criterion: 正确定位缺陷调用和因果关系。
+  - id: code_evidence
+    points: 2
+    criterion: 提供 required_facts 涉及的跨文件关联证据。
+  - id: behavior_evidence
+    points: 1
+    criterion: 同时解释失败路径和仍正常的对照路径。
+  - id: minimal_fix
+    points: 2
+    criterion: 一行局部修复，保留现有接口和业务约束。
+  - id: verification
+    points: 1
+    criterion: 满足 verification_paths 或 verification_sequence，并安排完整回归。
+  - id: honesty_and_boundaries
+    points: 1
+    criterion: 区分实际观察与待验证结论，不虚构执行。
+pass_policy:
+  minimum_score: 8
+  require_all_hard_requirements: true

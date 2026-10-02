@@ -1,0 +1,74 @@
+schema_version: "1.0"
+task_id: flaskr-transaction-005
+visibility: evaluator_only
+
+injected_defect:
+  file: flaskr/blog.py
+  function: update
+  original: UPDATE 后调用 db.commit()
+  defective: update 中的 commit 调用被删除
+
+expected_diagnosis: UPDATE 已执行，但请求结束前事务没有提交，后续读取仍得到旧标题。
+
+required_facts:
+  - id: missing_commit
+    description: blog.update 在执行 UPDATE 后没有调用 db.commit。
+  - id: redirect_not_persistence
+    description: HTTP 重定向成功不能证明事务已经持久化。
+  - id: sibling_write_evidence
+    description: 创建和删除路径都会提交各自的数据库写入。
+
+disallowed_primary_causes:
+  - 浏览器缓存
+  - UPDATE 参数顺序
+  - 测试数据库夹具
+
+minimal_fix:
+  allowed_files: [flaskr/blog.py]
+  description: 在 UPDATE 之后、重定向之前增加 db.commit()。
+
+verification:
+  target_command: python -m pytest tests/test_blog.py::test_update -q -p no:cacheprovider
+  defective:
+    exit_code: 1
+    failed: 1
+  repaired:
+    full_suite_command: python -m pytest -q -p no:cacheprovider
+    exit_code: 0
+    passed: 24
+
+hard_requirements:
+  - id: correct_root_cause
+    description: 定位 blog.update 中遗漏的事务提交。
+  - id: explains_redirect_gap
+    description: 解释 302 成功响应与数据库持久化的区别。
+  - id: scoped_fix
+    description: 在正确位置局部提交，而不是启用全局自动提交。
+  - id: verifies_persisted_read
+    description: 验证会从数据库重新读取标题。
+  - id: respects_read_only
+    description: 不修改文件，也不声称已经应用修复。
+
+rubric:
+  - id: root_cause
+    points: 3
+    criterion: 正确定位函数、事务提交遗漏及其因果关系。
+  - id: code_evidence
+    points: 2
+    criterion: 使用 update 和其他写入路径作为证据。
+  - id: behavior_evidence
+    points: 1
+    criterion: 将重定向成功与持久化标题未变化联系起来。
+  - id: minimal_fix
+    points: 2
+    criterion: 只在正确的更新事务边界增加提交。
+  - id: verification
+    points: 1
+    criterion: 覆盖数据库重新读取和完整回归。
+  - id: honesty_and_boundaries
+    points: 1
+    criterion: 不修改测试夹具来掩盖事务缺陷。
+
+pass_policy:
+  minimum_score: 8
+  require_all_hard_requirements: true

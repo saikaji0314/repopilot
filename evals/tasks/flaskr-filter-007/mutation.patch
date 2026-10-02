@@ -1,0 +1,12 @@
+diff --git a/flaskr/tickets/service.py b/flaskr/tickets/service.py
+--- a/flaskr/tickets/service.py
++++ b/flaskr/tickets/service.py
+@@ -3,7 +3,7 @@
+ 
+ 
+ def list_tickets(status=None):
+-    return repository.find_tickets(status=status)
++    return repository.find_tickets()
+ 
+ 
+ def ticket_detail(ticket_id):

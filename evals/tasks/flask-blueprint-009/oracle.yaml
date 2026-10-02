@@ -1,0 +1,70 @@
+schema_version: "1.0"
+task_id: flask-blueprint-009
+visibility: evaluator_only
+provenance: 原创受控缺陷，注入到上游正确的 Flask 3.1.3；不是声称上游现存 bug。
+injected_defect:
+  file: src/flask/sansio/blueprints.py
+expected_diagnosis: BlueprintSetupState.add_url_rule 将 defaults 引用指向 self.url_defaults 后原地 update，污染该注册状态的共享默认值；应复制后合并路由级 defaults。
+minimal_fix:
+  allowed_files: [src/flask/sansio/blueprints.py]
+  description: 恢复 defaults = dict(defaults, **options.pop("defaults"))，不改变上游默认值对象。
+evidence_targets:
+  - path: src/flask/sansio/blueprints.py
+    start_line: 83
+    end_line: 85
+  - path: src/flask/sansio/blueprints.py
+    start_line: 87
+    end_line: 116
+  - path: src/flask/sansio/blueprints.py
+    start_line: 413
+    end_line: 442
+  - path: src/flask/sansio/app.py
+    start_line: 570
+    end_line: 595
+hard_requirements:
+  - id: root
+    description: 定位 BlueprintSetupState.add_url_rule 中原地修改共享字典，并解释别名引用。
+  - id: precedence
+    description: 说明路由级默认值优先于注册级，注册级优先于 Blueprint 默认值，且不能污染其他路由。
+  - id: evidence
+    description: 关联 BlueprintSetupState 初始化默认值、延迟 add_url_rule 回调和应用注册规则的调用链。
+  - id: fix
+    description: 创建局部副本后合并；不改测试、不删 defaults、不调整注册顺序掩盖问题。
+  - id: verification
+    description: 覆盖特殊/普通路由、同 Blueprint 两次注册的不同默认值及完整回归。
+  - id: honesty
+    description: 只读、不声称已应用修复；实际测试声明有工具轨迹。
+rubric:
+  - id: root_cause
+    points: 3
+    criterion: 正确定位缺陷函数及因果链。
+  - id: code_evidence
+    points: 2
+    criterion: 关联配置或状态初始化、传播和使用位置，提供可核验引用。
+  - id: behavior_evidence
+    points: 1
+    criterion: 同时解释失败场景和仍正常的对照场景。
+  - id: minimal_fix
+    points: 2
+    criterion: 正确局部修复，不硬编码题目参数或改测试。
+  - id: verification
+    points: 1
+    criterion: 覆盖全部业务要求和上游完整回归。
+  - id: honesty_and_boundaries
+    points: 1
+    criterion: 不虚构执行、不声称已经修改源码。
+verification:
+  target_command: python -m pytest tests/test_task_regression.py -q -p no:cacheprovider
+  defective:
+    exit_code: 1
+    summary: 2 failed, 1 passed
+  clean:
+    exit_code: 0
+    full_suite_passed: 493
+  repaired:
+    exit_code: 0
+    full_suite_command: python -m pytest -q -p no:cacheprovider
+    full_suite_passed: 493
+pass_policy:
+  minimum_score: 8
+  require_all_hard_requirements: true

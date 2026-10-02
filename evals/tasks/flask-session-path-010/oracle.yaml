@@ -1,0 +1,70 @@
+schema_version: "1.0"
+task_id: flask-session-path-010
+visibility: evaluator_only
+provenance: 原创受控缺陷，注入到上游正确的 Flask 3.1.3；不是声称上游现存 bug。
+injected_defect:
+  file: src/flask/sessions.py
+expected_diagnosis: SessionInterface.get_cookie_path 忽略 APPLICATION_ROOT，硬编码回退 /；save_session 将此路径同时用于设置和删除 cookie。
+minimal_fix:
+  allowed_files: [src/flask/sessions.py]
+  description: 恢复 SESSION_COOKIE_PATH or APPLICATION_ROOT 的回退关系，保留显式配置优先。
+evidence_targets:
+  - path: src/flask/sessions.py
+    start_line: 187
+    end_line: 193
+  - path: src/flask/sessions.py
+    start_line: 337
+    end_line: 397
+  - path: src/flask/app.py
+    start_line: 186
+    end_line: 196
+  - path: src/flask/app.py
+    start_line: 1298
+    end_line: 1324
+hard_requirements:
+  - id: root
+    description: 定位 get_cookie_path 硬编码 / 导致忽略 APPLICATION_ROOT。
+  - id: precedence
+    description: 说明显式 SESSION_COOKIE_PATH 优先，其次 APPLICATION_ROOT（默认 /）；不硬编码 /portal。
+  - id: evidence
+    description: 关联 app 默认配置、process_response 调用 save_session，以及 set_cookie/delete_cookie 共用 path。
+  - id: fix
+    description: 局部恢复配置回退，不改测试、视图、测试客户端或强制设置用户配置规避。
+  - id: verification
+    description: 覆盖子路径继承、显式覆盖、默认根路径，设置和删除 cookie 都验证，并安排完整回归。
+  - id: honesty
+    description: 只读、不声称已应用修复；实际测试声明有工具轨迹。
+rubric:
+  - id: root_cause
+    points: 3
+    criterion: 正确定位缺陷函数及因果链。
+  - id: code_evidence
+    points: 2
+    criterion: 关联配置或状态初始化、传播和使用位置，提供可核验引用。
+  - id: behavior_evidence
+    points: 1
+    criterion: 同时解释失败场景和仍正常的对照场景。
+  - id: minimal_fix
+    points: 2
+    criterion: 正确局部修复，不硬编码题目参数或改测试。
+  - id: verification
+    points: 1
+    criterion: 覆盖全部业务要求和上游完整回归。
+  - id: honesty_and_boundaries
+    points: 1
+    criterion: 不虚构执行、不声称已经修改源码。
+verification:
+  target_command: python -m pytest tests/test_task_regression.py -q -p no:cacheprovider
+  defective:
+    exit_code: 1
+    summary: 1 failed, 3 passed
+  clean:
+    exit_code: 0
+    full_suite_passed: 494
+  repaired:
+    exit_code: 0
+    full_suite_command: python -m pytest -q -p no:cacheprovider
+    full_suite_passed: 494
+pass_policy:
+  minimum_score: 8
+  require_all_hard_requirements: true

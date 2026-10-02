@@ -1,0 +1,48 @@
+[project]
+name = "repopilot"
+version = "1.0.0"
+description = "Python 后端仓库研发任务分析 Agent"
+readme = "PROJECT_GOAL.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Private :: Do Not Upload",
+    "Programming Language :: Python :: 3",
+]
+dependencies = [
+    "flask",
+    "openai>=1.0.0",
+    "pydantic>=2.0",
+    "python-dotenv>=1.0.0",
+    "pytest>=8.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+test = ["coverage>=7.0"]
+
+[project.scripts]
+run-baseline = "repopilot.baseline:main"
+
+[build-system]
+requires = ["flit_core<4"]
+build-backend = "flit_core.buildapi"
+
+[tool.flit.module]
+name = "repopilot"
+
+[tool.flit.sdist]
+include = [
+    "tests/",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["error"]
+addopts = "--import-mode=importlib"
+
+[tool.coverage.run]
+branch = true
+source = ["repopilot", "scripts"]
+
+[tool.ruff]
+src = ["repopilot", "scripts"]

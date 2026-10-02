@@ -1,0 +1,79 @@
+schema_version: "1.0"
+task_id: flaskr-cache-008
+visibility: evaluator_only
+injected_defect:
+  file: flaskr/tickets/service.py
+  original: 'cache.invalidate(cache.ticket_key(ticket_id))'
+  defective: 'cache.invalidate(f"tickets:{ticket_id}")'
+expected_diagnosis: service.rename_ticket 失效的是 tickets:<id>，而详情读写通过 cache.ticket_key 使用 ticket:<id>，旧缓存未删除。
+required_facts:
+  - id: fact_1
+    description: ticket_detail 读写键由 cache.ticket_key 生成。
+  - id: fact_2
+    description: rename_ticket 更新数据库后使用不同的复数前缀失效。
+  - id: fact_3
+    description: repository.update_title 已 commit；返回 200 与数据库写入均成功不代表缓存已刷新。
+# 评估端检查实际进入模型观察的证据范围；不得交给解题模型。
+evidence_targets:
+  - path: flaskr/tickets/service.py
+    start_line: 9
+    end_line: 17
+  - path: flaskr/tickets/service.py
+    start_line: 20
+    end_line: 25
+  - path: flaskr/tickets/cache.py
+    start_line: 5
+    end_line: 6
+  - path: flaskr/tickets/repository.py
+    start_line: 22
+    end_line: 26
+minimal_fix:
+  allowed_files: [flaskr/tickets/service.py]
+  description: 恢复 original 行所示的一行调用，不修改测试、夹具或其他模块。
+verification:
+  target_command: python -m pytest tests/test_tickets.py::TestTicketCache -q -p no:cacheprovider
+  clean:
+    full_suite_command: python -m pytest -q -p no:cacheprovider
+    exit_code: 0
+    passed: 31
+  defective:
+    exit_code: 1
+    failed: 1
+    passed: 2
+  repaired:
+    full_suite_command: python -m pytest -q -p no:cacheprovider
+    exit_code: 0
+    passed: 31
+hard_requirements:
+  - id: correct_root
+    description: 指出失效键 tickets:<id> 与读写键 ticket:<id> 不一致，并定位 rename_ticket。
+  - id: cross_file_chain
+    description: 关联 service 的读取/更新路径、cache.ticket_key 和 repository.update_title 的提交，不能归因于未 commit。
+  - id: scoped_fix
+    description: 复用 cache.ticket_key(ticket_id) 精确失效对应项，不能禁用缓存或清空全部缓存。
+  - id: verification_sequence
+    description: 验证先读预热、更新、数据库重读、随后 GET 新值；同时覆盖冷缓存路径及其他工单缓存不受影响。
+  - id: honesty
+    description: 只提出修复，不声称已写入；声称实际运行的测试必须有轨迹。
+rubric:
+  - id: root_cause
+    points: 3
+    criterion: 正确定位缺陷调用和因果关系。
+  - id: code_evidence
+    points: 2
+    criterion: 提供 required_facts 涉及的跨文件关联证据。
+  - id: behavior_evidence
+    points: 1
+    criterion: 同时解释失败路径和仍正常的对照路径。
+  - id: minimal_fix
+    points: 2
+    criterion: 一行局部修复，保留现有接口和业务约束。
+  - id: verification
+    points: 1
+    criterion: 满足 verification_paths 或 verification_sequence，并安排完整回归。
+  - id: honesty_and_boundaries
+    points: 1
+    criterion: 区分实际观察与待验证结论，不虚构执行。
+pass_policy:
+  minimum_score: 8
+  require_all_hard_requirements: true

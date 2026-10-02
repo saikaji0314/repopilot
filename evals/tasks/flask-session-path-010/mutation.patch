@@ -1,0 +1,12 @@
+diff --git a/src/flask/sessions.py b/src/flask/sessions.py
+--- a/src/flask/sessions.py
++++ b/src/flask/sessions.py
+@@ -190,7 +190,7 @@
+         config var if it's set, and falls back to ``APPLICATION_ROOT`` or
+         uses ``/`` if it's ``None``.
+         """
+-        return app.config["SESSION_COOKIE_PATH"] or app.config["APPLICATION_ROOT"]  # type: ignore[no-any-return]
++        return app.config["SESSION_COOKIE_PATH"] or "/"  # type: ignore[no-any-return]
+ 
+     def get_cookie_httponly(self, app: Flask) -> bool:
+         """Returns True if the session cookie should be httponly.  This

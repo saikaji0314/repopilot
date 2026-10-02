@@ -1,0 +1,46 @@
+schema_version: "1.0"
+id: flaskr-ordering-004
+title: 最新文章没有显示在列表顶部
+task_type: bug_diagnosis
+language: zh-CN
+
+repository:
+  name: flaskr-tutorial
+  version: "3.1.3"
+  baseline_path: target-repos/flaskr-tutorial
+  workspace: runtime-provided
+
+workspace_additions:
+  - source: regression_test.py
+    destination: tests/test_task_ordering.py
+    visibility: agent_visible
+
+user_request: |
+  博客首页应该按发布时间从新到旧展示文章。新增一篇发布时间更晚的文章后，
+  它却显示在旧文章下面。请定位根因，给出代码和测试证据、最小修复计划及验证方式。
+
+initial_evidence:
+  command: python -m pytest tests/test_task_ordering.py -q -p no:cacheprovider
+  summary: 1 failed
+  failures:
+    - test: tests/test_task_ordering.py::test_index_shows_newest_post_first
+      observed: newest title 在响应中出现在 test title 之后
+      expected: newest title 应显示在 test title 之前
+
+constraints:
+  mode: read_only
+  max_steps: 10
+  timeout_seconds: 120
+  allowed_tools: [list_files, search_code, search_symbols, read_file, run_test]
+  forbidden_actions: [write_file, install_dependency, network_access]
+
+required_output:
+  format: structured_object
+  fields:
+    status: 取值为 diagnosed 或 insufficient_evidence
+    summary: 简洁的诊断结论
+    root_cause: 根因及因果解释
+    evidence: 由 source 和 observation 组成的证据列表
+    proposed_fix: 最小修复步骤列表
+    verification: 确定性验证步骤列表
+    risks: 边界、风险或未经验证的假设列表

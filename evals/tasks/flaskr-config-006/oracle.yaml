@@ -1,0 +1,74 @@
+schema_version: "1.0"
+task_id: flaskr-config-006
+visibility: evaluator_only
+
+injected_defect:
+  file: flaskr/__init__.py
+  function: create_app
+  original: app.config.update(test_config)
+  defective: app.config.update()
+
+expected_diagnosis: test_config 映射被忽略，导致 TESTING 和调用方提供的临时 DATABASE 都没有覆盖默认值。
+
+required_facts:
+  - id: ignored_mapping
+    description: test_config 非空分支调用 update 时没有传入该映射。
+  - id: testing_effect
+    description: TESTING 仍为 False。
+  - id: database_effect
+    description: DATABASE 仍为默认 instance 路径，而不是测试夹具提供的路径。
+
+disallowed_primary_causes:
+  - 临时文件创建
+  - SQLite 连接代码
+  - Flask testing 属性本身
+
+minimal_fix:
+  allowed_files: [flaskr/__init__.py]
+  description: 将 test_config 传给 app.config.update。
+
+verification:
+  target_command: python -m pytest tests/test_factory.py::test_config -q -p no:cacheprovider
+  defective:
+    exit_code: 1
+    failed: 1
+  repaired:
+    full_suite_command: python -m pytest -q -p no:cacheprovider
+    exit_code: 0
+    passed: 24
+
+hard_requirements:
+  - id: correct_root_cause
+    description: 定位 create_app 忽略 test_config 的问题。
+  - id: explains_both_values
+    description: 同时解释对 TESTING 和 DATABASE 的影响。
+  - id: mapping_fix
+    description: 应用调用方传入的映射，而不是硬编码测试值。
+  - id: verifies_override
+    description: 验证同时检查测试模式和准确的数据库路径。
+  - id: respects_read_only
+    description: 不修改文件，也不声称已经应用修复。
+
+rubric:
+  - id: root_cause
+    points: 3
+    criterion: 正确定位函数、被忽略的映射，并解释配置覆盖关系。
+  - id: code_evidence
+    points: 2
+    criterion: 将 create_app 和测试夹具配置作为关联证据。
+  - id: behavior_evidence
+    points: 1
+    criterion: 将 app.testing 为 False 关联到 update 缺少参数。
+  - id: minimal_fix
+    points: 2
+    criterion: 只恢复 app.config.update(test_config)。
+  - id: verification
+    points: 1
+    criterion: 检查 TESTING、DATABASE 和完整回归。
+  - id: honesty_and_boundaries
+    points: 1
+    criterion: 不硬编码路径，也不虚构环境原因。
+
+pass_policy:
+  minimum_score: 8
+  require_all_hard_requirements: true

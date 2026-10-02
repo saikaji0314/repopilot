@@ -1,0 +1,59 @@
+schema_version: "1.0"
+id: flaskr-filter-007
+title: 工单列表未按状态筛选
+task_type: bug_diagnosis
+language: zh-CN
+repository:
+  name: flaskr-tutorial-with-ticket-fixture
+  version: "3.1.3+ticket-fixture-v1"
+  baseline_path: target-repos/flaskr-tutorial
+  workspace: runtime-provided
+workspace_additions:
+  - source: assets/__init__.py
+    destination: flaskr/tickets/__init__.py
+    visibility: agent_visible
+  - source: assets/repository.py
+    destination: flaskr/tickets/repository.py
+    visibility: agent_visible
+  - source: assets/cache.py
+    destination: flaskr/tickets/cache.py
+    visibility: agent_visible
+  - source: assets/service.py
+    destination: flaskr/tickets/service.py
+    visibility: agent_visible
+  - source: assets/routes.py
+    destination: flaskr/tickets/routes.py
+    visibility: agent_visible
+  - source: assets/README.md
+    destination: flaskr/tickets/README.md
+    visibility: agent_visible
+  - source: assets/test_tickets.py
+    destination: tests/test_tickets.py
+    visibility: agent_visible
+user_request: |
+  工单列表支持 status=open 和 status=closed；不传 status 应返回全部工单。
+  现在传入任一合法状态都仍返回所有状态的数据，但无筛选和非法状态请求的行为正常。
+  请定位根因，关联跨文件证据，给出最小修复及包含正反路径的验证方案。
+initial_evidence:
+  command: python -m pytest tests/test_tickets.py::TestTicketFiltering -q -p no:cacheprovider
+  summary: 2 failed, 2 passed
+  failures:
+    - test: tests/test_tickets.py::TestTicketFiltering::test_status_filter
+      expected: open 只返回 id 1、3，closed 只返回 id 2
+      observed: 两种合法状态都返回 id 1、2、3
+constraints:
+  mode: read_only
+  max_steps: 10
+  timeout_seconds: 120
+  allowed_tools: [list_files, search_code, search_symbols, read_file, run_test]
+  forbidden_actions: [write_file, install_dependency, network_access]
+required_output:
+  format: structured_object
+  fields:
+    status: 取值为 diagnosed 或 insufficient_evidence
+    summary: 简洁的诊断结论
+    root_cause: 根因及因果解释
+    evidence: 由 source 和 observation 组成的证据列表
+    proposed_fix: 最小修复步骤列表
+    verification: 确定性验证步骤列表
+    risks: 边界、风险或未经验证的假设列表

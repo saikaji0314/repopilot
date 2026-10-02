@@ -1,0 +1,42 @@
+schema_version: "1.0"
+id: flaskr-config-006
+title: 应用工厂忽略调用方测试配置
+task_type: bug_diagnosis
+language: zh-CN
+
+repository:
+  name: flaskr-tutorial
+  version: "3.1.3"
+  baseline_path: target-repos/flaskr-tutorial
+  workspace: runtime-provided
+
+user_request: |
+  调用 create_app({"TESTING": True, "DATABASE": temporary_path}) 后，
+  app.testing 仍然是 False，而且应用没有使用传入的临时数据库路径。
+  默认启动 create_app() 的行为正常。请定位配置覆盖流程中的根因并给出验证方案。
+
+initial_evidence:
+  command: python -m pytest tests/test_factory.py::test_config -q -p no:cacheprovider
+  summary: 1 failed
+  failures:
+    - test: tests/test_factory.py::test_config
+      observed: 向 create_app 传入 TESTING=True 后，app.testing 仍为 False
+      expected: app.testing 应为 True
+
+constraints:
+  mode: read_only
+  max_steps: 10
+  timeout_seconds: 120
+  allowed_tools: [list_files, search_code, search_symbols, read_file, run_test]
+  forbidden_actions: [write_file, install_dependency, network_access]
+
+required_output:
+  format: structured_object
+  fields:
+    status: 取值为 diagnosed 或 insufficient_evidence
+    summary: 简洁的诊断结论
+    root_cause: 根因及因果解释
+    evidence: 由 source 和 observation 组成的证据列表
+    proposed_fix: 最小修复步骤列表
+    verification: 确定性验证步骤列表
+    risks: 边界、风险或未经验证的假设列表

@@ -1,0 +1,75 @@
+schema_version: "1.0"
+task_id: flaskr-validation-003
+visibility: evaluator_only
+
+injected_defect:
+  file: flaskr/blog.py
+  function: create
+  original: if not title
+  defective: if title is None
+
+expected_diagnosis: 仅判断 None 会遗漏 HTML 表单提交的空字符串，使空标题进入 INSERT 分支。
+
+required_facts:
+  - id: empty_string_semantics
+    description: 存在但内容为空的表单字段产生空字符串，而不是 None。
+  - id: branch_effect
+    description: 校验遗漏使 error 保持为空，随后执行 INSERT 并重定向。
+  - id: create_only
+    description: 注入缺陷仅位于 create，update 可作为正确逻辑的对照。
+
+disallowed_primary_causes:
+  - 模板 required 属性
+  - 数据库表结构
+  - update 函数
+
+minimal_fix:
+  allowed_files: [flaskr/blog.py]
+  description: 在 create 中恢复 if not title 判断。
+
+verification:
+  target_command: python -m pytest tests/test_blog.py -q -p no:cacheprovider
+  defective:
+    exit_code: 1
+    failed: 1
+    passed: 11
+  repaired:
+    full_suite_command: python -m pytest -q -p no:cacheprovider
+    exit_code: 0
+    passed: 24
+
+hard_requirements:
+  - id: distinguishes_none_and_empty
+    description: 明确区分 None 和空字符串。
+  - id: correct_location
+    description: 将问题定位到 blog.create。
+  - id: verifies_no_insert
+    description: 验证同时覆盖响应校验和数据库中没有新增记录。
+  - id: no_whitespace_assumption
+    description: 不声称需求已经规定纯空格标题的行为。
+  - id: respects_read_only
+    description: 不修改文件，也不声称已经应用修复。
+
+rubric:
+  - id: root_cause
+    points: 3
+    criterion: 正确定位函数、边界值不匹配及其分支影响。
+  - id: code_evidence
+    points: 2
+    criterion: 使用 create，并可结合正确的 update 行为作为证据。
+  - id: behavior_evidence
+    points: 1
+    criterion: 将 302 和缺少校验提示关联到 INSERT 路径。
+  - id: minimal_fix
+    points: 2
+    criterion: 只在 create 中恢复标题假值判断。
+  - id: verification
+    points: 1
+    criterion: 覆盖响应、数据库状态和完整回归。
+  - id: honesty_and_boundaries
+    points: 1
+    criterion: 将纯空格处理保留为尚未确认的需求。
+
+pass_policy:
+  minimum_score: 8
+  require_all_hard_requirements: true

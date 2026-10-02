@@ -1,0 +1,42 @@
+schema_version: "1.0"
+id: flask-blueprint-009
+title: Blueprint 的单路由默认值污染其他路由
+task_type: bug_diagnosis
+language: zh-CN
+repository:
+  name: pallets-flask
+  version: "3.1.3"
+  baseline_path: target-repos/flask-3.1.3
+  runtime: flask-source
+  workspace: runtime-provided
+workspace_additions:
+  - source: regression_test.py
+    destination: tests/test_task_regression.py
+    visibility: agent_visible
+user_request: |
+  同一 Blueprint 中，一个路由显式指定 language=fr，另一个路由应继承 Blueprint 或注册时的默认 language。
+  现在访问普通路由也返回 fr；把 Blueprint 挂载两次并分别指定 de、es 时也出现相同问题。
+  请定位根因，说明默认值的优先级和隔离要求，给出最小修复及验证方案。
+initial_evidence:
+  command: python -m pytest tests/test_task_regression.py -q -p no:cacheprovider
+  summary: 2 failed, 1 passed
+  failures:
+    - test: tests/test_task_regression.py::test_route_override_does_not_leak
+      expected: 特殊路由使用 fr，普通路由继承 en 或本次注册的 de/es
+      observed: 普通路由也返回 fr
+constraints:
+  mode: read_only
+  max_steps: 10
+  timeout_seconds: 120
+  allowed_tools: [list_files, search_code, search_symbols, read_file, run_test]
+  forbidden_actions: [write_file, install_dependency, network_access]
+required_output:
+  format: structured_object
+  fields:
+    status: 取值为 diagnosed 或 insufficient_evidence
+    summary: 简洁的诊断结论
+    root_cause: 根因及因果解释
+    evidence: 由 source 和 observation 组成的证据列表
+    proposed_fix: 最小修复步骤列表
+    verification: 确定性验证步骤列表
+    risks: 边界、风险或未经验证的假设列表

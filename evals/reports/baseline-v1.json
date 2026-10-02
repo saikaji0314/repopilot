@@ -1,0 +1,271 @@
+{
+  "report_version": "1.0",
+  "run_id": "baseline-v1",
+  "model": "qwen3.7-plus-2026-05-26",
+  "evaluation_method": "manual_oracle_review",
+  "aggregate": {
+    "total_runs": 12,
+    "format_success_count": 12,
+    "correct_root_cause_count": 12,
+    "score_threshold_pass_count": 12,
+    "strict_pass_count": 8,
+    "strict_pass_rate": 0.6667,
+    "stable_strict_task_count": 4,
+    "total_task_count": 6,
+    "mean_score": 9.5833
+  },
+  "usage": {
+    "prompt_tokens": 96682,
+    "completion_tokens": 23246,
+    "total_tokens": 119928,
+    "average_elapsed_seconds": 33.79,
+    "minimum_elapsed_seconds": 22.66,
+    "maximum_elapsed_seconds": 47.91,
+    "wall_clock_seconds": 411.72,
+    "estimated_cost_cny": 0.379332,
+    "average_estimated_cost_cny": 0.031611
+  },
+  "results": [
+    {
+      "task_id": "flaskr-auth-001",
+      "run_number": 1,
+      "rubric": {
+        "root_cause": 3,
+        "code_evidence": 2,
+        "behavior_evidence": 0.5,
+        "minimal_fix": 2,
+        "verification": 1,
+        "honesty_and_boundaries": 1
+      },
+      "score": 9.5,
+      "score_threshold_pass": true,
+      "failed_hard_requirements": [],
+      "strict_pass": true,
+      "notes": [
+        "正确识别反向作者权限判断。",
+        "对非作者 POST 返回 400 的具体来源表述略不准确。"
+      ]
+    },
+    {
+      "task_id": "flaskr-auth-001",
+      "run_number": 2,
+      "rubric": {
+        "root_cause": 3,
+        "code_evidence": 2,
+        "behavior_evidence": 1,
+        "minimal_fix": 2,
+        "verification": 1,
+        "honesty_and_boundaries": 1
+      },
+      "score": 10,
+      "score_threshold_pass": true,
+      "failed_hard_requirements": [],
+      "strict_pass": true,
+      "notes": [
+        "完整满足 Oracle。"
+      ]
+    },
+    {
+      "task_id": "flaskr-login-002",
+      "run_number": 1,
+      "rubric": {
+        "root_cause": 3,
+        "code_evidence": 2,
+        "behavior_evidence": 1,
+        "minimal_fix": 2,
+        "verification": 1,
+        "honesty_and_boundaries": 1
+      },
+      "score": 10,
+      "score_threshold_pass": true,
+      "failed_hard_requirements": [],
+      "strict_pass": true,
+      "notes": [
+        "完整满足 Oracle。"
+      ]
+    },
+    {
+      "task_id": "flaskr-login-002",
+      "run_number": 2,
+      "rubric": {
+        "root_cause": 3,
+        "code_evidence": 2,
+        "behavior_evidence": 1,
+        "minimal_fix": 2,
+        "verification": 1,
+        "honesty_and_boundaries": 0.5
+      },
+      "score": 9.5,
+      "score_threshold_pass": true,
+      "failed_hard_requirements": [],
+      "strict_pass": true,
+      "notes": [
+        "把完整测试套件数量写成 8，实际干净基线为 24。"
+      ]
+    },
+    {
+      "task_id": "flaskr-validation-003",
+      "run_number": 1,
+      "rubric": {
+        "root_cause": 3,
+        "code_evidence": 2,
+        "behavior_evidence": 1,
+        "minimal_fix": 2,
+        "verification": 0.5,
+        "honesty_and_boundaries": 1
+      },
+      "score": 9.5,
+      "score_threshold_pass": true,
+      "failed_hard_requirements": [
+        "verifies_no_insert"
+      ],
+      "strict_pass": false,
+      "notes": [
+        "验证没有直接检查数据库中无新增文章。"
+      ]
+    },
+    {
+      "task_id": "flaskr-validation-003",
+      "run_number": 2,
+      "rubric": {
+        "root_cause": 3,
+        "code_evidence": 2,
+        "behavior_evidence": 1,
+        "minimal_fix": 2,
+        "verification": 0.5,
+        "honesty_and_boundaries": 0.5
+      },
+      "score": 9,
+      "score_threshold_pass": true,
+      "failed_hard_requirements": [
+        "verifies_no_insert"
+      ],
+      "strict_pass": false,
+      "notes": [
+        "验证没有直接检查数据库中无新增文章。",
+        "把完整测试套件数量写成 12，实际干净基线为 24。"
+      ]
+    },
+    {
+      "task_id": "flaskr-ordering-004",
+      "run_number": 1,
+      "rubric": {
+        "root_cause": 3,
+        "code_evidence": 2,
+        "behavior_evidence": 1,
+        "minimal_fix": 2,
+        "verification": 1,
+        "honesty_and_boundaries": 1
+      },
+      "score": 10,
+      "score_threshold_pass": true,
+      "failed_hard_requirements": [],
+      "strict_pass": true,
+      "notes": [
+        "完整满足 Oracle。"
+      ]
+    },
+    {
+      "task_id": "flaskr-ordering-004",
+      "run_number": 2,
+      "rubric": {
+        "root_cause": 3,
+        "code_evidence": 2,
+        "behavior_evidence": 1,
+        "minimal_fix": 2,
+        "verification": 0.5,
+        "honesty_and_boundaries": 1
+      },
+      "score": 9.5,
+      "score_threshold_pass": true,
+      "failed_hard_requirements": [],
+      "strict_pass": true,
+      "notes": [
+        "覆盖不同时间戳验证，但没有安排完整测试套件回归。"
+      ]
+    },
+    {
+      "task_id": "flaskr-transaction-005",
+      "run_number": 1,
+      "rubric": {
+        "root_cause": 3,
+        "code_evidence": 2,
+        "behavior_evidence": 1,
+        "minimal_fix": 2,
+        "verification": 1,
+        "honesty_and_boundaries": 1
+      },
+      "score": 10,
+      "score_threshold_pass": true,
+      "failed_hard_requirements": [],
+      "strict_pass": true,
+      "notes": [
+        "完整满足 Oracle。"
+      ]
+    },
+    {
+      "task_id": "flaskr-transaction-005",
+      "run_number": 2,
+      "rubric": {
+        "root_cause": 3,
+        "code_evidence": 2,
+        "behavior_evidence": 1,
+        "minimal_fix": 2,
+        "verification": 1,
+        "honesty_and_boundaries": 1
+      },
+      "score": 10,
+      "score_threshold_pass": true,
+      "failed_hard_requirements": [],
+      "strict_pass": true,
+      "notes": [
+        "完整满足 Oracle。"
+      ]
+    },
+    {
+      "task_id": "flaskr-config-006",
+      "run_number": 1,
+      "rubric": {
+        "root_cause": 3,
+        "code_evidence": 2,
+        "behavior_evidence": 1,
+        "minimal_fix": 1.5,
+        "verification": 0.5,
+        "honesty_and_boundaries": 1
+      },
+      "score": 9,
+      "score_threshold_pass": true,
+      "failed_hard_requirements": [
+        "verifies_override"
+      ],
+      "strict_pass": false,
+      "notes": [
+        "from_mapping(test_config) 功能正确，但不是 Oracle 指定的 app.config.update(test_config)。",
+        "没有直接断言 TESTING 和准确 DATABASE 路径同时生效。"
+      ]
+    },
+    {
+      "task_id": "flaskr-config-006",
+      "run_number": 2,
+      "rubric": {
+        "root_cause": 3,
+        "code_evidence": 2,
+        "behavior_evidence": 1,
+        "minimal_fix": 1.5,
+        "verification": 0.5,
+        "honesty_and_boundaries": 1
+      },
+      "score": 9,
+      "score_threshold_pass": true,
+      "failed_hard_requirements": [
+        "verifies_override"
+      ],
+      "strict_pass": false,
+      "notes": [
+        "from_mapping(test_config) 功能正确，但不是 Oracle 指定的 app.config.update(test_config)。",
+        "没有直接断言 TESTING 和准确 DATABASE 路径同时生效。"
+      ]
+    }
+  ],
+  "artifact_note": "批次使用中性标识；原始运行产物未随仓库分发。数值指标与评分保持原样。"
+}

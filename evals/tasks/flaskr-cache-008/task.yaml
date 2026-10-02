@@ -1,0 +1,59 @@
+schema_version: "1.0"
+id: flaskr-cache-008
+title: 工单更新成功后详情仍显示旧标题
+task_type: bug_diagnosis
+language: zh-CN
+repository:
+  name: flaskr-tutorial-with-ticket-fixture
+  version: "3.1.3+ticket-fixture-v1"
+  baseline_path: target-repos/flaskr-tutorial
+  workspace: runtime-provided
+workspace_additions:
+  - source: assets/__init__.py
+    destination: flaskr/tickets/__init__.py
+    visibility: agent_visible
+  - source: assets/repository.py
+    destination: flaskr/tickets/repository.py
+    visibility: agent_visible
+  - source: assets/cache.py
+    destination: flaskr/tickets/cache.py
+    visibility: agent_visible
+  - source: assets/service.py
+    destination: flaskr/tickets/service.py
+    visibility: agent_visible
+  - source: assets/routes.py
+    destination: flaskr/tickets/routes.py
+    visibility: agent_visible
+  - source: assets/README.md
+    destination: flaskr/tickets/README.md
+    visibility: agent_visible
+  - source: assets/test_tickets.py
+    destination: tests/test_tickets.py
+    visibility: agent_visible
+user_request: |
+  工单详情带应用内缓存。先读取详情，再更新标题，更新接口返回新标题且数据库已保存，
+  但随后再次读取同一工单仍得到旧标题。未预先读取详情时，更新后查询是正常的。
+  请定位根因并给出最小修复和验证方案；保留详情缓存，并且不得清空其他工单的缓存。
+initial_evidence:
+  command: python -m pytest tests/test_tickets.py::TestTicketCache -q -p no:cacheprovider
+  summary: 1 failed, 2 passed
+  failures:
+    - test: tests/test_tickets.py::TestTicketCache::test_warm_read_after_update
+      expected: 先读再更新后，GET 同一工单应返回 Renamed；其他工单保持不变
+      observed: PATCH 和数据库均为 Renamed，但后续 GET 返回 First ticket
+constraints:
+  mode: read_only
+  max_steps: 10
+  timeout_seconds: 120
+  allowed_tools: [list_files, search_code, search_symbols, read_file, run_test]
+  forbidden_actions: [write_file, install_dependency, network_access]
+required_output:
+  format: structured_object
+  fields:
+    status: 取值为 diagnosed 或 insufficient_evidence
+    summary: 简洁的诊断结论
+    root_cause: 根因及因果解释
+    evidence: 由 source 和 observation 组成的证据列表
+    proposed_fix: 最小修复步骤列表
+    verification: 确定性验证步骤列表
+    risks: 边界、风险或未经验证的假设列表
