@@ -1,140 +1,48 @@
-# 第 1 期：最小单 Agent MVP
+# Agent 执行引擎
 
-> 当前状态：阶段性收尾；最新批次严格通过 4/6，用户决定进入第二期  
-> 核心目标：亲手实现并理解“模型决策—工具执行—观察回传—继续或结束”的最小闭环
+执行引擎将单次问答扩展为“模型决策 → 工具执行 → 观察回传”的多轮流程。模型通过工具主动获取证据，宿主代码管理权限、资源限制和结束条件，输出可校验的诊断与执行轨迹。
 
-最新进展：六任务合法答案 4/6、严格通过 4/6，达到原数量门槛。见 [收尾报告](../../evals/reports/agent-v2.md)；[首轮报告](../../evals/reports/agent-v1.md) 保留。最近单元测试记录为 首轮评测 的 143 passed、1 skipped，不是本次重跑结果。剩余限制继续见 BACKLOG，不因阶段收尾注销。现在开始 [第二期](../phase-2/README.md)。以下原定范围与验收标准保留。
+## 消息循环与模块边界
 
-## 1. 本期要证明什么
+`BailianChatModel` 将 OpenAI 兼容响应转换为统一 `ModelTurn`，保留文本、工具调用和用量。Loop 读取工具调用，由注册表校验参数并执行，将结果按调用 ID 写回消息历史。模型生成最终文本时，用 Pydantic 校验诊断协议，再形成运行终态。
 
-第 0 期证明了单次 LLM 可以看懂完整仓库快照：12/12 次找到正确根因，但严格通过只有 8/12，主要缺口是验证没有闭环。
+| 模块 | 职责 |
+| --- | --- |
+| [agent/schemas.py](../../repopilot/agent/schemas.py) | 模型轮次、运行状态、停止原因与接口协议 |
+| [agent/bailian.py](../../repopilot/agent/bailian.py) | 模型 SDK 适配 |
+| [agent/loop.py](../../repopilot/agent/loop.py) | 多轮消息、工具观察、恢复与停止 |
+| [tools/base.py](../../repopilot/tools/base.py) | 工具协议、注册与派发 |
+| [tools/arguments.py](../../repopilot/tools/arguments.py) | 工具参数模型 |
+| [agent_runner.py](../../repopilot/agent_runner.py) | 任务环境准备与能力装配 |
 
-第 1 期不追求更多功能，而是回答：
+模型接口与循环分离，单元测试可以使用 Fake 模型构造工具调用、非法答案和异常响应，无需真实 API。
 
-> 当模型不再一次性看到完整仓库，只能通过受控工具主动调查时，能否收集真实证据、完成诊断，并在异常或资源耗尽时安全停止？
+## 工具与执行边界
 
-本期完成后，RepoPilot 应该是一个可从命令行运行的只读 Agent，而不是一次模型问答脚本。
+基础工具提供目录浏览、文件读取、字面搜索和指定 pytest 测试；可选符号检索通过同一注册表接入。文件访问限定于准备好的任务工作副本，测试入口限制可调用目标，模型不能选择任意解释器或 Shell 命令。
 
-## 2. 本期范围
+任务来自固定评测目录，运行器验证基线、注入缺陷后再进入循环。不同被测仓库由宿主选择测试环境，权限与工具说明随实际能力同步。执行过程保留当前已观察事实与修复后待验证方案的区别。
 
-### 必须完成
+这些限制针对可信样例提供受控执行边界；任意不可信仓库的测试执行还需要更完整的进程隔离。详细契约见 [工具设计](TOOL_CONTRACTS.md)。
 
-- CLI：按任务 ID 启动一条 Agent 运行；
-- 原生 Tool Calling：使用 OpenAI 兼容 `tools` / `tool_calls` 协议；
-- 四个只读工具：`list_files`、`search_code`、`read_file`、`run_test`；
-- Agent Loop：处理模型回复、工具调用、观察结果和最终答案；
-- 限制：最大模型轮数、最大工具次数、工具超时、整任务超时、Token 和费用上限；
-- 轨迹：保存消息、工具调用、工具结果、耗时、Token、费用和停止原因；
-- 错误处理：未知工具、参数错误、工具异常、模型异常、最终格式错误和达到限制；
-- 自动化测试：工具安全边界、循环状态转换和主要异常路径；
-- 评测：在第 0 期的 6 个任务上各运行 1 次，并与单次 LLM 基线比较。
+## 预算与错误恢复
 
-### 明确不做
+配置支持模型轮数、工具调用次数、累计 Token、估算费用、工具超时和整体时限。达到停止条件时记录明确原因，便于区分工具错误、模型错误与资源耗尽。
 
-- 不修改文件、不应用模型生成的补丁；
-- 不提供任意 Shell 或任意命令执行；
-- 不实现 FastAPI、SQLite 持久化或断点恢复；
-- 不加入 LangChain、LangGraph 或多 Agent；
-- 不做 AST、向量检索或索引；
-- 不把完整仓库快照一次性放入 Prompt；
-- 不重写第 0 期基线代码来追求统一抽象。
+允许恢复的工具参数错误按“工具＋错误类型”各提供一次纠错轮次：测试目标附带额外参数，或搜索目录误传为文件。宿主将错误回传模型，由模型重新选择参数。最终答案未通过 Schema 时，提供一次禁用工具的格式恢复请求。纠错和格式恢复都计入原运行预算。
 
-这些能力分别属于后续阶段。第 1 期的代码可以为后续留出接口，但不能提前实现。
+相关行为由 [Loop 测试](../../tests/agent/test_loop.py)、[模型适配测试](../../tests/agent/test_bailian.py) 和 [工具测试](../../tests/tools) 验证。路径相关测试受本机系统条件影响，跳过项应单独查看。
 
-## 3. 用户运行方式
+## 轨迹与诊断
 
-计划中的 CLI：
+`messages.json` 保存模型实际看到的消息；`trace.jsonl` 保存轮次与工具事件；`summary.json` 保存终态、用量与停止原因；`final_answer.json` 保存校验后的诊断。运行器补充可见任务与实际配置快照，方便复盘模型行为。
+
+结构合法、根因正确和严格诊断通过分别核对。六题归档批次严格通过 4/6；其中失败包括工具额度耗尽与最终答案格式错误。结果和证据见 [六题评测报告](../../evals/reports/agent-v2.md)。
+
+## 运行与进一步阅读
 
 ```powershell
-# 先用 Fake 模型和本地工具验证循环，不产生 API 费用
-.\.venv\Scripts\python.exe -m pytest -q
-
-# 第一条真实 Agent 任务
-.\.venv\Scripts\python.exe -m scripts.run_agent `
-  --task flaskr-auth-001
-
-# 本期通过后才运行 6 条评测
-.\.venv\Scripts\python.exe -m scripts.run_agent --all
+.\.venv\Scripts\python.exe -m scripts.run_agent --task flaskr-auth-001 --repetitions 1
 ```
 
-安装为可编辑包后，最终也应支持：
-
-```powershell
-run-agent --task flaskr-auth-001
-```
-
-本期不提供自由选择任意仓库的 CLI 参数。运行器只从 `evals/tasks/` 选择任务，并为每次运行创建注入单一缺陷的临时工作区，以保证评测可重复。
-
-## 4. 计划目录
-
-```text
-repopilot/
-├── agent/
-│   ├── loop.py              # Agent Loop 与停止条件
-│   ├── prompts.py           # Agent 专用 Prompt，不复用基线 Prompt
-│   ├── schemas.py           # 状态、轨迹事件和最终答案协议
-│   └── trace.py             # JSON/JSONL 轨迹保存
-├── tools/
-│   ├── base.py              # 工具协议、统一结果和注册表
-│   ├── filesystem.py        # list_files、read_file
-│   ├── search.py            # search_code
-│   ├── testing.py           # 白名单 pytest
-│   └── path_guard.py        # 工作区路径安全检查
-├── agent_runner.py          # 任务工作区、模型、工具和 Agent 的编排
-├── llm_client.py            # 扩展为支持多轮 messages 与 tools
-└── config.py                # 增加 AgentSettings，保留 BaselineSettings
-
-scripts/
-└── run_agent.py             # 薄 CLI 包装
-
-configs/
-└── agent.yaml               # 第 1 期模型与资源限制
-
-tests/
-├── agent/
-└── tools/
-```
-
-## 5. 与第 0 期代码的关系
-
-| 现有模块 | 第 1 期处理方式 | 原因 |
-| --- | --- | --- |
-| `workspace.py` | 直接复用 | 已能创建、变异、清理隔离工作区 |
-| `task_loader.py` | 保留解析；新增 Agent Prompt 构造函数 | 现有 Prompt 明确写着“无工具、给完整快照”，不能复用 |
-| `schemas.py` | 复用 `BaselineAnswer` 作为最终答案；Agent 状态另放新模块 | 保持评测输出可比，同时避免基线协议被循环状态污染 |
-| `verification.py` | 复用 `CommandResult`；不直接把 `run_command` 暴露给模型 | Agent 只能通过更严格的 `run_test` 白名单调用 pytest |
-| `llm_client.py` | 小步扩展 | 需要接收多轮 messages、tools，并返回 tool_calls |
-| `baseline.py` | 不改行为 | 保留第 0 期对照组的可复现性 |
-| `repository_snapshot.py` | Agent 运行不使用 | 第 1 期必须让模型主动检索，而非获得完整快照 |
-
-## 6. 验收标准
-
-只有同时满足以下条件，第 1 期才完成：
-
-- 6 个初始任务中至少 4 个严格通过 Oracle；
-- 每个成功答案至少引用一条由工具实际获得的代码或测试证据；
-- 不发生工作区外读取、任意命令执行或文件修改；
-- 模型格式错误、工具错误、最大步数和总超时都能形成明确停止原因；
-- Fake 模型单元测试不调用真实 API，并覆盖成功循环与受控失败循环；
-- 保存的轨迹足以回答“模型看到什么、调用了什么、工具返回什么、为何停止”；
-- 生成一份与第 0 期相同口径的质量、步骤、耗时、Token 和费用报告；
-- 至少记录一个成功案例和一个失败案例；
-- 项目作者能够脱离代码画出 Agent Loop，并解释每个安全边界。
-
-## 7. 本期文档
-
-- [Agent Loop 设计](./AGENT_LOOP_DESIGN.md)
-- [工具安全契约](./TOOL_CONTRACTS.md)
-- [实施与学习计划](./IMPLEMENTATION_PLAN.md)
-- [待补缺清单](./BACKLOG.md)
-- [步骤 6：Trace 实现指导](./TRACE_IMPLEMENTATION_GUIDE.md)
-- [步骤 7、8：适配器与运行器指导](./MODEL_RUNNER_GUIDE.md)
-- [评测准备记录](./EVALUATION_READINESS.md)
-
-## 8. 审核时重点确认
-
-1. 是否接受第 1 期只支持评测任务模式，不支持任意仓库和自由题面；
-2. 是否接受使用原生 Tool Calling，不自定义 ReAct 文本协议；
-3. 是否接受 `run_test` 只运行 `tests/` 下的 pytest 目标，不提供 Shell；
-4. 是否接受先用 Fake 模型把循环测试完整，再进行一次真实 API 烟雾测试；
-5. 是否接受严格通过至少 4/6 作为本期门槛，而不是要求立刻超过单次 LLM 的 8/12 基线比例。
+环境准备见 [项目首页](../../README.md)。检索接入与方案比较见 [代码检索说明](../phase-2/README.md)。设计过程与已知问题保留在 [Loop 设计记录](AGENT_LOOP_DESIGN.md)、[实现记录](IMPLEMENTATION_PLAN.md)、[Trace 设计记录](TRACE_IMPLEMENTATION_GUIDE.md) 和 [限制清单](BACKLOG.md)；实现记录中的早期接口以当前代码为准。
