@@ -58,14 +58,15 @@ class RuntimeSettings(Contract):
     api_key: SecretStr = Field(repr=False)
     base_url: str = "https://api.deepseek.com"
     model: str = "deepseek-flash"
-    max_model_calls: int = Field(default=6, gt=0, le=20)
-    max_tool_calls: int = Field(default=16, gt=0, le=50)
+    max_model_calls: int = Field(default=20, gt=0, le=60)
+    max_tool_calls: int = Field(default=40, gt=0, le=200)
     max_edits: int = Field(default=12, gt=0, le=50)
+    max_rework: int = Field(default=3, ge=0, le=5)
     max_output_tokens: int = Field(default=2048, gt=0, le=8192)
     max_context_bytes: int = Field(default=60_000, gt=0, le=500_000)
-    run_timeout_seconds: float = Field(default=120, gt=0, le=1800)
+    run_timeout_seconds: float = Field(default=300, gt=0, le=3600)
     request_timeout_seconds: float = Field(default=30, gt=0, le=120)
-    max_run_cost_cny: float = Field(default=1, gt=0)
+    max_run_cost_cny: float = Field(default=2, gt=0)
     budget_cny: float = Field(default=200, gt=0)
     # 保守估算参数，不代表供应商的实际账单单价。
     input_cny_per_million: float = Field(default=3, gt=0)

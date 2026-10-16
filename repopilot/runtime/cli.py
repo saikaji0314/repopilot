@@ -14,11 +14,18 @@ def main(argv=None) -> int:
     parser.add_argument("--output", type=Path, default=PROJECT_ROOT / ".local" / "runtime")
     parser.add_argument("--no-workspace", action="store_true",
                         help="读取类工具直接指向原仓库，不建独立工作区，也不提供编辑工具")
+    parser.add_argument("--no-review", action="store_true",
+                        help="只做实现，不进入审核与返工阶段")
+    parser.add_argument("--max-rework", type=int, default=None,
+                        help="审核不通过后允许返工的轮数上限，默认取任务配置（3）")
     args = parser.parse_args(argv)
     try:
         task = load_task(args.task)
         settings = load_settings()
-        summary = investigate(task, settings, args.output, workspace=not args.no_workspace)
+        if args.max_rework is not None:
+            settings = settings.model_copy(update={"max_rework": args.max_rework})
+        summary = investigate(task, settings, args.output,
+                              workspace=not args.no_workspace, review=not args.no_review)
     except Exception as exc:
         print(json.dumps({"status": "configuration_error", "error_type": type(exc).__name__,
                           "hint": "检查任务 YAML、仓库路径、git 工作树及 DS_API_KEY / DS_BASE_URL / DS_MODEL 配置"},

@@ -54,7 +54,7 @@ def test_edits_stay_in_the_worktree_and_the_source_stays_unchanged(tmp_path):
     assert changes["changed_files"] == 2
     assert changes["additions"] == 2 and changes["deletions"] == 1
     statuses = {item["path"]: item["status"] for item in changes["files"]}
-    assert statuses == {"app.py": " M", "notes.md": "??"}
+    assert statuses == {"app.py": "M", "notes.md": "??"}
     assert source_snapshot(repo) == before
     assert (repo / "app.py").read_text(encoding="utf-8") == "value = 1\n"
 
@@ -71,6 +71,20 @@ def test_diff_reports_text_and_marks_binary_and_truncation(tmp_path):
     assert "-value = 1" in result["diff"] and "+value = 3" in result["diff"]
     assert "binary file added" in result["diff"] and not result["truncated"]
     assert workspace.diff(limit=10)["truncated"] is True
+
+
+def test_commit_anchors_a_version_and_keeps_changes_relative_to_the_base(tmp_path):
+    _, workspace = prepare(tmp_path)
+    worktree = workspace.repository()
+    (worktree / "app.py").write_text("value = 2\n", encoding="utf-8")
+    anchor = workspace.commit("run: first attempt")
+    assert anchor["created"] is True and anchor["files"] == ["app.py"]
+    assert anchor["commit"] == workspace.changes()["head_commit"]
+    assert workspace.changes()["changed_files"] == 1, "提交成锚点后，相对基线的变更不应消失"
+    assert workspace.commit("run: nothing new")["created"] is False
+    (worktree / "app.py").write_text("value = 3\n", encoding="utf-8")
+    assert workspace.diff_since(anchor["commit"])["diff"].count("+value = 3") == 1
+    assert workspace.diff_since(workspace.base_commit)["diff"].count("+value = 3") == 1
 
 
 def test_edit_budget_limits_writes_and_records_touched_files():

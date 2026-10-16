@@ -56,7 +56,25 @@ class Workspace:
             return self
         run_git(self.source, "worktree", "prune")
         self.path = self._create()
+        self._configure_identity()
         return self
+
+    def _configure_identity(self) -> None:
+        """在工作区自身配置里写死提交身份，避免依赖或修改用户的全局 git 配置。
+
+        换行处理不能在这里强行改写：源仓库若启用 core.autocrlf，工作区改成 false
+        会把检出文件视为已修改，进而影响工作区状态与提交内容。这里沿用源仓库的
+        有效取值，保证工作区与源仓库的语义一致。
+        """
+
+        worktree = self.repository()
+        for key, value in (("user.name", "RepoPilot"), ("user.email", "repopilot@localhost"),
+                           ("commit.gpgsign", "false")):
+            run_git(worktree, "config", key, value)
+        effective = run_git(self.source, "config", "--get", "core.autocrlf", check=False)
+        value = effective.stdout.decode("ascii", errors="replace").strip()
+        if effective.returncode == 0 and value:
+            run_git(worktree, "config", "core.autocrlf", value)
 
     def _create(self) -> Path:
         candidate = Path(tempfile.mkdtemp(prefix="worktree-", dir=self.root))
@@ -82,36 +100,41 @@ class Workspace:
         run_git(self.source, "worktree", "prune", check=False)
 
     def changes(self) -> dict:
-        """采集相对基线提交的变更；只报告事实，不评价改动。"""
+        """采集工作区相对基线提交的变更；只报告事实，不评价改动。
+
+        基准固定为基线提交而不是当前 HEAD，因此审核产生的提交不会让变更“消失”。
+        已知边界：当前版本不解析重命名，重命名会呈现为一次删除加一次新增。
+        """
 
         worktree = self.repository()
-        status = run_git(worktree, "status", "--porcelain=v1", "-z", "--untracked-files=all").stdout
-        entries, files = status.split(b"\0"), []
-        index, untracked = 0, []
-        while index < len(entries):
-            entry = entries[index]
-            index += 1
-            if not entry:
+        counts = self._counts()
+        files = []
+        for line in run_git(worktree, "diff", "--name-status", self.base_commit).stdout.decode(
+                "utf-8", errors="replace").splitlines():
+            if not line.strip():
                 continue
-            code, name = entry[:2].decode("ascii", errors="replace"), entry[3:].decode("utf-8", errors="replace")
-            if code == "??":
-                untracked.append(name)
-            files.append({"path": name, "status": code})
-        counts = self._counts(untracked)
-        additions = deletions = 0
-        for item in files:
-            item["additions"], item["deletions"], item["binary"] = counts.get(item["path"], (0, 0, False))
-            additions += item["additions"]
-            deletions += item["deletions"]
+            parts = line.split("\t")
+            code, name = parts[0].strip(), parts[-1]
+            additions, deletions, binary = counts.get(name, (0, 0, False))
+            files.append({"path": name, "status": code, "additions": additions,
+                          "deletions": deletions, "binary": binary})
+        for name in self._untracked():
+            additions, deletions, binary = self._count_new(name)
+            files.append({"path": name, "status": "??", "additions": additions,
+                          "deletions": deletions, "binary": binary})
         files.sort(key=lambda item: item["path"])
-        return {"base_commit": self.base_commit, "worktree": str(worktree),
-                "files": files, "changed_files": len(files),
-                "additions": additions, "deletions": deletions}
+        return {"base_commit": self.base_commit, "head_commit": head_commit(worktree),
+                "worktree": str(worktree), "files": files, "changed_files": len(files),
+                "additions": sum(item["additions"] for item in files),
+                "deletions": sum(item["deletions"] for item in files)}
 
-    def _counts(self, untracked: list[str]) -> dict:
+    def _counts(self) -> dict:
+        """已跟踪文件的增删行数；二进制文件由 git 用 '-' 标注。"""
+
         counts = {}
         worktree = self.repository()
-        for line in run_git(worktree, "diff", "--numstat", "HEAD").stdout.decode("utf-8", errors="replace").splitlines():
+        output = run_git(worktree, "diff", "--numstat", self.base_commit).stdout.decode("utf-8", errors="replace")
+        for line in output.splitlines():
             parts = line.split("\t")
             if len(parts) == 3:
                 added, removed, name = parts
@@ -119,23 +142,33 @@ class Workspace:
                     counts[name] = (0, 0, True)
                 else:
                     counts[name] = (int(added), int(removed), False)
-        for name in untracked:
-            try:
-                data = (worktree / name).read_bytes()
-            except OSError:
-                counts[name] = (0, 0, False)
-                continue
-            if b"\0" in data:
-                counts[name] = (0, 0, True)
-            else:
-                counts[name] = (len(data.decode("utf-8", errors="replace").splitlines()), 0, False)
         return counts
 
+    def _untracked(self) -> list[str]:
+        """未跟踪文件；这些文件不在 diff 输出里，需要单独枚举。"""
+
+        output = run_git(self.repository(), "status", "--porcelain=v1", "-z", "--untracked-files=all")
+        entries = output.stdout.decode("utf-8", errors="replace").split("\0")
+        return [entry[3:] for entry in entries if entry.startswith("?? ")]
+
+    def _count_new(self, name: str) -> tuple:
+        try:
+            data = (self.repository() / name).read_bytes()
+        except OSError:
+            return (0, 0, False)
+        if b"\0" in data:
+            return (0, 0, True)
+        return (len(data.decode("utf-8", errors="replace").splitlines()), 0, False)
+
     def diff(self, limit: int = MAX_DIFF_CHARS) -> dict:
-        """返回统一差异文本，按字符上限截断并显式标注。"""
+        """返回相对基线的总差异文本，按字符上限截断并显式标注。
+
+        计入已提交与未提交的改动，因此审核提交不会让差异消失。
+        """
 
         worktree = self.repository()
-        text = run_git(worktree, "diff", "--no-color", "--unified=3", "HEAD").stdout.decode("utf-8", errors="replace")
+        text = run_git(worktree, "diff", "--no-color", "--unified=3",
+                       self.base_commit).stdout.decode("utf-8", errors="replace")
         for name in [item["path"] for item in self.changes()["files"] if item["status"] == "??"]:
             try:
                 data = (worktree / name).read_bytes()
@@ -147,6 +180,29 @@ class Workspace:
             else:
                 lines = data.decode("utf-8", errors="replace").splitlines()[:MAX_CHANGE_LINES]
                 text += f"\n--- /dev/null\n+++ b/{name}\n" + "\n".join(f"+{line}" for line in lines) + "\n"
+        return {"diff": text[:limit], "truncated": len(text) > limit, "characters": len(text)}
+
+    def commit(self, message: str) -> dict:
+        """把工作区当前状态提交，作为审核可绑定的代码版本。
+
+        没有改动时返回 head 而不新建空提交，这样审核锚点始终对应真实内容版本。
+        """
+
+        worktree = self.repository()
+        run_git(worktree, "add", "--all")
+        staged = run_git(worktree, "diff", "--cached", "--name-only").stdout.decode("utf-8", errors="replace")
+        if not staged.strip():
+            return {"commit": head_commit(worktree), "created": False, "files": []}
+        run_git(worktree, "commit", "--quiet", "-m", message)
+        files = sorted(name for name in staged.splitlines() if name.strip())
+        return {"commit": head_commit(worktree), "created": True, "files": files}
+
+    def diff_since(self, commit: str, limit: int = MAX_DIFF_CHARS) -> dict:
+        """相对指定提交的差异，用于查看某个审核锚点之后又改了什么。"""
+
+        worktree = self.repository()
+        text = run_git(worktree, "diff", "--no-color", "--unified=3",
+                       commit).stdout.decode("utf-8", errors="replace")
         return {"diff": text[:limit], "truncated": len(text) > limit, "characters": len(text)}
 
 

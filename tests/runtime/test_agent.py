@@ -6,7 +6,7 @@ from langchain_core.language_models.fake_chat_models import FakeMessagesListChat
 from langchain_core.messages import AIMessage
 
 from repopilot.runtime.agent import RunControl, consistent_status, investigate
-from repopilot.runtime.agent import InvestigationReport
+from repopilot.runtime.agent import ImplementationReport
 from repopilot.runtime.budget import Budget
 from repopilot.runtime.config import RuntimeSettings, Task
 
@@ -32,11 +32,11 @@ def setup(tmp_path, **overrides):
 
 def test_framework_tool_loop_returns_report_and_redacts_saved_artifacts(tmp_path):
     task, settings, output = setup(tmp_path)
-    plan = {"status": "planned", "summary": "synthetic-private-key",
+    plan = {"status": "needs_clarification", "summary": "synthetic-private-key",
             "evidence": [{"path": "README.md", "start_line": 1, "observation": "sample"}],
-            "next_steps": ["add a test"], "questions": []}
+            "next_steps": ["add a test"], "questions": ["which language?"]}
     model = ScriptedModel(responses=[message("read_file", {"path": "README.md"}),
-                                     message("InvestigationReport", plan)])
+                                     message("ImplementationReport", plan)])
     summary = investigate(task, settings, output, model=model, workspace=False)
     assert summary["status"] == "completed", summary
     assert summary["model_calls"] == 2
@@ -101,7 +101,7 @@ def test_tool_limit_stops_further_execution(tmp_path):
 
 def test_truncated_completion_is_a_limit_with_usage_not_a_format_error(tmp_path):
     task, settings, output = setup(tmp_path)
-    truncated = message("InvestigationReport", {"status": "planned"})
+    truncated = message("ImplementationReport", {"status": "implemented"})
     truncated.response_metadata["finish_reason"] = "length"
     model = ScriptedModel(responses=[truncated])
     summary = investigate(task, settings, output, model=model, workspace=False)
@@ -146,21 +146,23 @@ def test_check_summary_keeps_verdict_not_the_raw_output():
 
 
 def report(status, evidence):
-    return InvestigationReport.model_validate({"status": status, "summary": "s", "evidence": evidence,
+    return ImplementationReport.model_validate({"status": status, "summary": "s", "evidence": evidence,
                                                "next_steps": [], "questions": []})
 
 
 def test_read_only_run_cannot_claim_implemented():
-    planned = report("planned", [{"kind": "file", "path": "a.py", "start_line": 1, "observation": "x"}])
-    assert consistent_status(planned, {"changed_files": 0}) is planned
+    blocked = report("blocked", [{"kind": "file", "path": "a.py", "start_line": 1, "observation": "x"}])
+    assert consistent_status(blocked, {"changed_files": 0}) is blocked
     claimed = report("implemented", [{"kind": "file", "path": "a.py", "start_line": 1, "observation": "x"},
                                      {"kind": "check", "name": "unit", "exit_code": 0, "observation": "pass"}])
-    assert consistent_status(claimed, {"changed_files": 0}).status == "planned"
+    downgraded = consistent_status(claimed, {"changed_files": 0})
+    assert downgraded.status == "blocked"
+    assert downgraded.questions, "缺少文件变更时应当留下说明，而不是静默改写"
 
 
 def test_changed_files_force_implemented_status():
-    planned = report("planned", [{"kind": "check", "name": "unit", "exit_code": 0, "observation": "pass"}])
-    assert consistent_status(planned, {"changed_files": 1}).status == "implemented"
-    with_check = report("blocked", [{"kind": "file", "path": "a.py", "start_line": 1, "observation": "x"},
-                                    {"kind": "check", "name": "unit", "exit_code": 0, "observation": "pass"}])
+    blocked = report("blocked", [{"kind": "check", "name": "unit", "exit_code": 0, "observation": "pass"}])
+    assert consistent_status(blocked, {"changed_files": 1}).status == "implemented"
+    with_check = report("needs_clarification", [{"kind": "file", "path": "a.py", "start_line": 1, "observation": "x"},
+                                                {"kind": "check", "name": "unit", "exit_code": 0, "observation": "pass"}])
     assert consistent_status(with_check, {"changed_files": 2}).status == "implemented"
