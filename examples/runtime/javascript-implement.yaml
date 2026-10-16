@@ -1,0 +1,14 @@
+schema_version: "2.0"
+id: javascript-implement
+repository: fixtures/javascript
+request: |
+  修正 normalizeTag 的空白处理并补上回归测试。
+  现在 normalizeTag 只做 trim 与转小写，没有把内部连续空白、制表符和换行统一成单个空格，
+  所以 "Repo  Pilot" 会得到 "repo  pilot"、"\tRepo\nPilot " 会得到 "repo\npilot"，
+  同一个标签会得到不同结果。请阅读 normalize.mjs 与 normalize.test.mjs，
+  修改 normalize.mjs 让内部空白折叠为单个空格，并在 normalize.test.mjs 里补一条覆盖该行为的断言。
+  只改这两个文件，不要新增文件。完成后执行 unit 检查，并用文件证据与检查证据说明修改与结果。
+checks:
+  unit:
+    argv: [node, "--test"]
+    timeout_seconds: 30

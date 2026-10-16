@@ -1,0 +1,11 @@
+schema_version: "2.0"
+id: flaskr-check-only
+repository: ../../.local/target-repos/flaskr-tutorial-git
+request: |
+  只执行 blog 检查并报告结果，不需要阅读源码，也不要修改任何文件。
+  available_checks 里只有 blog 一项，调用它后直接给出结论：
+  用一条检查证据（检查名与真实退出码）说明结果，status 用 planned，不要写 implemented。
+checks:
+  blog:
+    argv: ["{python}", "-m", "pytest", "tests/test_blog.py", "-q", "-p", "no:cacheprovider"]
+    timeout_seconds: 60

@@ -2,7 +2,7 @@
 
 RepoPilot 面向由工单驱动的仓库研发：调查需求、准备工作区、实现、验证、审核并交付可供人审的代码变更。项目正在从 Python 只读诊断工具演进为通用 coding agent，完成范围按增量验收。
 
-新的运行时入口支持语言无关的文本检索、文件读取、命名检查和结构化调查报告，使用 LangChain／LangGraph 与 DeepSeek。尚未提供编辑、审核返工、恢复及 GitHub PR 工具。原有 Python 诊断入口、题集和历史结果保留，下文历史实验不代表新运行时的修复效果。
+新的运行时入口支持语言无关的文本检索、文件读取、命名检查与结构化调查报告，并能在独立 Git 工作区内做有限文件编辑、记录差异与检查证据；使用 LangChain／LangGraph 与 DeepSeek。仍不提供 GitHub PR、审核返工与断点恢复工具。原有 Python 诊断入口、题集和历史结果保留，下文历史实验不代表新运行时的修复效果。
 
 ## 新运行时：调查与验证
 
@@ -18,15 +18,34 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 在 `.env` 配置 `DS_API_KEY`，默认 `DS_BASE_URL=https://api.deepseek.com`、`DS_MODEL=deepseek-flash`。进程环境变量优先于文件。新入口不要求百炼 Workspace ID。以下命令调用真实模型并产生费用：
 
 ```powershell
-.\.venv\Scripts\repopilot.exe examples/runtime/flaskr-inspect.yaml
-.\.venv\Scripts\repopilot.exe examples/runtime/javascript-inspect.yaml
+# 只读调查：为原仓库建独立工作区，再用读取类工具调查
+.\.venv\Scripts\repopilot.exe examples/runtime/flaskr-inspect-worktree.yaml
+# 实现：在独立工作区编辑文件并运行已登记检查
+.\.venv\Scripts\repopilot.exe examples/runtime/flaskr-implement.yaml
+.\.venv\Scripts\repopilot.exe examples/runtime/javascript-implement.yaml
+# 旧的只读样例指向不含 .git 的目录，必须跳过工作区
+.\.venv\Scripts\repopilot.exe examples/runtime/flaskr-inspect.yaml --no-workspace
+.\.venv\Scripts\repopilot.exe examples/runtime/javascript-inspect.yaml --no-workspace
 ```
 
 任务 YAML 声明仓库路径、需求与验证命令；路径相对于 YAML 文件，命令是参数数组，`{python}` 使用当前虚拟环境解释器。模型只能选择已登记检查，每项检查每次运行最多执行一次。普通 UTF-8 源码无需按语言注册扩展名，Python AST 不是新运行时的前提。
 
-运行证据与预算账本默认存于被忽略的 `.local/runtime/`，其中 `runs/<id>/` 保存 `input.json`、`events.jsonl`、`summary.json`，成功生成报告时另有 `report.json`。`completed` 表示报告协议完成，报告中的 `planned / needs_clarification / blocked` 表示调查结论；不代表代码已修好。检查退出码单独记录。
+默认先在原仓库之外创建 git worktree 作为独立工作区，编辑只发生在工作区内；原仓库必须含 `.git`，否则本次运行以 `workspace_error` 结束。工作区默认位于 `.local/runtime/worktrees/`，运行结束后保留，便于人工核对改动。编辑工具有两个：`write_file` 写入或覆盖 UTF-8 文本（单文件上限 100,000 字符），`replace_in_file` 做精确字符串替换（找不到或多处匹配都拒绝，不做模糊替换）。读写共用同一套边界：拒绝绝对路径、`..`、盘符、敏感目录（`.git`、`.local`、`.env*`、`node_modules`、`data` 等）与符号链接，写入必须落在工作区内；每次运行编辑次数默认上限 12。`--no-workspace` 跳过工作区：读取类工具直接指向原仓库，不提供编辑工具，适合没有 `.git` 的只读快照。
 
-本机执行仅用于预先接入的可信仓库，不提供操作系统沙箱。资源限制、估算费用与已验证边界见[新运行时需求及验收](docs/runtime-v2/README.md)。
+证据契约区分两类证据：文件证据给出相对路径与起始行号，检查证据给出检查名与真实退出码。报告 `status` 为 `implemented / planned / needs_clarification / blocked`，并有本地事实校正：只有存在文件变更才允许 `implemented`，没有变更会被改写为 `planned`，`implemented` 至少要有一条检查证据。
+
+运行证据与预算账本默认存于被忽略的 `.local/runtime/`，其中 `runs/<id>/` 保存 `input.json`、`events.jsonl`、`summary.json`，成功生成报告时另有 `report.json`，有工作区时另有 `changes.json`。`completed` 表示报告协议完成，报告中的 `status` 表示本次结论，不代表代码已修好或已合并；检查退出码单独记录。
+
+| 文件 | 内容 |
+| --- | --- |
+| `changes.json` | 相对基线的变更文件、增删行、统一差异、基线提交与工作区路径 |
+| `summary.json` | 除运行终态、用量与停止原因外，含 `edits`（编辑次数、上限与涉及文件）、`changes`（变更文件数、增删行、基线提交与工作区）与 `repository_unchanged`（原仓库的 git 状态快照是否与运行前一致）；未建工作区时后两项为 `null` |
+
+原始材料（输入、工具事件、报告、差异与摘要）只保存在本机 `.local/runtime/`，不随 Git 分发。
+
+本轮验证范围有限，不能当作通用成功率。离线回归 `python -m pytest -q -rs` 为 257 passed、5 skipped；真实 DeepSeek（`deepseek-flash`）运行 5 次：Flaskr 补测试为 1 次编辑、pytest 13 passed，Node 样例折叠空白并补断言为 2 次编辑、`node --test` 通过，Flaskr 只读调查为 0 次编辑、报告 `planned`，每次运行都记录 `repository_unchanged: true`。合并与 PR、审核返工、断点恢复、并发运行和非 Git 仓库尚未验证。
+
+本机执行仅用于预先接入的可信仓库，不提供操作系统沙箱。工作区隔离是文件层面的编辑隔离，不是操作系统沙箱：仓库代码与已登记检查仍以当前用户权限执行。资源限制、估算费用与已验证边界见[新运行时需求及验收](docs/runtime-v2/README.md)，验证记录见[增量 1 验证记录](docs/runtime-v2/VALIDATION-01.md)与[增量 2 验证记录](docs/runtime-v2/VALIDATION-02.md)。
 
 ## 历史 Python 诊断入口
 
@@ -36,7 +55,7 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 
 用户报告“文章作者编辑时收到 403，其他用户却能访问”。Agent 通过工具调查鉴权实现与测试，关联作者 ID 比较条件和两种用户行为，给出代码位置、修改建议及正反权限验证方案。
 
-最终输出包含 `status`、`summary`、`root_cause`、`evidence`、`proposed_fix`、`verification`、`risks`。每次运行保留模型消息、工具结果和停止原因，可以核对答案依据，也能追查失败发生在哪一步。现有版本提供只读诊断与测试执行，修改建议由用户审阅后实施。
+最终输出包含 `status`、`summary`、`root_cause`、`evidence`、`proposed_fix`、`verification`、`risks`。每次运行保留模型消息、工具结果和停止原因，可以核对答案依据，也能追查失败发生在哪一步。旧入口提供只读诊断与测试执行，修改建议由用户审阅后实施；需要直接改动文件时可改用上文的独立工作区流程。
 
 ## 架构与执行链路
 
@@ -150,6 +169,6 @@ tests/                循环、工具、检索及题集回归测试
 
 ## 扩展方向
 
-后续围绕用户审批后的受控补丁、SQLite 状态持久化、任务恢复及 API 组织扩展。原始需求与设计过程保留在 [路线文档](docs/ROADMAP.md)。现有工具针对可信固定仓库；任意仓库执行隔离、日志脱敏和部分路径边界仍需加强，具体见 [执行引擎限制](docs/phase-1/BACKLOG.md) 与 [检索限制](docs/phase-2/BACKLOG.md)。
+后续围绕用户审批后的受控补丁、SQLite 状态持久化、任务恢复及 API 组织扩展；独立工作区内的有限编辑已可用，人工审批与合并仍未接入。原始需求与设计过程保留在 [路线文档](docs/ROADMAP.md)。现有工具针对可信固定仓库；任意仓库执行隔离、日志脱敏和部分路径边界仍需加强，具体见 [执行引擎限制](docs/phase-1/BACKLOG.md) 与 [检索限制](docs/phase-2/BACKLOG.md)。
 
 Flask 源码与教程样例来自 Pallets，保留其上游 README 和 BSD-3-Clause 许可证。
