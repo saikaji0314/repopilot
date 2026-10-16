@@ -54,7 +54,7 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 
 原始材料（输入、工具事件、报告、差异与摘要）只保存在本机 `.local/runtime/`，不随 Git 分发。
 
-本轮验证范围有限，不能当作通用成功率。离线回归 `python -m pytest -q -rs` 为 269 passed、5 skipped；真实 DeepSeek（`deepseek-flash`）本轮启用审核的 10 次运行中 8 次 `approved`、1 次 `rework_limit_reached`、1 次 `review_inconclusive`，每次都记录 `repository_unchanged: true`，审核结论引用了具体文件与行号，还出现过一次实现方声称的检查结果与复核结果冲突的指出。合并与 PR、断点恢复、人工暂停、并发运行和非 Git 仓库尚未验证。
+本轮验证范围有限，不能当作通用成功率。离线回归 `python -m pytest -q -rs` 为 272 passed、5 skipped；真实 DeepSeek（`deepseek-flash`）本轮 11 次启用审核的运行中，10 次 `approved`（含一次完整的“审核打回 → 返工 → 再审通过”闭环）、1 次 `rework_limit_reached`、1 次 `review_inconclusive`，每次都记录 `repository_unchanged: true`，审核结论引用了具体文件与行号，还出现过一次实现方声称的检查结果与复核结果冲突的指出。返工闭环用一条分步交付工单触发：实现方只做了一半、`unit` 检查真实失败，审核方给出 finding，返工补齐后第二轮审核通过。合并与 PR、断点恢复、人工暂停、并发运行和非 Git 仓库尚未验证。
 
 本机执行仅用于预先接入的可信仓库，不提供操作系统沙箱。工作区隔离是文件层面的编辑隔离，不是操作系统沙箱：仓库代码与已登记检查仍以当前用户权限执行。资源限制、估算费用与已验证边界见[新运行时需求及验收](docs/runtime-v2/README.md)，验证记录见[增量 1 验证记录](docs/runtime-v2/VALIDATION-01.md)、[增量 2 验证记录](docs/runtime-v2/VALIDATION-02.md)与[增量 3 验证记录](docs/runtime-v2/VALIDATION-03.md)。
 
@@ -195,6 +195,6 @@ tests/                循环、工具、检索及题集回归测试
 
 ## 扩展方向
 
-后续围绕用户审批后的受控补丁、SQLite 状态持久化、任务恢复及 API 组织扩展；独立工作区内的有限编辑、绑定提交的只读审核与有限返工已可用（返工的真实效果尚未验证），人工审批、合并、GitHub PR 与运行恢复仍未接入。原始需求与设计过程保留在 [路线文档](docs/ROADMAP.md)。现有工具针对可信固定仓库；任意仓库执行隔离、日志脱敏和部分路径边界仍需加强，具体见 [执行引擎限制](docs/phase-1/BACKLOG.md) 与 [检索限制](docs/phase-2/BACKLOG.md)。
+后续围绕用户审批后的受控补丁、SQLite 状态持久化、任务恢复及 API 组织扩展；独立工作区内的有限编辑、绑定提交的只读审核与有限返工已可用（返工闭环已在真实模型与真实检查下验证一次），人工审批、合并、GitHub PR 与运行恢复仍未接入。原始需求与设计过程保留在 [路线文档](docs/ROADMAP.md)。现有工具针对可信固定仓库；任意仓库执行隔离、日志脱敏和部分路径边界仍需加强，具体见 [执行引擎限制](docs/phase-1/BACKLOG.md) 与 [检索限制](docs/phase-2/BACKLOG.md)。
 
 Flask 源码与教程样例来自 Pallets，保留其上游 README 和 BSD-3-Clause 许可证。
