@@ -1,4 +1,4 @@
-"""Framework-owned tool loop, with local limits and evidence around each action."""
+"""由框架驱动的工具循环，本项目在每个动作前后加上本地限制与证据记录。"""
 
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -74,7 +74,7 @@ class Trace:
 
 
 class ModelObservation(BaseCallbackHandler):
-    """Observe usage before the framework parses structured output."""
+    """在框架解析结构化输出之前先记录用量与消息，解析失败也能保留既有用量。"""
 
     def __init__(self):
         self.messages = []
@@ -114,7 +114,7 @@ class RunControl(AgentMiddleware):
         size = len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
         if size > settings.max_context_bytes:
             raise RunLimit("context_bytes")
-        # A conservative byte-based input estimate plus protocol overhead; no cache discount.
+        # 按序列化字节数保守估算输入并加上协议余量；不计算缓存折扣。
         bound = ((size + 2048) * settings.input_cny_per_million +
                  settings.max_output_tokens * settings.output_cny_per_million) / 1_000_000
         if self.accounted_cny + bound > settings.max_run_cost_cny:
@@ -191,7 +191,7 @@ def make_model(settings: RuntimeSettings):
 
 
 def investigate(task: Task, settings: RuntimeSettings, output_root: Path, *, model=None) -> dict:
-    """Each invocation creates a fresh run; this increment does not resume side effects."""
+    """每次调用都新建一次运行；本增量不恢复上次运行的副作用。"""
     run_id = f"{task.id}-{uuid4().hex[:12]}"
     directory = output_root / "runs" / run_id
     directory.mkdir(parents=True, exist_ok=False)
@@ -224,7 +224,7 @@ def investigate(task: Task, settings: RuntimeSettings, output_root: Path, *, mod
     except KeyboardInterrupt:
         reason = "interrupted"
     except Exception as exc:
-        # Provider exceptions may contain credentials or response bodies; keep only the type.
+        # 供应商异常可能夹带凭证或响应正文，因此只保留异常类型。
         reason = type(exc).__name__
         details = {"locations": [{"file": Path(frame.filename).name, "function": frame.name,
                                   "line": frame.lineno} for frame in traceback.extract_tb(exc.__traceback__)]}

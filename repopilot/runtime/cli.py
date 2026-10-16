@@ -1,4 +1,4 @@
-"""Run a local investigation with explicit task and named verification commands."""
+"""按显式任务与命名验证命令在本机执行一次调查。"""
 
 import argparse
 import json
@@ -22,7 +22,7 @@ def main(argv=None) -> int:
                           "hint": "检查任务 YAML、仓库路径及 DS_API_KEY / DS_BASE_URL / DS_MODEL 配置"},
                          ensure_ascii=False))
         return 2
-    # JSON escapes preserve arbitrary tool output on Windows GBK/ASCII consoles.
+    # 用 JSON 转义保证任意工具输出能在 Windows GBK／ASCII 控制台打印。
     print(json.dumps(summary, ensure_ascii=True, indent=2))
     return 0 if summary["status"] == "completed" else 1
 

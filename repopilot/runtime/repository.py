@@ -1,4 +1,4 @@
-"""Bounded UTF-8 access and named checks for explicitly trusted local repositories."""
+"""对显式受信本地仓库做有界的 UTF-8 访问与命名检查。"""
 
 import itertools
 import os
@@ -132,7 +132,7 @@ def run_check(task: Task, name: str, timeout: float) -> dict:
     check = task.checks[name]
     cwd = Repository(task.repository).resolve(check.cwd)
     argv = [sys.executable if arg == "{python}" else arg for arg in check.argv]
-    # Credentials, Python paths and browser/account settings are not inherited.
+    # 不继承凭证、Python 路径以及浏览器／账号相关环境变量。
     keep = {"SYSTEMROOT", "WINDIR", "PATH", "PATHEXT", "COMSPEC", "TEMP", "TMP",
             "HOME", "USERPROFILE", "LANG", "LC_ALL"}
     env = {key: value for key, value in os.environ.items() if key.upper() in keep}

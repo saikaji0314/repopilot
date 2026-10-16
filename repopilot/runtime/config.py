@@ -1,4 +1,4 @@
-"""Validated task contracts and credentials, without mutating process environment."""
+"""经过校验的任务契约与凭证读取，不修改进程环境变量。"""
 
 import os
 from pathlib import Path
@@ -66,7 +66,7 @@ class RuntimeSettings(Contract):
     request_timeout_seconds: float = Field(default=30, gt=0, le=120)
     max_run_cost_cny: float = Field(default=1, gt=0)
     budget_cny: float = Field(default=200, gt=0)
-    # Conservative estimates, not a claim about the provider's actual bill.
+    # 保守估算参数，不代表供应商的实际账单单价。
     input_cny_per_million: float = Field(default=3, gt=0)
     output_cny_per_million: float = Field(default=12, gt=0)
 

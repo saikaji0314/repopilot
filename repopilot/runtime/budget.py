@@ -1,4 +1,4 @@
-"""Persistent, conservative reservations; uncertain calls are never refunded."""
+"""持久化的保守预留；结果不确定的调用永不退还预留额度。"""
 
 from contextlib import closing
 import math
@@ -8,7 +8,7 @@ from uuid import uuid4
 
 
 class RunLimit(RuntimeError):
-    """A local execution or estimate limit was reached before the next action."""
+    """在下一次动作之前触达了本地执行期限或估算费用限制。"""
 
 
 def units(cny: float) -> int:
@@ -18,7 +18,7 @@ def units(cny: float) -> int:
 
 
 class Budget:
-    """One explicit budget window per database; no automatic date reset."""
+    """每个数据库对应一个显式预算窗口；不按日期自动清零。"""
 
     def __init__(self, path: Path, limit_cny: float):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -26,7 +26,7 @@ class Budget:
         with closing(self.connect()) as db, db:
             db.execute("CREATE TABLE IF NOT EXISTS budget (id INTEGER PRIMARY KEY, cap INTEGER)")
             db.execute("INSERT OR IGNORE INTO budget VALUES (1, ?)", (units(limit_cny),))
-            # An existing window cannot be silently enlarged through a new invocation.
+            # 已存在的预算窗口不能通过再次启动被静默放大。
             db.execute("UPDATE budget SET cap = min(cap, ?) WHERE id = 1", (units(limit_cny),))
             db.execute("CREATE TABLE IF NOT EXISTS calls "
                        "(id TEXT PRIMARY KEY, run_id TEXT, reserved INTEGER, charged INTEGER, status TEXT)")

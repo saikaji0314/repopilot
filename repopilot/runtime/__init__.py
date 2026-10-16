@@ -1,1 +1,1 @@
-"""Language-independent repository harness; legacy diagnosis remains separate."""
+"""语言无关的仓库运行装置；旧只读诊断入口保持独立。"""
