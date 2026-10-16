@@ -16,7 +16,9 @@ from .workspace import run_git
 
 
 class GitHubError(RuntimeError):
-    pass
+    def __init__(self, message, *, retry_after=0):
+        super().__init__(message)
+        self.retry_after = retry_after
 
 
 def load_token(env_file=PROJECT_ROOT / ".env"):
@@ -70,7 +72,14 @@ class GitHub:
         except httpx.HTTPError:
             raise GitHubError("github_transport_error") from None
         if response.status_code not in {200, 201}:
-            raise GitHubError(f"github_http_{response.status_code}")
+            try:
+                delay = max(0, min(86400, int(response.headers.get("Retry-After", "0"))))
+                if response.headers.get("X-RateLimit-Remaining") == "0":
+                    import time
+                    delay = max(delay, min(86400, max(0, int(response.headers.get("X-RateLimit-Reset", "0")) - int(time.time()))))
+            except ValueError:
+                delay = 0
+            raise GitHubError(f"github_http_{response.status_code}", retry_after=delay)
         try:
             return response.json()
         except ValueError:
@@ -96,6 +105,23 @@ class GitHub:
             "request": f"{template.request}\n\nGitHub Issue: {issue['url']}\n{issue['title']}\n\n{issue['body']}"})
         return task, issue
 
+    def open_issues(self, repository, *, label=None, since=None):
+        """分页枚举开放 Issue；超过扫描上限报错，不静默把截断当完整结果。"""
+        result = []
+        for page in range(1, 11):
+            params = {"state": "open", "sort": "created", "direction": "asc", "per_page": 100, "page": page}
+            if label:
+                params["labels"] = label
+            if since:
+                params["since"] = since
+            values = self.request("GET", f"/repos/{repository}/issues", params=params)
+            if not isinstance(values, list):
+                raise GitHubError("github_invalid_response")
+            result.extend(v for v in values if "pull_request" not in v)
+            if len(values) < 100:
+                return result
+        raise GitHubError("issue_scan_limit_reached")
+
     def push(self, workspace, repository, branch, commit):
         # 密钥不进入命令参数、远程 URL 或 git config 文件。
         encoded = base64.b64encode(f"x-access-token:{self.token}".encode()).decode()
@@ -115,8 +141,30 @@ class GitHub:
             # 不回显 git 诊断，避免远端错误信息带回凭证。
             raise GitHubError("github_push_failed_reconcile_before_retry") from None
 
+    def prepare_base(self, repository_path, repository):
+        """取远端默认分支对象，不切换或重置用户原工作树。"""
+        if remote_repository(repository_path).lower() != repository.lower():
+            raise GitHubError("issue_repository_mismatch")
+        metadata = self.request("GET", f"/repos/{repository}")
+        if metadata["full_name"].lower() != repository.lower():
+            raise GitHubError("repository_identity_mismatch")
+        branch = metadata["default_branch"]
+        commit = self.request("GET", f"/repos/{repository}/commits/{quote(branch, safe='')}")["sha"]
+        if not re.fullmatch(r"[0-9a-f]{40,64}", commit):
+            raise GitHubError("invalid_remote_commit")
+        encoded = base64.b64encode(f"x-access-token:{self.token}".encode()).decode()
+        environment = {"GIT_CONFIG_COUNT": "1", "GIT_CONFIG_KEY_0": "http.https://github.com/.extraheader",
+                       "GIT_CONFIG_VALUE_0": f"AUTHORIZATION: basic {encoded}"}
+        try:
+            run_git(repository_path, "fetch", "--no-tags", "--no-write-fetch-head",
+                    f"https://github.com/{repository}.git", f"refs/heads/{branch}", extra_env=environment)
+            run_git(repository_path, "cat-file", "-e", f"{commit}^{{commit}}")
+        except Exception:
+            raise GitHubError("github_base_fetch_failed") from None
+        return commit
 
-def publish(run_id, root, github):
+
+def publish(run_id, root, github, *, note=None):
     """只发布审批绑定的版本；重试先核对远端分支及 PR，避免重复创建。"""
     store = JobStore(root)
     with job_lock(store.root, run_id):
@@ -146,7 +194,7 @@ def publish(run_id, root, github):
         if remote_base != state["base_commit"]:
             raise GitHubError("remote_base_changed_rerun_required")
         if not state.get("publication"):
-            state["publication"] = {"base": base, "branch": f"codex/repopilot-{run_id}"}
+            state["publication"] = {"base": base, "branch": f"feature-repopilot-{run_id}", "public_note": note}
             store.save(state)
         elif state["publication"]["base"] != base:
             raise GitHubError("default_branch_changed")
@@ -167,8 +215,11 @@ def publish(run_id, root, github):
                 checks = "\n".join(f"- `{item['name']}`: exit {item['exit_code']}" for item in state["verified"])
                 pr = github.request("POST", f"/repos/{repository}/pulls", json={
                     "title": issue["title"][:200], "head": publication["branch"], "base": publication["base"],
-                    "draft": True, "body": f"Closes {issue['url']}\n\n{state['report']['summary']}\n\n"
-                    f"Independent checks:\n{checks}\n\nReviewed and human-approved commit: `{approval['commit']}`\n\n{marker}"})
+                    "draft": True, "body": f"Closes {issue['url']}\n\nImplements: {issue['title']}\n\n"
+                    f"Latest implementation / review follow-up:\n{state['report']['summary']}\n\n"
+                    f"Independent checks:\n{checks}\n\nReview rounds: {len(state['history'])}; rework attempts: {state['reworks']}.\n\n"
+                    f"Reviewed and human-approved commit: `{approval['commit']}`\n\n"
+                    f"{publication.get('public_note') or ''}\n\n{marker}"})
             if (pr["head"]["sha"] != approval["commit"] or
                     pr["head"]["repo"]["full_name"].lower() != repository.lower() or
                     not pr["html_url"].startswith(f"https://github.com/{repository}/pull/")):

@@ -160,3 +160,29 @@ def test_git_push_reuses_exact_head_and_rejects_conflicting_branch(tmp_path, mon
     with pytest.raises(GitHubError, match="remote_branch_conflict"):
         api.push(workspace.path, "owner/repo", "codex/test", commit)
     api.close()
+
+
+def test_fetch_remote_base_does_not_checkout_or_reset_source(tmp_path, monkeypatch):
+    from repopilot.runtime import github as module
+    from repopilot.runtime.workspace import Workspace, head_commit, source_snapshot
+    from tests.runtime.test_review_loop import make_repo
+    source = make_repo(tmp_path)
+    run_git(source, 'remote', 'add', 'origin', 'https://github.com/owner/repo.git')
+    before = source_snapshot(source)
+    work = Workspace(source, tmp_path / 'worktrees').prepare()
+    (work.path / 'app.py').write_text('value = 2\n')
+    remote_sha = work.commit('feat: remote change')['commit']
+    remote = tmp_path / 'remote.git'
+    run_git(source, 'init', '--bare', str(remote))
+    run_git(work.path, 'push', str(remote), f'{remote_sha}:refs/heads/main')
+    def local_git(path, *args, **kwargs):
+        return run_git(path, *(str(remote) if a == 'https://github.com/owner/repo.git' else a for a in args), **kwargs)
+    monkeypatch.setattr(module, 'run_git', local_git)
+    def handler(request):
+        return httpx.Response(200, json={'sha': remote_sha} if '/commits/' in request.url.path else
+                              {'full_name': 'owner/repo', 'default_branch': 'main'})
+    api = GitHub('synthetic', transport=httpx.MockTransport(handler))
+    assert api.prepare_base(source, 'owner/repo') == remote_sha
+    assert source_snapshot(source) == before
+    assert head_commit(source) != remote_sha
+    api.close()

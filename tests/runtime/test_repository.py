@@ -101,3 +101,12 @@ def test_named_check_can_run_again_after_an_edit(tmp_path):
     assert tools['run_registered_check'].invoke({'name': 'unit'})['error'] == 'check_already_ran'
     assert tools['write_file'].invoke({'path': 'source.txt', 'content': 'changed'})['ok']
     assert tools['run_registered_check'].invoke({'name': 'unit'})['exit_code'] == 0
+
+
+def test_truncated_check_keeps_first_error_and_final_summary(tmp_path):
+    task = task_with(tmp_path, "print('FIRST_ERROR');print('x'*12000);print('FINAL_SUMMARY')")
+    result = run_check(task, 'unit', 10)
+    assert result['truncated']
+    assert result['output'].startswith('FIRST_ERROR')
+    assert result['output'].rstrip().endswith('FINAL_SUMMARY')
+    assert len(result['output']) <= 8000

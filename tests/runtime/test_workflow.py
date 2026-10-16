@@ -128,3 +128,24 @@ def test_independent_check_must_not_mutate_reviewed_tree(tmp_path):
     assert result["status"] == "workspace_error", result
     assert result["stop_reason"] == "reviewed_tree_changed"
     assert result["review"]["verdict"] is None
+
+
+def test_remote_pinned_base_can_resume_without_moving_source_head(tmp_path, monkeypatch):
+    from repopilot.runtime.workspace import Workspace, source_snapshot
+    task, settings, root = setup(tmp_path)
+    before = source_snapshot(task.repository)
+    remote = Workspace(task.repository, tmp_path / 'remote-worktrees').prepare()
+    (remote.path / 'remote.txt').write_text('remote base\n')
+    commit = remote.commit('feat: synthetic upstream')['commit']
+    state = workflow.create_job(task, settings, root, base_commit=commit)
+    original = Workspace.prepare
+    monkeypatch.setattr(Workspace, 'prepare', lambda self: (_ for _ in ()).throw(KeyboardInterrupt()))
+    first = workflow.resume(state['run_id'], settings, root, model=FakeModel(responses=[]))
+    assert first['status'] == 'interrupted'
+    monkeypatch.setattr(Workspace, 'prepare', original)
+    workflow.recover(state['run_id'], root, commit=commit, reason='remote base 创建前中断')
+    result = workflow.resume(state['run_id'], settings, root,
+        model=FakeModel(responses=[*implementation(), review_approved()]))
+    assert result['status'] == 'awaiting_approval', result
+    assert source_snapshot(task.repository) == before
+    assert (workflow.attach(JobStore(root).get(state['run_id']), root).path / 'remote.txt').exists()

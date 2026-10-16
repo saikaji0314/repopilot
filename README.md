@@ -1,8 +1,8 @@
 # RepoPilot · 通用仓库研发 Agent
 
-RepoPilot 面向由工单驱动的仓库研发：接收 GitHub Issue，在独立 Git worktree 中实现，独立重跑检查，经只读审核 Agent 与有限返工后暂停，人工批准具体提交，再发布草稿 PR。模型内层循环使用 LangChain／LangGraph，当前接入 DeepSeek。
+RepoPilot 面向由工单驱动的仓库研发：手动接收或自动监听已登记仓库的新 GitHub Issue，在独立 Git worktree 中实现，独立重跑检查，经只读审核 Agent 与有限返工后暂停，人工批准具体提交，再发布草稿 PR。模型内层循环使用 LangChain／LangGraph，当前接入 DeepSeek。
 
-核心不依赖 Python AST 或 pytest；UTF-8 文件工具与操作者登记的命令支持不同语言仓库。已验证范围及实际运行结果见[本轮验证记录](docs/runtime-v2/VALIDATION-04.md)，完整协议见[运行时说明](docs/runtime-v2/README.md)。历史 Python 诊断入口和题集仍保留，其结果不代表新运行时的修复效果。
+核心不依赖 Python AST 或 pytest；UTF-8 文件工具与操作者登记的命令支持不同语言仓库。已验证范围及实际运行结果见[真实交付验证](docs/runtime-v2/VALIDATION-05.md)，完整协议见[运行时说明](docs/runtime-v2/README.md)，可按[演示步骤](docs/runtime-v2/DEMO.md)查看真实工单到草稿 PR 的证据。历史 Python 诊断入口和题集仍保留，其结果不代表新运行时的修复效果。
 
 ## 安装与配置
 
@@ -15,7 +15,7 @@ python -m venv .venv
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-在 `.env` 中填写 `DS_API_KEY`；默认 `DS_BASE_URL=https://api.deepseek.com`、`DS_MODEL=deepseek-flash`。GitHub 功能另需 `GITHUB_TOKEN` 或 `GH_TOKEN`，权限按目标仓库配置：读取仓库及 Issue、发布分支需要 Contents 写入、创建 PR 需要 Pull requests 写入；只有创建演示 Issue 时才需 Issues 写入。进程环境变量优先。
+在 `.env` 中填写 `DS_API_KEY`；默认 `DS_BASE_URL=https://api.deepseek.com`、`DS_MODEL=deepseek-flash`、`DS_THINKING=enabled`、`DS_REASONING_EFFORT=low`。旧运行保持冻结配置；新交付演示使用思考模式，SDK 接线保留其工具调用所需字段，但不记录或展示原始思考文本。GitHub 功能另需 `GITHUB_TOKEN` 或 `GH_TOKEN`，权限按目标仓库配置：读取仓库及 Issue、发布分支需要 Contents 写入、创建 PR 需要 Pull requests 写入；只有创建演示 Issue 时才需 Issues 写入。进程环境变量优先。
 
 ## 运行与审批
 
@@ -44,6 +44,23 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 
 进程在阶段内部退出时，`resume` 会返回 `recovery_required`，不会盲目重放模型或检查。核对现场后可用 `recover RUN_ID --commit FULL_SHA --reason "现场核对结论"` 接纳当前工作树，再 `resume` 从该阶段重新开始。恢复不逐条重建模型对话；已完成阶段无需重新调用模型，累计用量、编辑次数、返工次数和预算保留。发布中断则直接重试 `publish`，先核对远端副作用。
 
+## 自动监听与真实演示
+
+已有真实结果：[zhixianji-jobs Issue #1](https://github.com/saikaji0314/zhixianji-jobs/issues/1) 经实现、104 项独立检查、两轮审核和一次返工，再由用户批准具体提交后创建[草稿 PR #2](https://github.com/saikaji0314/zhixianji-jobs/pull/2)，未合并。[Issue #3](https://github.com/saikaji0314/zhixianji-jobs/issues/3) 则由常驻监听自动接单并完成，93 项检查通过，停在人工审批。
+
+```powershell
+# 先复制并修改 watch.example.yaml，登记可信本机仓库、检查和接单标签
+.\.venv\Scripts\repopilot.exe watch --config .local/watch.yaml
+.\.venv\Scripts\repopilot.exe watch --status
+.\.venv\Scripts\repopilot.exe watch --stop
+# 手动接入可使用与成功功能演示一致的执行参数
+.\.venv\Scripts\repopilot.exe issue ISSUE_URL --task task.yaml --profile examples/runtime/deepseek-delivery.yaml
+```
+
+监听器按仓库和标签准入，SQLite 去重后交给有上限的 worker 进程池，每个任务独立 worktree。默认每 60 秒轮询、一个 worker、同仓库一次一个任务；审批等待不占 worker，失败不自动无限重试。停止后等待当前任务落盘；没有安装系统服务或开机自启。参数与恢复边界见[监听说明](docs/runtime-v2/WATCH.md)。
+
+这两条工单是开发复测，不能代表通用成功率。前期非思考模式的过度调查、接线失败与费用记录均保留；当前仍需人审，模型审核可能遗漏问题。[验证记录](docs/runtime-v2/VALIDATION-05.md)区分真实 GitHub／模型结果和模拟测试。
+
 ## 证据与限制
 
 运行数据保存在被忽略的 `.local/runtime/`：`jobs.sqlite3` 是任务状态与审批记录，`budget.sqlite3` 是既有累计预算账本，`locks/` 防止同一任务并行写入，`worktrees/<id>/` 保留工作区，`runs/<id>/` 保存本地证据。
@@ -60,7 +77,7 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 
 上下文增长时，框架按字节阈值清理较早的读取结果并保留近期内容、工具配对、编辑和检查证据；完整输出仍留在事件中。这不是语义总结，可能需要重新读取文件。
 
-默认每次运行最多 36 次模型请求、40 次工具调用、12 次编辑、3 次返工、300 秒活跃执行时间，估算费用上限 2 元；累计窗口默认 200 元。可在启动或显式 retry 时用 `--max-context-bytes` 和 `--max-tool-calls` 按可信仓库大小调整限额，resume 保持原配置。不清零既有账本；失败或用量不明仍保留费用预留。暂停等待不消耗活跃执行期限。费用是保守估算，实付以供应商账单为准。
+默认每次运行最多 36 次模型请求、40 次工具调用、12 次编辑、3 次返工、300 秒活跃执行时间，估算费用上限 2 元；累计窗口默认 200 元。可在启动或显式 retry 时用 `--profile` 或 `--max-context-bytes`、`--max-tool-calls`、`--max-run-cost-cny` 调整限额，resume 保持原配置。公开的交付 profile 为 48 次模型、80 次工具、24 次编辑、8192 输出 tokens、900 秒和单次 8 元；现有累计账本仍为硬边界。不清零既有账本；失败或用量不明仍保留费用预留。暂停等待不消耗活跃执行期限。费用是保守估算，实付以供应商账单为准。
 
 只用于预先接入的可信仓库。本机检查以当前用户权限运行；路径限制、worktree 和环境变量清理不提供操作系统沙箱。工具拒绝 `.env*`、`.git`、`.local`、数据目录及链接等路径，但宿主进程和仓库代码仍有本机权限。远程 tracing 默认关闭；原始输入、差异及日志只留本机，不随 Git 分发。发布使用 GitHub REST 和 Git，不要求安装 `gh`。
 
@@ -186,6 +203,6 @@ tests/                循环、工具、检索及题集回归测试
 
 ## 扩展方向
 
-自动监听 Issue、合并、发布、操作系统沙箱与跨机器恢复仍是后续范围。首版以人工触发 Issue、受控本机执行和审批后草稿 PR 为交付边界。历史诊断通过率与新运行时实现效果分别记录。
+自动合并、软件发布、操作系统沙箱、跨机器恢复和长期部署仍是后续范围。首版支持人工触发与常驻监听、受控本机执行和审批后草稿 PR。历史诊断通过率与新运行时实现效果分别记录。
 
 Flask 源码与教程样例来自 Pallets，保留其上游 README 和 BSD-3-Clause 许可证。

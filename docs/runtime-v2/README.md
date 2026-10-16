@@ -1,6 +1,6 @@
 # 通用仓库运行时：范围与协议
 
-目标：人工给出 Issue 或本地需求，Agent 在独立工作区实现并自检，编排层独立验证，审核 Agent 针对固定提交审核、有限返工，最后暂停等人审批，再发布草稿 PR。自动监听、自动合并和软件发布不在首版内。
+目标：人工给出 Issue 或本地需求，Agent 在独立工作区实现并自检，编排层独立验证，审核 Agent 针对固定提交审核、有限返工，最后暂停等人审批，再发布草稿 PR。自动监听已接入持久化队列与有界进程池，见[监听协议](WATCH.md)；自动合并和软件发布不在首版内。
 
 ## 任务与工具
 
@@ -42,7 +42,7 @@ anchor 后检查与审核前后都要求工作树干净且 HEAD 等于被审核�
 
 GitHub 仅接收标准 `https://github.com/OWNER/REPO/issues/N`；Issue 必须开放且不是 PR，目标必须与本地 origin 一致。仓库路径和检查来自本地模板。Issue 原文冻结入状态；相同 Issue 重复接入返回既有运行，不重复请求模型。内容变化拒绝静默覆盖。失败尝试可显式 `retry RUN_ID --reason ...`，新建独立运行并记录 retry_of 和原因，原失败与费用完整保留；普通重复接入指向最新尝试。同一失败运行的重复 retry 会被事务拒绝，避免并发分叉。
 
-发布前重新读取 Issue 和默认分支，拒绝需求或远端基线变化。只推送审批 SHA 到 `codex/repopilot-<run_id>`，不强推；已存在不同 SHA 的分支会拒绝。创建 draft PR，带运行标记和独立检查记录。重试先读取远端分支与同名 PR；POST 响应丢失时通过运行标记和 head SHA 核对，避免重复创建。不自动 merge／release。
+发布前重新读取 Issue 和默认分支，拒绝需求或远端基线变化。只推送审批 SHA 到 `feature-repopilot-<run_id>`，不强推；已存在不同 SHA 的分支会拒绝。创建 draft PR，带运行标记和独立检查记录。重试先读取远端分支与同名 PR；POST 响应丢失时通过运行标记和 head SHA 核对，避免重复创建。不自动 merge／release。
 
 `GITHUB_TOKEN`／`GH_TOKEN` 从进程环境或 .env 读取，不存 SQLite、不交给模型、不传给检查。Git 推送通过一次性进程环境中的 HTTP header 鉴权，不写 config 或带 token 的 URL。HTTP 固定 api.github.com，不跟随重定向。错误只暴露状态码或类型。个人令牌不应配置到任务 YAML。
 
@@ -56,10 +56,21 @@ GitHub 仅接收标准 `https://github.com/OWNER/REPO/issues/N`；Issue 必须�
 
 ## 验证与来源
 
-历史增量：[调查](VALIDATION-01.md)、[工作区](VALIDATION-02.md)、[审核返工](VALIDATION-03.md)。当前功能与审核发现的修复见[增量 4](VALIDATION-04.md)，区分确定性模拟、真实本地 Git／检查、真实模型和真实 GitHub 写入，不能互相代替。
+历史增量：[调查](VALIDATION-01.md)、[工作区](VALIDATION-02.md)、[审核返工](VALIDATION-03.md)。持久化与审批的历史实现见[增量 4](VALIDATION-04.md)，真实交付与常驻监听见[增量 5](VALIDATION-05.md)，展示步骤见[演示](DEMO.md)，区分确定性模拟、真实本地 Git／检查、真实模型和真实 GitHub 写入，不能互相代替。
 
 - [LangChain Agent](https://docs.langchain.com/oss/python/langchain/agents)
 - [LangGraph 暂停与副作用](https://docs.langchain.com/oss/python/langgraph/interrupts)
 - [DeepSeek 工具调用](https://api-docs.deepseek.com/guides/tool_calls/)
 - [GitHub Issues REST](https://docs.github.com/en/rest/issues/issues#get-an-issue)
 - [GitHub Pull requests REST](https://docs.github.com/en/rest/pulls/pulls#create-a-pull-request)
+
+
+## 交付 profile 与模型接线
+
+`run / issue / retry --profile PATH` 接收经过校验的执行参数 YAML，直接命令行参数优先。只允许调整单次执行限制与思考选项，不接受 API key、端点、模型名或累计预算。`examples/runtime/deepseek-delivery.yaml` 是真实功能演示使用的参数；凭证与模型配置仍来自 .env，resume 不改变已冻结的参数。
+
+新 load_settings 默认启用 DeepSeek low 思考；程序直接构造 RuntimeSettings 及旧运行缺省保持 disabled，避免静默改变既有证据。当前 langchain-deepseek 1.1.1 的发送端未回传 reasoning_content，且 LangChain ToolStrategy 绑定 required 工具选择，与思考模式不兼容。DeepSeekModel 只补这两点：保留提供商要求的字段，将不支持的强制选择转 auto；工具循环仍由框架执行。原始思考只在内存里供下一次请求使用，Trace 不保存或展示。协议依据：[DeepSeek 思考与工具调用](https://api-docs.deepseek.com/guides/thinking_mode/)。
+
+宿主逐轮反馈已读位置、已编辑文件、真实检查和剩余额度；检查输出截断时同时保留首部错误与尾部结果。进度也写入阶段检查点。这些辅助模型收尾，但非思考模式仍出现过度调查，不能仅凭机制存在宣称效果已解决。
+
+GitHub CLI 的新任务／retry 和监听 worker 都先获取远端默认分支对象，固定新尝试基线，不重置用户原工作树。已有运行的 resume 固定旧基线，远端变化仍要求重新验证与批准。

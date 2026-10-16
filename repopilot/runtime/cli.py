@@ -3,12 +3,12 @@ import argparse
 import json
 from pathlib import Path
 import sys
-from .config import PROJECT_ROOT, load_settings, load_task
+from .config import PROJECT_ROOT, load_profile, load_settings, load_task
 from . import workflow
 from .github import GitHub, GitHubError, load_token, publish
 from .store import JobStore, StateError
 
-COMMANDS = {'run', 'issue', 'resume', 'retry', 'status', 'jobs', 'approve', 'reject', 'recover', 'publish'}
+COMMANDS = {'run', 'issue', 'resume', 'retry', 'status', 'jobs', 'approve', 'reject', 'recover', 'publish', 'watch'}
 
 
 def main(argv=None) -> int:
@@ -20,6 +20,14 @@ def main(argv=None) -> int:
     for name in sorted(COMMANDS):
         command = sub.add_parser(name)
         command.add_argument('--output', type=Path, default=PROJECT_ROOT / '.local' / 'runtime')
+        if name == 'watch':
+            command.add_argument('--config', type=Path)
+            command.add_argument('--once', action='store_true', help='只轮询一次并处理本轮队列')
+            command.add_argument('--status', action='store_true', help='查看持久化 Issue 队列，不调用模型或 GitHub')
+            command.add_argument('--stop', action='store_true', help='请求监听器停止接单，等待当前任务落盘后退出')
+            command.add_argument('--acknowledge', help='核查残留 worker 后确认一个 interrupted Issue 队列键')
+            command.add_argument('--reason')
+            continue
         if name == 'jobs':
             continue
         if name in {'run', 'issue'}:
@@ -36,8 +44,10 @@ def main(argv=None) -> int:
         if name in {'run', 'issue', 'resume', 'retry'}:
             command.add_argument('--stop-after', choices=['prepare', 'implement', 'anchor', 'verify', 'review', 'rework'])
         if name in {'run', 'issue', 'retry'}:
+            command.add_argument('--profile', type=Path, help='执行限额与思考模式 YAML，不含凭证')
             command.add_argument('--max-context-bytes', type=int)
             command.add_argument('--max-tool-calls', type=int)
+            command.add_argument('--max-run-cost-cny', type=float)
         if name == 'retry':
             command.add_argument('--reason', required=True)
         if name in {'approve', 'reject', 'recover'}:
@@ -46,7 +56,24 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     github = None
     try:
-        if args.command == 'jobs':
+        if args.command == 'watch':
+            from .watcher import IssueQueue, load_watch_config, watch
+            if args.acknowledge:
+                queue = IssueQueue(args.output)
+                queue.acknowledge(args.acknowledge, args.reason or '')
+                result = {'status': 'ok', 'queue': queue.list()}
+            elif args.stop:
+                queue = IssueQueue(args.output)
+                (queue.root / 'watcher.stop').write_text('stop', encoding='ascii')
+                result = {'status': 'ok', 'stop_requested': True}
+            elif args.status:
+                queue = IssueQueue(args.output)
+                result = {'status': 'ok', 'watcher': queue.health(), 'queue': queue.list()}
+            elif args.config:
+                result = watch(load_watch_config(args.config), args.output, once=args.once)
+            else:
+                raise StateError('watch_config_required')
+        elif args.command == 'jobs':
             result = {'status': 'ok', 'jobs': JobStore(args.output).list()}
         elif args.command == 'status':
             state = JobStore(args.output).get(args.run_id)
@@ -65,25 +92,33 @@ def main(argv=None) -> int:
             result = publish(args.run_id, args.output, github)
         else:
             settings = load_settings()
-            if getattr(args, 'max_rework', None) is not None:
-                settings = type(settings).model_validate({**settings.model_dump(), 'max_rework': args.max_rework})
-            overrides = {k: getattr(args, k) for k in ('max_context_bytes', 'max_tool_calls')
-                         if getattr(args, k, None) is not None}
+            overrides = load_profile(args.profile) if getattr(args, 'profile', None) else {}
+            overrides.update({k: getattr(args, k) for k in ('max_context_bytes', 'max_tool_calls', 'max_run_cost_cny', 'max_rework')
+                              if getattr(args, k, None) is not None})
             settings = type(settings).model_validate({**settings.model_dump(), **overrides})
             if args.command == 'resume':
                 result = workflow.resume(args.run_id, settings, args.output, stop_after=args.stop_after)
             elif args.command == 'retry':
+                state = JobStore(args.output).get(args.run_id)
+                base_commit = None
+                if state.get('issue'):
+                    github = GitHub(load_token())
+                    if workflow.canonical_hash(github.issue(state['issue']['url'])) != workflow.canonical_hash(state['issue']):
+                        raise StateError('issue_changed_since_intake')
+                    base_commit = github.prepare_base(Path(state['task']['repository']), state['issue']['repository'])
                 result = workflow.retry(args.run_id, settings, args.output, reason=args.reason,
-                    overrides=overrides, stop_after=args.stop_after)
+                    overrides=overrides, stop_after=args.stop_after, base_commit=base_commit)
             else:
-                task, issue = load_task(args.task), None
+                task, issue, base_commit = load_task(args.task), None, None
                 if args.command == 'issue':
                     if args.no_workspace or args.no_review:
                         raise StateError('issue_requires_workspace_and_review')
                     github = GitHub(load_token())
                     task, issue = github.intake(args.url, task)
+                    base_commit = github.prepare_base(task.repository, issue['repository'])
                 result = workflow.start(task, settings, args.output, workspace=not args.no_workspace,
-                    review=not args.no_review, require_approval=True, stop_after=args.stop_after, issue=issue)
+                    review=not args.no_review, require_approval=True, stop_after=args.stop_after,
+                    issue=issue, base_commit=base_commit)
     except Exception as exc:
         result = {'status': 'error', 'error_type': type(exc).__name__}
         if isinstance(exc, (StateError, GitHubError)):

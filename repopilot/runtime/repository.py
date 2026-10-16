@@ -203,12 +203,21 @@ def run_check(task: Task, name: str, timeout: float, root: Path | None = None) -
         except BaseException:
             kill_tree(process)
             raise
+        length = output.seek(0, os.SEEK_END)
         output.seek(0)
-        data = output.read(MAX_OUTPUT_BYTES + 1)
+        if length > MAX_OUTPUT_BYTES:
+            marker = b"\n...[output truncated; head and tail retained]...\n"
+            head_size = (MAX_OUTPUT_BYTES - len(marker)) // 2
+            tail_size = MAX_OUTPUT_BYTES - len(marker) - head_size
+            data = output.read(head_size)
+            output.seek(-tail_size, os.SEEK_END)
+            data += marker + output.read(tail_size)
+        else:
+            data = output.read()
     return {
         "name": name, "exit_code": process.returncode, "timed_out": timed_out,
         "output": data[:MAX_OUTPUT_BYTES].decode("utf-8", errors="replace"),
-        "truncated": len(data) > MAX_OUTPUT_BYTES,
+        "truncated": length > MAX_OUTPUT_BYTES,
         "duration_seconds": round(time.monotonic() - started, 3),
     }
 

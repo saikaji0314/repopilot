@@ -1,6 +1,7 @@
 """经过校验的任务契约与凭证读取，不修改进程环境变量。"""
 
 import os
+from typing import Literal
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -58,6 +59,8 @@ class RuntimeSettings(Contract):
     api_key: SecretStr = Field(repr=False)
     base_url: str = "https://api.deepseek.com"
     model: str = "deepseek-flash"
+    thinking: Literal["enabled", "disabled"] = "disabled"
+    reasoning_effort: Literal["low", "high", "max"] = "low"
     max_model_calls: int = Field(default=36, gt=0, le=80)
     max_tool_calls: int = Field(default=40, gt=0, le=200)
     max_edits: int = Field(default=12, gt=0, le=50)
@@ -106,5 +109,24 @@ def load_settings(env_file: Path = PROJECT_ROOT / ".env") -> RuntimeSettings:
         api_key=get("DS_API_KEY", ""),
         base_url=get("DS_BASE_URL", "https://api.deepseek.com"),
         model=get("DS_MODEL", "deepseek-flash"),
+        thinking=get("DS_THINKING", "enabled"),
+        reasoning_effort=get("DS_REASONING_EFFORT", "low"),
         budget_cny=get("REPOPILOT_BUDGET_CNY", 200),
     )
+
+
+EXECUTION_OPTIONS = {"max_model_calls", "max_tool_calls", "max_edits", "max_rework", "max_output_tokens",
+                     "max_context_bytes", "run_timeout_seconds", "request_timeout_seconds", "max_run_cost_cny",
+                     "thinking", "reasoning_effort"}
+
+
+def execution_options(value):
+    """公开配置只接收执行参数，凭证、模型端点和累计预算不能藏在 profile 中。"""
+    if not isinstance(value, dict) or set(value) - EXECUTION_OPTIONS:
+        raise ValueError("profile only accepts execution limits and thinking options")
+    RuntimeSettings.model_validate({"api_key": "validation-only", **value})
+    return value
+
+
+def load_profile(path):
+    return execution_options(yaml.safe_load(Path(path).read_text(encoding="utf-8-sig")))

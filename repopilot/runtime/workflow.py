@@ -27,7 +27,15 @@ def canonical_hash(value):
 
 
 def start(task, settings, output_root, *, model=None, workspace=True, review=True,
-          require_approval=True, stop_after=None, issue=None, retry_of=None, retry_reason=None):
+          require_approval=True, stop_after=None, issue=None, retry_of=None, retry_reason=None, base_commit=None):
+    state = create_job(task, settings, output_root, workspace=workspace, review=review,
+        require_approval=require_approval, issue=issue, retry_of=retry_of, retry_reason=retry_reason, base_commit=base_commit)
+    return resume(state["run_id"], settings, output_root, model=model, stop_after=stop_after)
+
+
+def create_job(task, settings, output_root, *, workspace=True, review=True,
+               require_approval=True, issue=None, retry_of=None, retry_reason=None, base_commit=None):
+    """先持久化任务身份，允许调度器在执行模型之前记录队列对应关系。"""
     store = JobStore(output_root)
     state = store.create({
         "run_id": f"{task.id}-{uuid4().hex[:12]}", "task": task.model_dump(mode="json"),
@@ -35,7 +43,7 @@ def start(task, settings, output_root, *, model=None, workspace=True, review=Tru
         "workspace_enabled": workspace, "review_enabled": review,
         "require_approval": require_approval and workspace and review,
         "status": "ready", "phase": "prepare", "in_flight": None,
-        "base_commit": None, "before": None, "expected_head": None,
+        "base_commit": base_commit, "before": None, "expected_head": None,
         "report": None, "review_report": None, "history": [], "verified": [],
         "reviewed_commit": None, "reworks": 0, "rework_pending": False,
         "control": {}, "edits": {}, "active_seconds": 0, "issue": issue,
@@ -43,10 +51,10 @@ def start(task, settings, output_root, *, model=None, workspace=True, review=Tru
     }, issue_key=None if issue is None else f"{issue['repository']}#{issue['number']}", retry_of=retry_of)
     if issue and canonical_hash(issue) != canonical_hash(state["issue"]):
         raise StateError("issue_changed_since_intake")
-    return resume(state["run_id"], settings, output_root, model=model, stop_after=stop_after)
+    return state
 
 
-def retry(run_id, settings, root, *, reason, overrides=None, model=None, stop_after=None):
+def retry(run_id, settings, root, *, reason, overrides=None, model=None, stop_after=None, base_commit=None):
     """明确开始新尝试，保留失败运行及同一累计预算；不自动循环重试。"""
     store = JobStore(root)
     with job_lock(store.root, run_id):
@@ -60,7 +68,7 @@ def retry(run_id, settings, root, *, reason, overrides=None, model=None, stop_af
         return start(Task.model_validate(state["task"]), frozen, root, model=model,
             workspace=state["workspace_enabled"], review=state["review_enabled"],
             require_approval=state["require_approval"], issue=state["issue"], stop_after=stop_after,
-            retry_of=run_id, retry_reason=reason)
+            retry_of=run_id, retry_reason=reason, base_commit=base_commit)
 
 
 def attach(state, root):
@@ -96,7 +104,7 @@ def drive(store, state, settings, *, model=None, stop_after=None):
     budget = Budget(store.root / "budget.sqlite3", settings.budget_cny)
     control = engine.RunControl(settings, budget, trace, state["run_id"])
     saved = state["control"]
-    for name in ("model_calls", "tool_calls", "input_tokens", "output_tokens", "accounted_cny", "checks"):
+    for name in ("model_calls", "tool_calls", "input_tokens", "output_tokens", "accounted_cny", "checks", "progress"):
         if name in saved:
             setattr(control, name, saved[name])
     control.model_calls = max(control.model_calls, budget.snapshot(state["run_id"])["calls"])
@@ -110,7 +118,7 @@ def drive(store, state, settings, *, model=None, stop_after=None):
     def checkpoint():
         with saving:
             state["control"] = {name: getattr(control, name) for name in
-                ("model_calls", "tool_calls", "input_tokens", "output_tokens", "accounted_cny", "checks")}
+                ("model_calls", "tool_calls", "input_tokens", "output_tokens", "accounted_cny", "checks", "progress")}
             state["edits"] = edits.snapshot()
             state["active_seconds"] = previous_active + time.monotonic() - started
             # 模型输出偶然回显当前密钥时，SQLite 与 JSON 使用同一脱敏规则。
@@ -127,7 +135,7 @@ def drive(store, state, settings, *, model=None, stop_after=None):
     workspace = attach(state, store.root)
     state["status"], state["stop_reason"] = "running", "running"
     try:
-        if workspace:
+        if workspace and state["phase"] != "prepare":
             workspace.prepare()
             if state.get("workspace_snapshot"):
                 if source_snapshot(workspace.repository()) != state["workspace_snapshot"]:
@@ -143,6 +151,7 @@ def drive(store, state, settings, *, model=None, stop_after=None):
                 if state["workspace_enabled"]:
                     if not state["base_commit"]:
                         state["base_commit"] = head_commit(task.repository)
+                    if not state["before"]:
                         state["before"] = source_snapshot(task.repository)
                     checkpoint()
                     workspace = attach(state, store.root).prepare()
@@ -287,7 +296,7 @@ def recover(run_id, root, *, commit, reason):
             raise StateError("use_publish_to_reconcile_remote_effects")
         if state["phase"] == "prepare":
             source = Path(state["task"]["repository"])
-            if head_commit(source) != commit or (state["base_commit"] and state["base_commit"] != commit):
+            if commit != (state["base_commit"] or head_commit(source)):
                 raise StateError("recovery_commit_mismatch")
             if state["before"] and state["before"] != source_snapshot(source):
                 raise StateError("source_changed_during_prepare")
