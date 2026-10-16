@@ -22,6 +22,7 @@ DENIED = {
 }
 MAX_FILE_BYTES = 256_000
 MAX_OUTPUT_BYTES = 8_000
+MAX_WRITE_CHARS = 100_000
 
 
 def sensitive(name: str) -> bool:
@@ -48,19 +49,28 @@ class Repository:
         if not self.root.is_dir():
             raise ValueError("not_a_directory")
 
-    def resolve(self, relative: str) -> Path:
-        path = Path(relative.replace("\\", "/"))
-        if (path.is_absolute() or PureWindowsPath(relative).drive or
-                any(part == ".." or ":" in part or sensitive(part) for part in path.parts)):
-            raise ValueError("path_denied")
+    def resolve(self, relative: str, *, must_exist: bool = True) -> Path:
+        path = self._guard(relative)
         candidate = self.root
         for part in path.parts:
             candidate = candidate / part
             if linked(candidate):
                 raise ValueError("link_denied")
+        if must_exist and not candidate.exists():
+            raise ValueError("path_missing")
         if not candidate.resolve().is_relative_to(self.root):
             raise ValueError("path_denied")
         return candidate
+
+    @staticmethod
+    def _guard(relative: str) -> Path:
+        """拒绝绝对路径、上级跳转、盘符与敏感名；读写共用同一套判断。"""
+
+        path = Path(str(relative).replace("\\", "/"))
+        if (not str(relative).strip() or path.is_absolute() or PureWindowsPath(relative).drive or
+                any(part in {"", ".", ".."} or ":" in part or sensitive(part) for part in path.parts)):
+            raise ValueError("path_denied")
+        return path
 
     def files(self):
         for folder, dirs, files in os.walk(self.root, followlinks=False):
@@ -79,7 +89,9 @@ class Repository:
         if b"\0" in data:
             raise ValueError("binary_file")
         try:
-            return data.decode("utf-8-sig")
+            # 统一换行后再交给模型与替换：模型总是按 \n 给出片段，
+            # 保留 CRLF 会让精确替换在 Windows 上无故失败。这是有意的取舍。
+            return data.decode("utf-8-sig").replace("\r\n", "\n").replace("\r", "\n")
         except UnicodeDecodeError:
             raise ValueError("not_utf8") from None
 
@@ -109,6 +121,44 @@ class Repository:
                         return {"matches": matches, "skipped_files": skipped, "truncated": True}
         return {"matches": matches, "skipped_files": skipped, "truncated": False}
 
+    def write(self, path: str, content: str) -> dict:
+        """在工作区内写入 UTF-8 文本；路径判断与读取共用同一套边界。"""
+
+        if len(content) > MAX_WRITE_CHARS:
+            raise ValueError("content_too_large")
+        if "\0" in content:
+            raise ValueError("binary_content")
+        target = self.resolve(path, must_exist=False)
+        if not target.parent.resolve().is_relative_to(self.root):
+            raise ValueError("path_denied")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8", newline="")
+        return {"path": path, "characters": len(content), "lines": len(content.splitlines())}
+
+    def replace(self, path: str, old: str, new: str) -> dict:
+        """精确替换一段文本；找不到或多处匹配都拒绝，不做模糊替换。"""
+
+        if not old:
+            raise ValueError("empty_old_string")
+        if len(new) > MAX_WRITE_CHARS:
+            raise ValueError("content_too_large")
+        if "\0" in new:
+            raise ValueError("binary_content")
+        target = self.resolve(path)
+        text = self.text(path)
+        occurrences = text.count(old)
+        if occurrences == 0:
+            raise ValueError("old_string_not_found")
+        if occurrences > 1:
+            raise ValueError("old_string_not_unique")
+        replaced = text.replace(old, new, 1)
+        if len(replaced) > MAX_WRITE_CHARS:
+            raise ValueError("content_too_large")
+        target.write_text(replaced, encoding="utf-8", newline="")
+        line = text[:text.index(old)].count("\n") + 1
+        return {"path": path, "line": line, "removed_characters": len(old),
+                "added_characters": len(new), "replaced": 1}
+
 
 def kill_tree(process: subprocess.Popen) -> None:
     if os.name == "nt":
@@ -126,11 +176,13 @@ def kill_tree(process: subprocess.Popen) -> None:
     process.wait()
 
 
-def run_check(task: Task, name: str, timeout: float) -> dict:
+def run_check(task: Task, name: str, timeout: float, root: Path | None = None) -> dict:
+    """执行登记检查；root 用于把工作目录边界套在独立工作区上。"""
+
     if name not in task.checks:
         raise ValueError("unknown_check")
     check = task.checks[name]
-    cwd = Repository(task.repository).resolve(check.cwd)
+    cwd = Repository(root if root is not None else task.repository).resolve(check.cwd)
     argv = [sys.executable if arg == "{python}" else arg for arg in check.argv]
     # 不继承凭证、Python 路径以及浏览器／账号相关环境变量。
     keep = {"SYSTEMROOT", "WINDIR", "PATH", "PATHEXT", "COMSPEC", "TEMP", "TMP",
@@ -161,8 +213,11 @@ def run_check(task: Task, name: str, timeout: float) -> dict:
     }
 
 
-def build_tools(task: Task, remaining_seconds):
-    repo, executed, execution_lock = Repository(task.repository), set(), Lock()
+def build_tools(task: Task, remaining_seconds, workspace=None, edits=None):
+    """装配读写工具；workspace 为空时只提供读取类工具。"""
+
+    repo = Repository(workspace if workspace is not None else task.repository)
+    executed, execution_lock = set(), Lock()
 
     def observe(action):
         try:
@@ -200,7 +255,30 @@ def build_tools(task: Task, remaining_seconds):
                 if name in executed:
                     raise ValueError("check_already_ran")
                 executed.add(name)
-            return run_check(task, name, remaining_seconds())
+            return run_check(task, name, remaining_seconds(), root=repo.root)
         return observe(action)
 
-    return [list_files, read_file, search_text, run_registered_check]
+    tools = [list_files, read_file, search_text, run_registered_check]
+    if workspace is None:
+        return tools
+
+    def editing(action, path):
+        if edits is None:
+            return observe(action)
+        try:
+            edits.take(path)
+        except ValueError as exc:
+            return {"ok": False, "error": str(exc)}
+        return observe(action)
+
+    @tool
+    def write_file(path: str, content: str) -> dict:
+        """在工作区写入或覆盖 UTF-8 文本文件；不能写入敏感路径，单文件上限 100,000 字符。"""
+        return editing(lambda: repo.write(path, content), path)
+
+    @tool
+    def replace_in_file(path: str, old: str, new: str) -> dict:
+        """把工作区文件中的一段文本精确替换为新文本；old 必须唯一出现，否则拒绝。"""
+        return editing(lambda: repo.replace(path, old, new), path)
+
+    return tools + [write_file, replace_in_file]

@@ -59,7 +59,8 @@ class RuntimeSettings(Contract):
     base_url: str = "https://api.deepseek.com"
     model: str = "deepseek-flash"
     max_model_calls: int = Field(default=6, gt=0, le=20)
-    max_tool_calls: int = Field(default=12, gt=0, le=50)
+    max_tool_calls: int = Field(default=16, gt=0, le=50)
+    max_edits: int = Field(default=12, gt=0, le=50)
     max_output_tokens: int = Field(default=2048, gt=0, le=8192)
     max_context_bytes: int = Field(default=60_000, gt=0, le=500_000)
     run_timeout_seconds: float = Field(default=120, gt=0, le=1800)
