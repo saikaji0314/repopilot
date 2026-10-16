@@ -1,8 +1,36 @@
-# RepoPilot · Python 代码诊断 Agent
+# RepoPilot · 通用仓库研发 Agent
 
-RepoPilot 根据缺陷描述与初始日志，自主检索 Python 仓库、读取相关代码并运行指定测试，输出带证据的根因分析、最小修改建议与验证方案。项目围绕模型工具调用、执行边界、上下文选择、运行追踪和对照评测实现了一套可本地复现的诊断流程。
+RepoPilot 面向由工单驱动的仓库研发：调查需求、准备工作区、实现、验证、审核并交付可供人审的代码变更。项目正在从 Python 只读诊断工具演进为通用 coding agent，完成范围按增量验收。
 
-技术栈：Python 3.12 · Pydantic · OpenAI 兼容 Tool Calling · 百炼 Qwen · Python AST · pytest。
+新的运行时入口支持语言无关的文本检索、文件读取、命名检查和结构化调查报告，使用 LangChain／LangGraph 与 DeepSeek。尚未提供编辑、审核返工、恢复及 GitHub PR 工具。原有 Python 诊断入口、题集和历史结果保留，下文历史实验不代表新运行时的修复效果。
+
+## 新运行时：调查与验证
+
+准备 CPython 3.12 和 Git，JavaScript 示例还需要 Node.js 24。PowerShell 中执行：
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -c constraints.txt -e ".[test]"
+# 仅首次创建；已有 .env 时保留其内容。
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+```
+
+在 `.env` 配置 `DS_API_KEY`，默认 `DS_BASE_URL=https://api.deepseek.com`、`DS_MODEL=deepseek-flash`。进程环境变量优先于文件。新入口不要求百炼 Workspace ID。以下命令调用真实模型并产生费用：
+
+```powershell
+.\.venv\Scripts\repopilot.exe examples/runtime/flaskr-inspect.yaml
+.\.venv\Scripts\repopilot.exe examples/runtime/javascript-inspect.yaml
+```
+
+任务 YAML 声明仓库路径、需求与验证命令；路径相对于 YAML 文件，命令是参数数组，`{python}` 使用当前虚拟环境解释器。模型只能选择已登记检查，每项检查每次运行最多执行一次。普通 UTF-8 源码无需按语言注册扩展名，Python AST 不是新运行时的前提。
+
+运行证据与预算账本默认存于被忽略的 `.local/runtime/`，其中 `runs/<id>/` 保存 `input.json`、`events.jsonl`、`summary.json`，成功生成报告时另有 `report.json`。`completed` 表示报告协议完成，报告中的 `planned / needs_clarification / blocked` 表示调查结论；不代表代码已修好。检查退出码单独记录。
+
+本机执行仅用于预先接入的可信仓库，不提供操作系统沙箱。资源限制、估算费用与已验证边界见[新运行时需求及验收](docs/runtime-v2/README.md)。
+
+## 历史 Python 诊断入口
+
+旧入口根据缺陷描述与初始日志，调查 Python 仓库、运行指定 pytest，输出根因、证据、修改建议与验证方案。旧技术栈为原生 Tool Calling、百炼 Qwen、Python AST 和 pytest。
 
 ## 一个典型场景
 

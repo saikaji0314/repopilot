@@ -1,0 +1,11 @@
+schema_version: "2.0"
+id: flaskr-inspect
+repository: ../../target-repos/flaskr-tutorial
+request: |
+  调查文章编辑接口的作者权限校验和相关测试，为后续修改梳理证据。
+  先列文件，再阅读相关源码与测试，执行 blog 检查，返回当前行为及后续验证计划。
+  这是调查任务，不要声称已经发现或修复缺陷。
+checks:
+  blog:
+    argv: ["{python}", "-m", "pytest", "tests/test_blog.py", "-q", "-p", "no:cacheprovider"]
+    timeout_seconds: 20

@@ -1,0 +1,10 @@
+schema_version: "2.0"
+id: javascript-inspect
+repository: fixtures/javascript
+request: |
+  检查 normalizeTag 对空白和大小写的处理，阅读实现和测试，执行 unit 检查。
+  根据实际结果给出后续边界测试建议，不修改文件。
+checks:
+  unit:
+    argv: [node, "--test"]
+    timeout_seconds: 10
