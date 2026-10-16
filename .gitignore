@@ -54,3 +54,6 @@ db.sqlite3
 
 # evaluation runs
 evals/runs/
+
+# Local collaboration notes
+/.local/
