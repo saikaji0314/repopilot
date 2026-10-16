@@ -90,3 +90,14 @@ def test_javascript_example_executes_with_node():
     result = run_check(task, "unit", 10)
     assert result["exit_code"] == 0, json.dumps(result)
     assert not result["timed_out"]
+
+
+def test_named_check_can_run_again_after_an_edit(tmp_path):
+    from repopilot.runtime.workspace import EditBudget
+    task = task_with(tmp_path, "print('checked')")
+    edits = EditBudget(3)
+    tools = {t.name: t for t in build_tools(task, lambda: 10, workspace=tmp_path, edits=edits)}
+    assert tools['run_registered_check'].invoke({'name': 'unit'})['exit_code'] == 0
+    assert tools['run_registered_check'].invoke({'name': 'unit'})['error'] == 'check_already_ran'
+    assert tools['write_file'].invoke({'path': 'source.txt', 'content': 'changed'})['ok']
+    assert tools['run_registered_check'].invoke({'name': 'unit'})['exit_code'] == 0

@@ -19,13 +19,14 @@ class WorkspaceError(RuntimeError):
     """工作区无法准备或无法采集变更。"""
 
 
-def run_git(repo: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
+def run_git(repo: Path, *args: str, check: bool = True, extra_env: dict | None = None) -> subprocess.CompletedProcess:
     """在指定仓库内执行 git；不继承模型密钥等环境变量。"""
 
     environment = {key: value for key, value in os.environ.items()
                    if key.upper() in {"SYSTEMROOT", "WINDIR", "PATH", "PATHEXT", "TEMP", "TMP",
                                       "HOME", "USERPROFILE", "LANG", "LC_ALL", "GIT_CONFIG_NOSYSTEM"}}
     environment.update(GIT_TERMINAL_PROMPT="0", GIT_OPTIONAL_LOCKS="0", LC_ALL="C")
+    environment.update(extra_env or {})
     result = subprocess.run(["git", "-C", str(repo), *args], capture_output=True,
                             env=environment, shell=False, timeout=120)
     if check and result.returncode != 0:
@@ -41,40 +42,32 @@ def head_commit(repo: Path) -> str:
 class Workspace:
     """一个基于 git worktree 的独立工作副本。"""
 
-    def __init__(self, repository: Path, root: Path):
+    def __init__(self, repository: Path, root: Path, *, path: Path | None = None, base_commit: str = ""):
         self.source = repository.resolve(strict=True)
         self.root = root.resolve()
-        self.path: Path | None = None
-        self.base_commit = ""
+        self.path: Path | None = path
+        self.base_commit = base_commit
 
     def prepare(self) -> "Workspace":
+        if self.root.is_relative_to(self.source):
+            raise WorkspaceError("workspace_root_must_be_outside_source")
         if not (self.source / ".git").exists():
             raise WorkspaceError("repository is not a git work tree; a worktree workspace requires .git")
-        self.base_commit = head_commit(self.source)
+        if not self.base_commit:
+            self.base_commit = head_commit(self.source)
         self.root.mkdir(parents=True, exist_ok=True)
         if self.path is not None:
+            if self.path.exists():
+                common = run_git(self.path, "rev-parse", "--git-common-dir").stdout.decode().strip()
+                source_common = run_git(self.source, "rev-parse", "--git-common-dir").stdout.decode().strip()
+                if (self.path / common).resolve() != (self.source / source_common).resolve():
+                    raise WorkspaceError("workspace_repository_mismatch")
+                return self
+            run_git(self.source, "worktree", "add", "--detach", str(self.path), self.base_commit)
             return self
         run_git(self.source, "worktree", "prune")
         self.path = self._create()
-        self._configure_identity()
         return self
-
-    def _configure_identity(self) -> None:
-        """在工作区自身配置里写死提交身份，避免依赖或修改用户的全局 git 配置。
-
-        换行处理不能在这里强行改写：源仓库若启用 core.autocrlf，工作区改成 false
-        会把检出文件视为已修改，进而影响工作区状态与提交内容。这里沿用源仓库的
-        有效取值，保证工作区与源仓库的语义一致。
-        """
-
-        worktree = self.repository()
-        for key, value in (("user.name", "RepoPilot"), ("user.email", "repopilot@localhost"),
-                           ("commit.gpgsign", "false")):
-            run_git(worktree, "config", key, value)
-        effective = run_git(self.source, "config", "--get", "core.autocrlf", check=False)
-        value = effective.stdout.decode("ascii", errors="replace").strip()
-        if effective.returncode == 0 and value:
-            run_git(worktree, "config", "core.autocrlf", value)
 
     def _create(self) -> Path:
         candidate = Path(tempfile.mkdtemp(prefix="worktree-", dir=self.root))
@@ -91,6 +84,13 @@ class Workspace:
         if self.path is None:
             raise WorkspaceError("workspace_not_prepared")
         return self.path
+
+    def assert_clean(self, expected_commit: str) -> None:
+        """审核和审批绑定提交及干净工作树，不能接受检查后被改写的版本。"""
+        if head_commit(self.repository()) != expected_commit:
+            raise WorkspaceError("reviewed_commit_changed")
+        if run_git(self.repository(), "status", "--porcelain=v1", "--untracked-files=all").stdout.strip():
+            raise WorkspaceError("reviewed_tree_changed")
 
     def release(self) -> None:
         """移除工作区登记，保留目录供事后核对。"""
@@ -189,11 +189,20 @@ class Workspace:
         """
 
         worktree = self.repository()
+        from .repository import Repository
+        paths = run_git(worktree, "diff", "--name-only", "-z", "HEAD").stdout.decode("utf-8").split("\0")
+        for path in [p for p in paths if p] + self._untracked():
+            try:
+                Repository(worktree).resolve(path, must_exist=False)
+            except ValueError:
+                raise WorkspaceError("sensitive_or_linked_change") from None
         run_git(worktree, "add", "--all")
         staged = run_git(worktree, "diff", "--cached", "--name-only").stdout.decode("utf-8", errors="replace")
         if not staged.strip():
             return {"commit": head_commit(worktree), "created": False, "files": []}
-        run_git(worktree, "commit", "--quiet", "-m", message)
+        # linked worktree 默认共享仓库配置；身份只对本次命令生效。
+        run_git(worktree, "-c", "user.name=RepoPilot", "-c", "user.email=repopilot@localhost",
+                "-c", "commit.gpgsign=false", "commit", "--quiet", "-m", message)
         files = sorted(name for name in staged.splitlines() if name.strip())
         return {"commit": head_commit(worktree), "created": True, "files": files}
 
@@ -228,10 +237,17 @@ class EditBudget:
 def source_snapshot(repo: Path) -> str:
     """记录原仓库状态摘要，用于证明运行期间原仓库未被改动。
 
-    使用 git 自身状态（HEAD 与工作区条目），而不是逐个文件读取内容：
-    对大仓库逐个哈希会带来秒级到分钟级开销，超出本项目的运行期限口径。
+    固定 HEAD、跟踪文件的实际 diff 和未跟踪文件内容，避免只比较状态字母漏掉重复修改。
+    不逐个读取未改变的跟踪文件；忽略的运行数据不纳入此摘要。
     """
 
-    parts = [run_git(repo, "rev-parse", "HEAD").stdout,
-             run_git(repo, "status", "--porcelain=v1", "-z", "--untracked-files=all").stdout]
-    return sha256(b"".join(parts)).hexdigest()
+    digest = sha256(run_git(repo, "rev-parse", "HEAD").stdout)
+    digest.update(run_git(repo, "diff", "--binary", "HEAD").stdout)
+    names = run_git(repo, "ls-files", "--others", "--exclude-standard", "-z").stdout
+    digest.update(names)
+    for name in names.decode("utf-8").split("\0"):
+        if name:
+            with (repo / name).open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1_048_576), b""):
+                    digest.update(chunk)
+    return digest.hexdigest()

@@ -95,3 +95,21 @@ def test_edit_budget_limits_writes_and_records_touched_files():
     with pytest.raises(ValueError, match="edit_limit_reached"):
         edits.take("app.py")
     assert edits.snapshot()["edits"] == 2
+
+
+def test_workspace_does_not_change_source_git_identity(tmp_path):
+    repo = init_repo(tmp_path / "repo")
+    before = subprocess.check_output(["git", "-C", str(repo), "config", "--local", "--list"])
+    workspace = Workspace(repo, tmp_path / "runtime/worktrees").prepare()
+    (workspace.repository() / "app.py").write_text("value = 2\n", encoding="utf-8")
+    workspace.commit("feat: synthetic change")
+    after = subprocess.check_output(["git", "-C", str(repo), "config", "--local", "--list"])
+    assert before == after, "worktree 不得改写共享的源仓库配置"
+
+
+def test_source_snapshot_detects_changes_to_an_already_dirty_file(tmp_path):
+    repo = init_repo(tmp_path / "repo")
+    (repo / "app.py").write_text("value = 2\n", encoding="utf-8")
+    before = source_snapshot(repo)
+    (repo / "app.py").write_text("value = 3\n", encoding="utf-8")
+    assert source_snapshot(repo) != before

@@ -48,6 +48,22 @@ def test_framework_tool_loop_returns_report_and_redacts_saved_artifacts(tmp_path
     assert "sample source" in (run_dir / "events.jsonl").read_text(encoding="utf-8")
 
 
+def test_framework_clears_old_read_results_before_context_limit(tmp_path):
+    import json
+    task, settings, output = setup(tmp_path)
+    (task.repository / "README.md").write_text("synthetic source " * 490, encoding="utf-8")
+    model = ScriptedModel(responses=[*[message("read_file", {"path": "README.md"}) for _ in range(9)],
+        message("ImplementationReport", {"status": "needs_clarification", "summary": "已读取",
+            "evidence": [], "next_steps": [], "questions": ["请确认范围"]})])
+    summary = investigate(task, settings, output, model=model, workspace=False)
+    assert summary["status"] == "completed", summary
+    events = [json.loads(line) for line in (next((output / "runs").iterdir()) / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    calls = [e for e in events if e["event"] == "model_started"]
+    assert any(e["cleared_tool_results"] > 0 for e in calls)
+    assert all(e["input_bytes"] <= settings.max_context_bytes for e in calls)
+    assert any("synthetic source" in e.get("result", "") for e in events)
+
+
 def test_model_calls_stop_without_infinite_retry(tmp_path):
     task, settings, output = setup(tmp_path, max_model_calls=2)
     model = ScriptedModel(responses=[message("read_file", {"path": "README.md"}),

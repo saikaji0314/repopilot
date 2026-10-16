@@ -292,3 +292,13 @@ def test_malformed_review_report_is_recorded_as_inconclusive(tmp_path):
     assert summary["review"]["reviewed_commit"], "审核锚点仍要保留，便于人工核对"
     errors = [item for item in events(run_dir_of(output)) if item["event"] == "run_error"]
     assert errors and errors[-1]["phase"] == "review"
+
+
+def test_model_cannot_approve_a_failed_independent_check(tmp_path):
+    task, settings, output = setup(tmp_path)
+    task = task.model_copy(update={"checks": {"unit": Check(argv=["{python}", "-c", "raise SystemExit(1)"])}})
+    model = FakeModel(responses=[turn("write_file", {"path": "app.py", "content": "value = 2\n"}),
+                                 implement_done(), review_approved()])
+    summary = investigate(task, settings, output, model=model)
+    assert summary["status"] == "review_inconclusive", summary
+    assert summary["review"]["verdict"] != "approved"

@@ -1,0 +1,13 @@
+# 复制到本机被忽略的位置，替换 repository 和 checks 后使用。
+# 仓库必须已经克隆，origin 必须对应 Issue 所属 GitHub 仓库。
+schema_version: '2.0'
+id: github-issue
+repository: ../../your-local-repository
+request: |
+  按 GitHub Issue 的需求实现。先阅读目标仓库的协作约定和必要文档，
+  只修改与工单有关的文件，运行全部登记检查并如实报告。
+checks:
+  unit:
+    # 按可信仓库替换为参数数组，例如 ['node', '--test']、['cargo', 'test']。
+    argv: ['{python}', '-m', 'unittest', 'discover', '-s', 'tests', '-t', '.']
+    timeout_seconds: 60

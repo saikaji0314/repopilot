@@ -1,77 +1,68 @@
 # RepoPilot · 通用仓库研发 Agent
 
-RepoPilot 面向由工单驱动的仓库研发：调查需求、准备工作区、实现、验证、审核并交付可供人审的代码变更。项目正在从 Python 只读诊断工具演进为通用 coding agent，完成范围按增量验收。
+RepoPilot 面向由工单驱动的仓库研发：接收 GitHub Issue，在独立 Git worktree 中实现，独立重跑检查，经只读审核 Agent 与有限返工后暂停，人工批准具体提交，再发布草稿 PR。模型内层循环使用 LangChain／LangGraph，当前接入 DeepSeek。
 
-新的运行时入口支持语言无关的文本检索、文件读取、命名检查与结构化调查报告，并具备独立工作区内的实现、绑定提交的只读审核、有限返工以及差异与检查证据；使用 LangChain／LangGraph 与 DeepSeek。仍不提供 GitHub PR、断点恢复与人工暂停。原有 Python 诊断入口、题集和历史结果保留，下文历史实验不代表新运行时的修复效果。
+核心不依赖 Python AST 或 pytest；UTF-8 文件工具与操作者登记的命令支持不同语言仓库。已验证范围及实际运行结果见[本轮验证记录](docs/runtime-v2/VALIDATION-04.md)，完整协议见[运行时说明](docs/runtime-v2/README.md)。历史 Python 诊断入口和题集仍保留，其结果不代表新运行时的修复效果。
 
-## 新运行时：调查与验证
+## 安装与配置
 
-准备 CPython 3.12 和 Git，JavaScript 示例还需要 Node.js 24。PowerShell 中执行：
+准备 Python 3.12 和 Git；JavaScript 示例另需 Node.js。
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -c constraints.txt -e ".[test]"
-# 仅首次创建；已有 .env 时保留其内容。
+# 已有 .env 时保留内容
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-在 `.env` 配置 `DS_API_KEY`，默认 `DS_BASE_URL=https://api.deepseek.com`、`DS_MODEL=deepseek-flash`。进程环境变量优先于文件。新入口不要求百炼 Workspace ID。以下命令调用真实模型并产生费用：
+在 `.env` 中填写 `DS_API_KEY`；默认 `DS_BASE_URL=https://api.deepseek.com`、`DS_MODEL=deepseek-flash`。GitHub 功能另需 `GITHUB_TOKEN` 或 `GH_TOKEN`，权限按目标仓库配置：读取仓库及 Issue、发布分支需要 Contents 写入、创建 PR 需要 Pull requests 写入；只有创建演示 Issue 时才需 Issues 写入。进程环境变量优先。
+
+## 运行与审批
+
+以下运行命令调用真实模型并产生费用。任务 YAML 声明可信仓库路径、需求和命名检查；路径相对 YAML，命令是参数数组，`{python}` 使用当前解释器。Issue 只提供需求，不能修改本地登记的命令或仓库路径。
 
 ```powershell
-# 只读调查：为原仓库建独立工作区，再用读取类工具调查
-.\.venv\Scripts\repopilot.exe examples/runtime/flaskr-inspect-worktree.yaml
-# 实现：在独立工作区编辑文件并运行已登记检查
-.\.venv\Scripts\repopilot.exe examples/runtime/flaskr-implement.yaml
-.\.venv\Scripts\repopilot.exe examples/runtime/javascript-implement.yaml
-# 只实现不审核
-.\.venv\Scripts\repopilot.exe examples/runtime/javascript-implement.yaml --no-review
-# 审核要求返工时最多重做 1 轮（默认 3，上限 5）
-.\.venv\Scripts\repopilot.exe examples/runtime/javascript-implement.yaml --max-rework 1
-# 旧的只读样例指向不含 .git 的目录，必须跳过工作区
-.\.venv\Scripts\repopilot.exe examples/runtime/flaskr-inspect.yaml --no-workspace
-.\.venv\Scripts\repopilot.exe examples/runtime/javascript-inspect.yaml --no-workspace
+# 本地任务；兼容不写 run 的旧命令
+.\.venv\Scripts\repopilot.exe run examples/runtime/javascript-implement.yaml
+# GitHub Issue；--task 指向你本机接入的仓库和检查模板
+.\.venv\Scripts\repopilot.exe issue https://github.com/OWNER/REPO/issues/1 --task task.yaml
+# 在阶段完成后主动暂停，另一个进程继续
+.\.venv\Scripts\repopilot.exe run task.yaml --stop-after implement
+.\.venv\Scripts\repopilot.exe jobs
+.\.venv\Scripts\repopilot.exe status RUN_ID
+.\.venv\Scripts\repopilot.exe resume RUN_ID
+# 查看差异、检查证据和审核意见后，批准完整 SHA；批准本身不推送
+.\.venv\Scripts\repopilot.exe approve RUN_ID --commit FULL_SHA --reason "已核对差异与检查"
+.\.venv\Scripts\repopilot.exe publish RUN_ID
+# 也可以拒绝
+.\.venv\Scripts\repopilot.exe reject RUN_ID --commit FULL_SHA --reason "需求尚未满足"
 ```
 
-任务 YAML 声明仓库路径、需求与验证命令；路径相对于 YAML 文件，命令是参数数组，`{python}` 使用当前虚拟环境解释器。模型只能选择已登记检查，每项检查每次运行最多执行一次。普通 UTF-8 源码无需按语言注册扩展名，Python AST 不是新运行时的前提。
+默认启用工作区和审核，审核通过后的状态是 `awaiting_approval`。只有批准绑定版本才能发布 GitHub 草稿 PR；不会自动合并或发布软件。同一 Issue 重复接入返回已有运行；Issue 内容变化、原始仓库远端不符、审批后版本变化均拒绝发布。失败后可显式 `retry RUN_ID --reason "原因"` 新开一次尝试，旧运行完整保留；同一 Issue 的普通接入始终指向最新尝试。Issue 内容变化不能靠 retry 静默覆盖。
 
-默认先在原仓库之外创建 git worktree 作为独立工作区，编辑只发生在工作区内；原仓库必须含 `.git`，否则本次运行以 `workspace_error` 结束。工作区默认位于 `.local/runtime/worktrees/`，运行结束后保留，便于人工核对改动。编辑工具有两个：`write_file` 写入或覆盖 UTF-8 文本（单文件上限 100,000 字符），`replace_in_file` 做精确字符串替换（找不到或多处匹配都拒绝，不做模糊替换）。读写共用同一套边界：拒绝绝对路径、`..`、盘符、敏感目录（`.git`、`.local`、`.env*`、`node_modules`、`data` 等）与符号链接，写入必须落在工作区内；每次运行编辑次数默认上限 12。`--no-workspace` 跳过工作区：读取类工具直接指向原仓库，不提供编辑工具，适合没有 `.git` 的只读快照。
+`--no-review` 只做实现；`--no-workspace` 直接只读原目录、禁用编辑，适合无 Git 的快照。这两种运行不能进入 PR 交付。`--max-rework N` 限定返工次数（默认 3，上限 5）。`completed` 仅表示报告流程完成，需同时核对报告结论，不能当作已修复或已交付。
 
-证据契约区分两类证据：文件证据给出相对路径与起始行号，检查证据给出检查名与真实退出码。报告 `status` 为 `implemented / planned / needs_clarification / blocked`，并有本地事实校正：只有存在文件变更才允许 `implemented`，没有变更会被改写为 `planned`，`implemented` 至少要有一条检查证据。
+进程在阶段内部退出时，`resume` 会返回 `recovery_required`，不会盲目重放模型或检查。核对现场后可用 `recover RUN_ID --commit FULL_SHA --reason "现场核对结论"` 接纳当前工作树，再 `resume` 从该阶段重新开始。恢复不逐条重建模型对话；已完成阶段无需重新调用模型，累计用量、编辑次数、返工次数和预算保留。发布中断则直接重试 `publish`，先核对远端副作用。
 
-默认资源限制：每次运行最多 20 次模型请求、40 次普通工具调用，运行期限 300 秒，单次运行估算费用上限 2 元。触及任一限制即停止并保留已有结果。
+## 证据与限制
 
-运行证据与预算账本默认存于被忽略的 `.local/runtime/`，其中 `runs/<id>/` 保存 `input.json`、`events.jsonl`、`summary.json`，成功生成报告时另有 `report.json`，有工作区时另有 `changes.json`，启用审核时另有 `review.json`、`review-history.json` 与 `verification.json`。`completed` 表示报告协议完成，报告中的 `status` 表示本次结论，不代表代码已修好或已合并；检查退出码单独记录。
+运行数据保存在被忽略的 `.local/runtime/`：`jobs.sqlite3` 是任务状态与审批记录，`budget.sqlite3` 是既有累计预算账本，`locks/` 防止同一任务并行写入，`worktrees/<id>/` 保留工作区，`runs/<id>/` 保存本地证据。
 
-| 文件 | 内容 |
+| 产物 | 内容 |
 | --- | --- |
-| `changes.json` | 相对基线的变更文件、增删行、统一差异、基线提交与工作区路径 |
-| `review.json` | 最近一次审核的 `verdict`、摘要与 findings（文件、起始行号、严重程度、观察与建议） |
-| `review-history.json` | 逐轮审核的锚点提交、结论与发现；没有审核轮次时不存在 |
-| `verification.json` | 编排层独立重跑登记检查得到的检查名、真实退出码与输出尾部 |
-| `summary.json` | 除运行终态、用量与停止原因外，含 `edits`（编辑次数、上限与涉及文件）、`changes`（变更文件数、增删行、基线提交与工作区）与 `repository_unchanged`（原仓库的 git 状态快照是否与运行前一致）；启用审核时含 `review` 块；未建工作区时后两项为 `null` |
+| `input.json` / `events.jsonl` | 冻结输入、配置版本与模型／工具事件 |
+| `report.json` / `changes.json` | 实现结论、相对基线的差异与文件统计 |
+| `verification.json` | 编排层独立执行全部登记检查的真实退出码与输出尾部 |
+| `review.json` / `review-history.json` | 只读审核结论、逐轮提交与 findings |
+| `summary.json` | 最近一次运行或恢复的摘要、用量与原仓库内容是否变化；发布后的最新状态以 `status` 为准 |
 
-`summary.json` 的 `review` 块记录 `review_rounds`（实际进入审核的轮数）、`rework_attempts`（实现 Agent 真正被叫回返工的次数，与审核轮数不必相等）、`reviewed_commit`（最近一次审核锚点提交）、`verdict`、`findings`（发现条数）、`limit`（返工上限）与 `final_commit`。
+审核对象绑定提交。独立检查失败、超时或缺少登记检查时，即使模型批准也不能通过；检查及审核前后工作树必须保持该版本干净。人工批准绑定需求、Issue、提交、审核及验证结果的摘要；发布前再次核对。工作区提交使用单次命令的 Git 身份，不改写原仓库共享配置。
 
-原始材料（输入、工具事件、报告、差异与摘要）只保存在本机 `.local/runtime/`，不随 Git 分发。
+上下文增长时，框架按字节阈值清理较早的读取结果并保留近期内容、工具配对、编辑和检查证据；完整输出仍留在事件中。这不是语义总结，可能需要重新读取文件。
 
-本轮验证范围有限，不能当作通用成功率。离线回归 `python -m pytest -q -rs` 为 272 passed、5 skipped；真实 DeepSeek（`deepseek-flash`）本轮 11 次启用审核的运行中，10 次 `approved`（含一次完整的“审核打回 → 返工 → 再审通过”闭环）、1 次 `rework_limit_reached`、1 次 `review_inconclusive`，每次都记录 `repository_unchanged: true`，审核结论引用了具体文件与行号，还出现过一次实现方声称的检查结果与复核结果冲突的指出。返工闭环用一条分步交付工单触发：实现方只做了一半、`unit` 检查真实失败，审核方给出 finding，返工补齐后第二轮审核通过。合并与 PR、断点恢复、人工暂停、并发运行和非 Git 仓库尚未验证。
+默认每次运行最多 36 次模型请求、40 次工具调用、12 次编辑、3 次返工、300 秒活跃执行时间，估算费用上限 2 元；累计窗口默认 200 元。可在启动或显式 retry 时用 `--max-context-bytes` 和 `--max-tool-calls` 按可信仓库大小调整限额，resume 保持原配置。不清零既有账本；失败或用量不明仍保留费用预留。暂停等待不消耗活跃执行期限。费用是保守估算，实付以供应商账单为准。
 
-本机执行仅用于预先接入的可信仓库，不提供操作系统沙箱。工作区隔离是文件层面的编辑隔离，不是操作系统沙箱：仓库代码与已登记检查仍以当前用户权限执行。资源限制、估算费用与已验证边界见[新运行时需求及验收](docs/runtime-v2/README.md)，验证记录见[增量 1 验证记录](docs/runtime-v2/VALIDATION-01.md)、[增量 2 验证记录](docs/runtime-v2/VALIDATION-02.md)与[增量 3 验证记录](docs/runtime-v2/VALIDATION-03.md)。
-
-## 新运行时：审核与有限返工
-
-启用审核后，一次运行是两阶段循环：实现 Agent 在独立工作区内读写文件、执行已登记检查，随后把工作区提交为固定版本；审核 Agent **只读**，装配的工具集里没有 `write_file` 与 `replace_in_file`（有测试断言），审核对象是该提交号加相对基线的差异。审核结论为 `changes_requested` 时，findings 交回实现 Agent 返工，最多 `--max-rework` 轮（默认 3，上限 5）；`--no-review` 只做实现，不进入审核与返工。
-
-进入审核前，编排层（不是模型）独立重跑全部登记检查，把真实退出码与输出尾部写进 `verification.json` 交给审核方；实现方在报告里自称的检查结果与复核冲突时以复核为准。硬规则：复核结果里只要有一项不是退出码 0，审核就不能给 `approved`，只能给 `changes_requested` 或 `unable_to_review`。这条规则是真实运行把失败检查判为“与本工单无关”仍批准后补上的，现有测试覆盖。
-
-| 终止情形 | 运行终态 | 退出码 |
-| --- | --- | --- |
-| 审核通过 | `completed` | 0 |
-| 返工超过上限 | `rework_limit_reached` | 1 |
-| 审核无法判断 | `review_inconclusive` | 1 |
-| 实现方未给出 `implemented`（如 `blocked`、`needs_clarification`）或无文件变更 | 跳过审核，按实现阶段结论结束 | 与关闭审核时一致 |
-
-限制：审核结论是模型判断，同一输入上并不稳定，同一场景的三次运行分别得到 `approved`、`changes_requested` 与 `unable_to_review`；返工超限或无法审核都以退出码 1 结束并交人工，不能当作自动化通过。真实模型下尚未触发过实际返工：实现 Agent 每次第一次就完成工单，审核方没有理由要求返工，刻意构造的三个“未完成实现”基线也未得到 `changes_requested`；返工的编排逻辑有确定性测试覆盖，真实返工效果尚未验证。
+只用于预先接入的可信仓库。本机检查以当前用户权限运行；路径限制、worktree 和环境变量清理不提供操作系统沙箱。工具拒绝 `.env*`、`.git`、`.local`、数据目录及链接等路径，但宿主进程和仓库代码仍有本机权限。远程 tracing 默认关闭；原始输入、差异及日志只留本机，不随 Git 分发。发布使用 GitHub REST 和 Git，不要求安装 `gh`。
 
 ## 历史 Python 诊断入口
 
@@ -195,6 +186,6 @@ tests/                循环、工具、检索及题集回归测试
 
 ## 扩展方向
 
-后续围绕用户审批后的受控补丁、SQLite 状态持久化、任务恢复及 API 组织扩展；独立工作区内的有限编辑、绑定提交的只读审核与有限返工已可用（返工闭环已在真实模型与真实检查下验证一次），人工审批、合并、GitHub PR 与运行恢复仍未接入。原始需求与设计过程保留在 [路线文档](docs/ROADMAP.md)。现有工具针对可信固定仓库；任意仓库执行隔离、日志脱敏和部分路径边界仍需加强，具体见 [执行引擎限制](docs/phase-1/BACKLOG.md) 与 [检索限制](docs/phase-2/BACKLOG.md)。
+自动监听 Issue、合并、发布、操作系统沙箱与跨机器恢复仍是后续范围。首版以人工触发 Issue、受控本机执行和审批后草稿 PR 为交付边界。历史诊断通过率与新运行时实现效果分别记录。
 
 Flask 源码与教程样例来自 Pallets，保留其上游 README 和 BSD-3-Clause 许可证。

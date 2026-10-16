@@ -217,7 +217,7 @@ def build_tools(task: Task, remaining_seconds, workspace=None, edits=None):
     """装配读写工具；workspace 为空时只提供读取类工具。"""
 
     repo = Repository(workspace if workspace is not None else task.repository)
-    executed, execution_lock = set(), Lock()
+    executed, execution_lock = {}, Lock()
 
     def observe(action):
         try:
@@ -247,14 +247,15 @@ def build_tools(task: Task, remaining_seconds, workspace=None, edits=None):
 
     @tool
     def run_registered_check(name: str) -> dict:
-        """执行任务登记的命名检查，每项每次运行最多执行一次；不能提供额外参数。"""
+        """执行任务登记的命名检查，同一编辑版本每项最多一次，编辑后可重跑；不能提供额外参数。"""
         def action():
             if name not in task.checks:
                 raise ValueError("unknown_check")
             with execution_lock:
-                if name in executed:
+                revision = 0 if edits is None else edits.count
+                if executed.get(name) == revision:
                     raise ValueError("check_already_ran")
-                executed.add(name)
+                executed[name] = revision
             return run_check(task, name, remaining_seconds(), root=repo.root)
         return observe(action)
 
