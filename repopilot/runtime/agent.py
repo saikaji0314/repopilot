@@ -13,7 +13,7 @@ from uuid import uuid4
 
 from langchain.agents import create_agent
 from langchain.agents.middleware import AgentMiddleware
-from langchain.agents.structured_output import ToolStrategy
+from langchain.agents.structured_output import StructuredOutputValidationError, ToolStrategy
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.utils.function_calling import convert_to_openai_tool
 from langchain_deepseek import ChatDeepSeek
@@ -257,16 +257,14 @@ class RunControl(AgentMiddleware):
 
 
 def consistent_status(report: ImplementationReport, changes: dict) -> ImplementationReport:
-    """让 status 与实际发生的事对齐，避免只读运行自称已实现。
+    """只按本地事实否定“声称已完成”，不改写其它状态。
 
-    有文件变更就必须是 implemented；没有变更就不能自称 implemented，
-    由本地事实改写，而不是相信模型的措辞。改写后仍按契约补足必要证据。
+    实现方说没做完（needs_clarification / blocked）时，即使工作区里已经有改动也照样采信，
+    否则一次返工留下的中间态会被误当成完成。反过来，只读运行没有文件变更就不能自称
+    implemented，这里降级为 blocked。
     """
 
-    changed = bool(changes.get("changed_files"))
-    if changed and report.status != "implemented":
-        return report.model_copy(update={"status": "implemented"})
-    if not changed and report.status == "implemented":
+    if report.status == "implemented" and not changes.get("changed_files"):
         if not report.evidence:
             return report.model_copy(update={"status": "blocked"})
         return ImplementationReport.model_validate({**report.model_dump(mode="json"), "status": "blocked",
@@ -281,6 +279,22 @@ def make_model(settings: RuntimeSettings):
         max_retries=0, streaming=False,
         extra_body={"thinking": {"type": "disabled"}},
     )
+
+
+def validation_details(exc: Exception) -> list[str]:
+    """把结构化输出失败归一成可记录的说明。
+
+    框架会把 Pydantic 的校验失败包进 StructuredOutputValidationError，
+    两层的 error_type 都要如实记录，不能只记外层名字。
+    """
+
+    source = getattr(exc, "source", exc)
+    if isinstance(source, ValidationError):
+        failures = source.errors(include_input=False, include_context=False, include_url=False)
+    else:
+        failures = getattr(source, "errors", lambda **_: [])() if callable(getattr(source, "errors", None)) else []
+    details = [f"{item.get('type')}: {item.get('msg')}" for item in failures] or [str(source)[:200]]
+    return [f"{type(exc).__name__}: {item}" if source is not exc else item for item in details]
 
 
 def run_phase(*, prompt: str, schema, payload: dict, tools, settings: RuntimeSettings,
@@ -374,12 +388,20 @@ def investigate(task: Task, settings: RuntimeSettings, output_root: Path, *, mod
                       if prepared is not None else read_tools)
         trace.event("workspace_ready", worktree=str(root), base_commit=prepared.base_commit if prepared else None)
         payload = {"request": task.request, "available_checks": list(task.checks)}
-        report = run_phase(prompt=SYSTEM_PROMPT, schema=ImplementationReport, payload=payload,
-                           tools=edit_tools, settings=settings, control=control, model=usable_model,
-                           phase="implement")
-        status, reason = "completed", "report"
+        try:
+            report = run_phase(prompt=SYSTEM_PROMPT, schema=ImplementationReport, payload=payload,
+                               tools=edit_tools, settings=settings, control=control, model=usable_model,
+                               phase="implement")
+            status, reason = "completed", "report"
+        except RunLimit:
+            raise
+        except (ValidationError, StructuredOutputValidationError) as exc:
+            report = None
+            status, reason = "phase_error", "invalid_implement_report"
+            trace.event("run_error", error_type=type(exc).__name__, phase="implement",
+                        validation=validation_details(exc))
 
-        while review and prepared is not None:
+        while review and prepared is not None and report is not None:
             report = consistent_status(report, prepared.changes())
             changes = prepared.changes()
             if report.status != "implemented":
@@ -402,9 +424,21 @@ def investigate(task: Task, settings: RuntimeSettings, output_root: Path, *, mod
                               "diff": prepared.diff()["diff"]}
             if history:
                 review_payload["previous_findings"] = history[-1]["findings"]
-            review_report = run_phase(prompt=REVIEW_PROMPT, schema=ReviewReport, payload=review_payload,
-                                      tools=read_tools, settings=settings, control=control,
-                                      model=usable_model, phase="review")
+            try:
+                review_report = run_phase(prompt=REVIEW_PROMPT, schema=ReviewReport, payload=review_payload,
+                                          tools=read_tools, settings=settings, control=control,
+                                          model=usable_model, phase="review")
+            except RunLimit:
+                raise
+            except (ValidationError, StructuredOutputValidationError) as exc:
+                # 审核阶段没能给出可用结论：不伪造结论，记为无法审核并交人工。
+                review_report = None
+                status, reason = "review_inconclusive", "invalid_review_report"
+                trace.event("review_finished", attempt=attempt, commit=review_commit,
+                            verdict="invalid_output", findings=0)
+                trace.event("run_error", error_type=type(exc).__name__, phase="review",
+                            validation=validation_details(exc))
+                break
             trace.save("review.json", review_report.model_dump(mode="json"))
             trace.event("review_finished", attempt=attempt, commit=review_commit,
                         verdict=review_report.verdict, findings=len(review_report.findings))
@@ -425,12 +459,28 @@ def investigate(task: Task, settings: RuntimeSettings, output_root: Path, *, mod
                         for item in history[-1]["findings"]]
             reworks += 1
             trace.event("rework_started", attempt=reworks, findings=len(feedback))
-            report = run_phase(prompt=SYSTEM_PROMPT, schema=ImplementationReport,
-                               payload={**payload, "review_feedback": feedback,
-                                        "reviewed_commit": review_commit},
-                               tools=edit_tools, settings=settings, control=control,
-                               model=usable_model, phase="rework")
+            try:
+                report = run_phase(prompt=SYSTEM_PROMPT, schema=ImplementationReport,
+                                   payload={**payload, "review_feedback": feedback,
+                                            "reviewed_commit": review_commit},
+                                   tools=edit_tools, settings=settings, control=control,
+                                   model=usable_model, phase="rework")
+            except RunLimit:
+                raise
+            except (ValidationError, StructuredOutputValidationError) as exc:
+                # 返工阶段没能给出可用结论：保留已经拿到的审核结果，停在这里交人工。
+                trace.event("rework_finished", attempt=reworks, status="invalid_output")
+                trace.event("run_error", error_type=type(exc).__name__, phase="rework",
+                            validation=validation_details(exc))
+                status, reason = "phase_error", "invalid_rework_report"
+                break
             trace.event("rework_finished", attempt=reworks, status=report.status)
+            report = consistent_status(report, prepared.changes())
+            if report.status != "implemented":
+                # 返工自己判定未完成时不再进入下一轮审核，避免对着未完成版本重复审核。
+                status, reason = "phase_error", f"rework_status_{report.status}"
+                trace.event("review_skipped", reason=reason)
+                break
     except WorkspaceError as exc:
         status, reason = "workspace_error", str(exc)
     except RunLimit as exc:

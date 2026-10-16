@@ -58,7 +58,7 @@ class RuntimeSettings(Contract):
     api_key: SecretStr = Field(repr=False)
     base_url: str = "https://api.deepseek.com"
     model: str = "deepseek-flash"
-    max_model_calls: int = Field(default=20, gt=0, le=60)
+    max_model_calls: int = Field(default=36, gt=0, le=80)
     max_tool_calls: int = Field(default=40, gt=0, le=200)
     max_edits: int = Field(default=12, gt=0, le=50)
     max_rework: int = Field(default=3, ge=0, le=5)

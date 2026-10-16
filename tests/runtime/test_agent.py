@@ -160,9 +160,9 @@ def test_read_only_run_cannot_claim_implemented():
     assert downgraded.questions, "缺少文件变更时应当留下说明，而不是静默改写"
 
 
-def test_changed_files_force_implemented_status():
+def test_changed_files_do_not_override_a_declared_blocker():
     blocked = report("blocked", [{"kind": "check", "name": "unit", "exit_code": 0, "observation": "pass"}])
-    assert consistent_status(blocked, {"changed_files": 1}).status == "implemented"
-    with_check = report("needs_clarification", [{"kind": "file", "path": "a.py", "start_line": 1, "observation": "x"},
-                                                {"kind": "check", "name": "unit", "exit_code": 0, "observation": "pass"}])
-    assert consistent_status(with_check, {"changed_files": 2}).status == "implemented"
+    assert consistent_status(blocked, {"changed_files": 1}) is blocked, "返工中间态不能被当成完成"
+    needs_clarification = report("needs_clarification",
+                                 [{"kind": "check", "name": "unit", "exit_code": 0, "observation": "pass"}])
+    assert consistent_status(needs_clarification, {"changed_files": 3}).status == "needs_clarification"

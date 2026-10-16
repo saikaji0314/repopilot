@@ -235,7 +235,8 @@ def test_unable_to_review_is_reported_as_inconclusive(tmp_path):
 def test_verified_checks_are_independently_rerun_before_review(tmp_path):
     task, settings, output = setup(tmp_path)
     model = FakeModel(responses=[turn("write_file", {"path": "app.py", "content": "value = 2\n"}),
-                                 implement_done(), review_approved()])
+                                 implement_done(), turn("read_file", {"path": "app.py"}),
+                                 review_approved()])
     investigate(task, settings, output, model=model)
     run_dir = run_dir_of(output)
     verified = json.loads((run_dir / "verification.json").read_text(encoding="utf-8"))
@@ -244,3 +245,50 @@ def test_verified_checks_are_independently_rerun_before_review(tmp_path):
     phases = [item["event"] for item in events(run_dir)]
     assert "verify_finished" in phases
     assert phases.index("verify_finished") < phases.index("review_finished"), "审核结论必须在独立复核之后"
+
+
+def test_rework_that_reports_not_implemented_stops_without_another_review(tmp_path):
+    """返工自己判定没做完时，不应再对着未完成版本跑下一轮审核。"""
+
+    task, settings, output = setup(tmp_path, max_rework=1)
+    model = FakeModel(responses=[turn("write_file", {"path": "app.py", "content": "value = 2\n"}),
+                                 implement_done(), review_changes(),
+                                 turn("ImplementationReport", {"status": "blocked", "summary": "改不动",
+                                                               "evidence": [], "next_steps": [],
+                                                               "questions": ["需求需要澄清"]})])
+    summary = investigate(task, settings, output, model=model)
+    assert summary["status"] == "phase_error", summary
+    assert summary["stop_reason"] == "rework_status_blocked"
+    assert summary["review"]["review_rounds"] == 1, "不应再进入第二轮审核"
+    assert summary["review"]["rework_attempts"] == 1
+    assert summary["review"]["verdict"] == "changes_requested"
+    skipped = [item["reason"] for item in events(run_dir_of(output)) if item["event"] == "review_skipped"]
+    assert skipped == ["rework_status_blocked"]
+
+
+def test_malformed_rework_report_is_recorded_instead_of_crashing(tmp_path):
+    task, settings, output = setup(tmp_path)
+    bad = turn("ImplementationReport", {"status": "finished", "summary": "非法状态"})
+    model = FakeModel(responses=[turn("write_file", {"path": "app.py", "content": "value = 2\n"}),
+                                 implement_done(), review_changes(), bad])
+    summary = investigate(task, settings, output, model=model)
+    assert summary["status"] == "phase_error", summary
+    assert summary["stop_reason"] == "invalid_rework_report"
+    assert summary["review"]["verdict"] == "changes_requested", "已拿到的审核结论要保留"
+    assert summary["repository_unchanged"] is True
+    errors = [item for item in events(run_dir_of(output)) if item["event"] == "run_error"]
+    assert errors and errors[-1]["phase"] == "rework"
+
+
+def test_malformed_review_report_is_recorded_as_inconclusive(tmp_path):
+    task, settings, output = setup(tmp_path)
+    bad = turn("ReviewReport", {"verdict": "maybe", "summary": "非法结论"})
+    model = FakeModel(responses=[turn("write_file", {"path": "app.py", "content": "value = 2\n"}),
+                                 implement_done(), bad])
+    summary = investigate(task, settings, output, model=model)
+    assert summary["status"] == "review_inconclusive", summary
+    assert summary["stop_reason"] == "invalid_review_report"
+    assert summary["review"]["verdict"] is None
+    assert summary["review"]["reviewed_commit"], "审核锚点仍要保留，便于人工核对"
+    errors = [item for item in events(run_dir_of(output)) if item["event"] == "run_error"]
+    assert errors and errors[-1]["phase"] == "review"
