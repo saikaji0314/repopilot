@@ -1,0 +1,15 @@
+schema_version: "2.0"
+id: javascript-slugify-coverage
+repository: fixtures/javascript
+request: |
+  slug.mjs 的 slugify 要满足工单要求的行为：
+  1. 去掉首尾空白；2. 转小写；3. 把任意长度的空白、连字符与下划线序列替换为单个连字符；
+  4. 去掉结果开头和结尾多余的连字符。
+  也就是 "_Hello  World_"、"---Hello World---" 与 " hello_world " 都应得到 "hello-world"。
+  请修改 slug.mjs 实现上述行为，并在 slug.test.mjs 里补充覆盖边界情况的测试用例，
+  让注册的 unit 检查能够证明这些规则真的成立。只改这两个文件。
+  完成后执行 unit 检查，并用文件证据与检查证据分别说明修改与结果。
+checks:
+  unit:
+    argv: [node, "--test", "slug.test.mjs"]
+    timeout_seconds: 30

@@ -10,5 +10,5 @@ request: |
   只改这两个文件，不要新增文件。完成后执行 unit 检查，并用文件证据与检查证据说明修改与结果。
 checks:
   unit:
-    argv: [node, "--test"]
+    argv: [node, "--test", "normalize.test.mjs"]
     timeout_seconds: 30

@@ -6,5 +6,5 @@ request: |
   根据实际结果给出后续边界测试建议，不修改文件。
 checks:
   unit:
-    argv: [node, "--test"]
+    argv: [node, "--test", "normalize.test.mjs"]
     timeout_seconds: 10
