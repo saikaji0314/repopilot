@@ -12,7 +12,7 @@ RepoPilot 面向由工单驱动的仓库研发：手动接收或自动监听已�
 
 可选[仓库事实记忆](docs/runtime-v2/MEMORY.md)记录带提交与文件指纹的源码书签，供实现、审核和返工定位；新运行用 `--memory` 开启，默认关闭。自动候选需要人工确认，尚无真实模型收益结论。
 
-[Docker Sandboxes 接入探针](docs/runtime-v2/VALIDATION-09.md)已验证安装和 Windows 虚拟化，但本机原生后端在镜像准备阶段失败；尚未提供产品隔离执行能力。
+[Docker Sandboxes 接入探针](docs/runtime-v2/VALIDATION-09.md)中，原生 Windows 后端在镜像准备阶段失败；WSL2＋Ubuntu 安装成功，但 KVM 前提失败。尚未提供产品隔离执行能力。
 
 ## 安装与配置
 
@@ -40,6 +40,8 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 .\.venv\Scripts\repopilot.exe run task.yaml --stop-after implement
 .\.venv\Scripts\repopilot.exe jobs
 .\.venv\Scripts\repopilot.exe status RUN_ID
+# 把这次运行的证据渲染成单文件 HTML，可直接离线打开或截图
+.\.venv\Scripts\repopilot.exe report RUN_ID --html demo.html
 .\.venv\Scripts\repopilot.exe resume RUN_ID
 # 查看差异、检查证据和审核意见后，批准完整 SHA；批准本身不推送
 .\.venv\Scripts\repopilot.exe approve RUN_ID --commit FULL_SHA --reason "已核对差异与检查"
@@ -55,6 +57,8 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 进程在阶段内部退出时，`resume` 会返回 `recovery_required`，不会盲目重放模型或检查。核对现场后可用 `recover RUN_ID --commit FULL_SHA --reason "现场核对结论"` 接纳当前工作树，再 `resume` 从该阶段重新开始。恢复不逐条重建模型对话；已完成阶段无需重新调用模型，累计用量、编辑次数、返工次数和预算保留。发布中断则直接重试 `publish`，先核对远端副作用。
 
 ## 自动监听与真实演示
+
+`repopilot report RUN_ID` 把一次运行的已有证据渲染成**单文件、可离线打开**的 HTML 报告：需求来源、关键指标、阶段时间线、实现报告、候选改动与差异、编排层独立复核、审核与返工、人工决定（绑定提交）与远端 PR。它只读已落盘证据，不调模型、不改结果、不提供写操作；本机绝对路径与常见凭证会被脱敏，内容经 HTML 转义。适合作为展示与复盘材料，详见[展示记录](docs/runtime-v2/VALIDATION-10.md)。
 
 已有真实结果：[zhixianji-jobs Issue #1](https://github.com/saikaji0314/zhixianji-jobs/issues/1) 经实现、104 项独立检查、两轮审核和一次返工，再由用户批准具体提交后创建[草稿 PR #2](https://github.com/saikaji0314/zhixianji-jobs/pull/2)，未合并。[Issue #3](https://github.com/saikaji0314/zhixianji-jobs/issues/3) 则由常驻监听自动接单并完成，93 项检查通过，停在人工审批。
 
