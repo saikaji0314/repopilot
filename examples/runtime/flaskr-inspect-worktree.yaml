@@ -1,0 +1,12 @@
+schema_version: "2.0"
+id: flask-inspect
+repository: ../../.local/target-repos/flaskr-tutorial-git
+request: |
+  本任务是只读调查：不要修改任何文件，只回答“Flaskr 的文章更新接口在作者校验之后还会校验哪些输入”。
+  请阅读 flaskr/blog.py 的 update 与 get_post，以及 tests/test_blog.py 里相关用例，
+  说明标题为空时的实际行为与对应测试，并给出后续若要新增校验时应补的测试。
+  执行 blog 检查确认当前测试状态，并用文件证据与检查证据分别作答。
+checks:
+  blog:
+    argv: ["{python}", "-m", "pytest", "tests/test_blog.py", "-q", "-p", "no:cacheprovider"]
+    timeout_seconds: 60

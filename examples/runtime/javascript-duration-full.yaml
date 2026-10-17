@@ -1,0 +1,17 @@
+schema_version: "2.0"
+id: javascript-duration-full
+repository: fixtures/javascript
+request: |
+  formatDuration(seconds) 把秒数格式化成紧凑可读的时长字符串，项目规格如下（全部都是验收要求）：
+  1. 输入按秒计，可能是非整数，必须先向下取整；负数不在本次范围。
+  2. 结果由若干"数值+单位"片段拼接而成，单位固定为 d（天）、h（小时）、m（分钟）、s（秒），顺序固定为 d→h→m→s。
+  3. 省略数值为 0 的片段；全部为 0 时返回 "0s"。
+  4. 满 24 小时（86400 秒）及以上必须使用 d 单位，并把余下的 h/m/s 片段接在后面。
+  5. 分段计算要基于取整后的总秒数，不能让余数进位（例如 3599 秒是 "59m59s"，不是 "1h"）。
+  请阅读 duration.mjs 与 duration.test.mjs，修改 duration.mjs 使其满足全部五条。
+  只允许改 duration.mjs；不要改测试文件，不要新增文件。
+  完成后执行 unit 检查，并确认检查真的全部通过，再用文件证据与检查证据分别说明修改与结果。
+checks:
+  unit:
+    argv: [node, "--test", "duration.test.mjs"]
+    timeout_seconds: 30

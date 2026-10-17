@@ -1,0 +1,115 @@
+import subprocess
+
+import pytest
+
+from repopilot.runtime.workspace import EditBudget, Workspace, WorkspaceError, source_snapshot
+
+
+def init_repo(root):
+    root.mkdir(parents=True, exist_ok=True)
+
+    def git(*args):
+        subprocess.run(["git", "-C", str(root), *args], check=True, capture_output=True)
+
+    git("init", "-q")
+    git("config", "user.email", "synthetic@example.test")
+    git("config", "user.name", "synthetic")
+    git("config", "commit.gpgsign", "false")
+    (root / "app.py").write_text("value = 1\n", encoding="utf-8")
+    git("add", "app.py")
+    git("commit", "-q", "-m", "base")
+    return root
+
+
+def prepare(tmp_path):
+    repo = init_repo(tmp_path / "repo")
+    workspace = Workspace(repo, tmp_path / "runtime" / "worktrees").prepare()
+    return repo, workspace
+
+
+def test_prepare_creates_a_worktree_outside_the_source_repository(tmp_path):
+    repo, workspace = prepare(tmp_path)
+    worktree = workspace.repository()
+    assert worktree.is_dir() and worktree != repo
+    assert not worktree.is_relative_to(repo)
+    assert workspace.base_commit
+    assert (worktree / "app.py").read_text(encoding="utf-8") == "value = 1\n"
+
+
+def test_worktree_requires_a_git_repository(tmp_path):
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    (plain / "app.py").write_text("value = 1\n", encoding="utf-8")
+    with pytest.raises(WorkspaceError, match="not a git work tree"):
+        Workspace(plain, tmp_path / "worktrees").prepare()
+
+
+def test_edits_stay_in_the_worktree_and_the_source_stays_unchanged(tmp_path):
+    repo, workspace = prepare(tmp_path)
+    before = source_snapshot(repo)
+    worktree = workspace.repository()
+    (worktree / "app.py").write_text("value = 2\n", encoding="utf-8")
+    (worktree / "notes.md").write_text("new file\n", encoding="utf-8")
+    changes = workspace.changes()
+    assert changes["changed_files"] == 2
+    assert changes["additions"] == 2 and changes["deletions"] == 1
+    statuses = {item["path"]: item["status"] for item in changes["files"]}
+    assert statuses == {"app.py": "M", "notes.md": "??"}
+    assert source_snapshot(repo) == before
+    assert (repo / "app.py").read_text(encoding="utf-8") == "value = 1\n"
+
+
+def test_diff_reports_text_and_marks_binary_and_truncation(tmp_path):
+    _, workspace = prepare(tmp_path)
+    worktree = workspace.repository()
+    (worktree / "app.py").write_text("value = 3\n", encoding="utf-8")
+    (worktree / "blob.bin").write_bytes(b"\0\1\2")
+    changes = workspace.changes()
+    binary = {item["path"]: item["binary"] for item in changes["files"]}
+    assert binary["blob.bin"] is True and binary["app.py"] is False
+    result = workspace.diff()
+    assert "-value = 1" in result["diff"] and "+value = 3" in result["diff"]
+    assert "binary file added" in result["diff"] and not result["truncated"]
+    assert workspace.diff(limit=10)["truncated"] is True
+
+
+def test_commit_anchors_a_version_and_keeps_changes_relative_to_the_base(tmp_path):
+    _, workspace = prepare(tmp_path)
+    worktree = workspace.repository()
+    (worktree / "app.py").write_text("value = 2\n", encoding="utf-8")
+    anchor = workspace.commit("run: first attempt")
+    assert anchor["created"] is True and anchor["files"] == ["app.py"]
+    assert anchor["commit"] == workspace.changes()["head_commit"]
+    assert workspace.changes()["changed_files"] == 1, "提交成锚点后，相对基线的变更不应消失"
+    assert workspace.commit("run: nothing new")["created"] is False
+    (worktree / "app.py").write_text("value = 3\n", encoding="utf-8")
+    assert workspace.diff_since(anchor["commit"])["diff"].count("+value = 3") == 1
+    assert workspace.diff_since(workspace.base_commit)["diff"].count("+value = 3") == 1
+
+
+def test_edit_budget_limits_writes_and_records_touched_files():
+    edits = EditBudget(limit=2)
+    edits.take("app.py")
+    edits.take("app.py")
+    assert edits.snapshot() == {"edits": 2, "edit_limit": 2, "edited_files": ["app.py"]}
+    with pytest.raises(ValueError, match="edit_limit_reached"):
+        edits.take("app.py")
+    assert edits.snapshot()["edits"] == 2
+
+
+def test_workspace_does_not_change_source_git_identity(tmp_path):
+    repo = init_repo(tmp_path / "repo")
+    before = subprocess.check_output(["git", "-C", str(repo), "config", "--local", "--list"])
+    workspace = Workspace(repo, tmp_path / "runtime/worktrees").prepare()
+    (workspace.repository() / "app.py").write_text("value = 2\n", encoding="utf-8")
+    workspace.commit("feat: synthetic change")
+    after = subprocess.check_output(["git", "-C", str(repo), "config", "--local", "--list"])
+    assert before == after, "worktree 不得改写共享的源仓库配置"
+
+
+def test_source_snapshot_detects_changes_to_an_already_dirty_file(tmp_path):
+    repo = init_repo(tmp_path / "repo")
+    (repo / "app.py").write_text("value = 2\n", encoding="utf-8")
+    before = source_snapshot(repo)
+    (repo / "app.py").write_text("value = 3\n", encoding="utf-8")
+    assert source_snapshot(repo) != before

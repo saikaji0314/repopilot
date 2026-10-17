@@ -1,0 +1,13 @@
+schema_version: "2.0"
+id: flaskr-implement
+repository: ../../.local/target-repos/flaskr-tutorial-git
+request: |
+  为博客首页补一条缺少的测试：现在 tests/test_blog.py 没有覆盖“未登录用户也能浏览首页文章列表”这一行为。
+  请先阅读 flaskr/blog.py 的 index 视图和 tests/conftest.py、tests/test_blog.py，
+  然后在 tests/test_blog.py 里新增一个测试函数，验证未登录时 GET / 返回 200 且能看到文章标题与正文，而不是重复已有的断言。
+  只改 tests/test_blog.py，不要改 flaskr/ 下的实现代码，也不要动其他文件。
+  完成后执行 blog 检查，并用文件证据与检查证据分别说明改了什么、检查结果如何。
+checks:
+  blog:
+    argv: ["{python}", "-m", "pytest", "tests/test_blog.py", "-q", "-p", "no:cacheprovider"]
+    timeout_seconds: 60

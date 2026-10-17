@@ -1,0 +1,19 @@
+# 复制到本机并修改 task 路径；该路径相对于本配置文件。
+poll_seconds: 60
+max_workers: 1
+max_per_repository: 1
+targets:
+  - task: github-issue-template.yaml
+    label: repopilot
+    include_existing: false
+    settings:
+      thinking: enabled
+      reasoning_effort: low
+      max_context_bytes: 300000
+      max_model_calls: 48
+      max_tool_calls: 80
+      max_edits: 24
+      max_output_tokens: 8192
+      request_timeout_seconds: 120
+      run_timeout_seconds: 900
+      max_run_cost_cny: 8
