@@ -6,6 +6,8 @@ RepoPilot 面向由工单驱动的仓库研发：手动接收或自动监听已�
 
 整体进度、与原始愿景的差距、技术概念及代码阅读顺序见[架构与现状](docs/runtime-v2/ARCHITECTURE.md)。
 
+记忆、OS隔离、独立评测、展示和合并发布的候选方案及阶段验收见[后续设计](docs/runtime-v2/NEXT.md)，其中新增能力尚未实现。
+
 ## 安装与配置
 
 准备 Python 3.12 和 Git；JavaScript 示例另需 Node.js。
