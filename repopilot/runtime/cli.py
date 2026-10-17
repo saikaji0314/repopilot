@@ -1,135 +1,177 @@
-"""任务运行、检查点恢复、人工审批及 GitHub 草稿 PR 的命令入口。"""
+"""命令解析与输出；各命令的应用操作由独立处理函数负责。"""
+
 import argparse
+from contextlib import closing
 import json
 from pathlib import Path
 import sys
+
 from .config import PROJECT_ROOT, load_profile, load_settings, load_task
 from . import workflow
 from .github import GitHub, GitHubError, load_token, publish
 from .store import JobStore, StateError
 
 COMMANDS = {'run', 'issue', 'resume', 'retry', 'status', 'jobs', 'approve', 'reject', 'recover', 'publish', 'watch'}
+SUCCESS_STATUSES = {'ok', 'completed', 'paused', 'awaiting_approval', 'approved', 'published', 'rejected'}
+STATUS_FIELDS = ('run_id', 'status', 'phase', 'in_flight', 'stop_reason', 'reviewed_commit',
+                 'report', 'review_report', 'verified', 'issue', 'approval', 'pull_request')
 
 
-def main(argv=None) -> int:
-    argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] not in COMMANDS and not argv[0].startswith('-'):
-        argv.insert(0, 'run')
+def _watch_options(parser):
+    parser.add_argument('--config', type=Path)
+    parser.add_argument('--once', action='store_true', help='只轮询一次并处理本轮队列')
+    parser.add_argument('--status', action='store_true', help='查看持久化 Issue 队列，不调用模型或 GitHub')
+    parser.add_argument('--stop', action='store_true', help='请求监听器停止接单，等待当前任务落盘后退出')
+    parser.add_argument('--acknowledge', help='核查残留 worker 后确认一个 interrupted Issue 队列键')
+    parser.add_argument('--reason')
+
+
+def _execution_options(parser, name):
+    parser.add_argument('--stop-after', choices=['prepare', 'implement', 'anchor', 'verify', 'review', 'rework'])
+    if name == 'resume':
+        return
+    parser.add_argument('--profile', type=Path, help='执行限额与思考模式 YAML，不含凭证')
+    parser.add_argument('--max-context-bytes', type=int)
+    parser.add_argument('--max-tool-calls', type=int)
+    parser.add_argument('--max-run-cost-cny', type=float)
+
+
+def _task_options(parser, name):
+    if name == 'run':
+        parser.add_argument('task', type=Path)
+    else:
+        parser.add_argument('url')
+        parser.add_argument('--task', type=Path, required=True, help='可信本地仓库与检查模板')
+    parser.add_argument('--no-workspace', action='store_true')
+    parser.add_argument('--no-review', action='store_true')
+    parser.add_argument('--max-rework', type=int)
+
+
+def build_parser():
     parser = argparse.ArgumentParser(description='RepoPilot: Issue -> worktree -> review -> approval -> draft PR')
     sub = parser.add_subparsers(dest='command', required=True)
     for name in sorted(COMMANDS):
         command = sub.add_parser(name)
         command.add_argument('--output', type=Path, default=PROJECT_ROOT / '.local' / 'runtime')
         if name == 'watch':
-            command.add_argument('--config', type=Path)
-            command.add_argument('--once', action='store_true', help='只轮询一次并处理本轮队列')
-            command.add_argument('--status', action='store_true', help='查看持久化 Issue 队列，不调用模型或 GitHub')
-            command.add_argument('--stop', action='store_true', help='请求监听器停止接单，等待当前任务落盘后退出')
-            command.add_argument('--acknowledge', help='核查残留 worker 后确认一个 interrupted Issue 队列键')
-            command.add_argument('--reason')
+            _watch_options(command)
             continue
         if name == 'jobs':
             continue
         if name in {'run', 'issue'}:
-            if name == 'run':
-                command.add_argument('task', type=Path)
-            else:
-                command.add_argument('url')
-                command.add_argument('--task', type=Path, required=True, help='可信本地仓库与检查模板')
-            command.add_argument('--no-workspace', action='store_true')
-            command.add_argument('--no-review', action='store_true')
-            command.add_argument('--max-rework', type=int)
+            _task_options(command, name)
         else:
             command.add_argument('run_id')
         if name in {'run', 'issue', 'resume', 'retry'}:
-            command.add_argument('--stop-after', choices=['prepare', 'implement', 'anchor', 'verify', 'review', 'rework'])
-        if name in {'run', 'issue', 'retry'}:
-            command.add_argument('--profile', type=Path, help='执行限额与思考模式 YAML，不含凭证')
-            command.add_argument('--max-context-bytes', type=int)
-            command.add_argument('--max-tool-calls', type=int)
-            command.add_argument('--max-run-cost-cny', type=float)
+            _execution_options(command, name)
         if name == 'retry':
             command.add_argument('--reason', required=True)
         if name in {'approve', 'reject', 'recover'}:
             command.add_argument('--commit', required=True, help='核对过的完整提交 SHA')
             command.add_argument('--reason', required=True)
-    args = parser.parse_args(argv)
-    github = None
+    return parser
+
+
+def _run_settings(args):
+    settings = load_settings()
+    overrides = load_profile(args.profile) if getattr(args, 'profile', None) else {}
+    overrides.update({key: getattr(args, key) for key in
+                      ('max_context_bytes', 'max_tool_calls', 'max_run_cost_cny', 'max_rework')
+                      if getattr(args, key, None) is not None})
+    return type(settings).model_validate({**settings.model_dump(), **overrides}), overrides
+
+
+def _run_task(args):
+    settings, _ = _run_settings(args)
+    task, issue, base_commit = load_task(args.task), None, None
+    if args.command == 'issue':
+        if args.no_workspace or args.no_review:
+            raise StateError('issue_requires_workspace_and_review')
+        with closing(GitHub(load_token())) as github:
+            task, issue = github.intake(args.url, task)
+            base_commit = github.prepare_base(task.repository, issue['repository'])
+    return workflow.start(task, settings, args.output, workspace=not args.no_workspace,
+                          review=not args.no_review, require_approval=True, stop_after=args.stop_after,
+                          issue=issue, base_commit=base_commit)
+
+
+def _retry(args):
+    settings, overrides = _run_settings(args)
+    state = JobStore(args.output).get(args.run_id)
+    base_commit = None
+    if state.get('issue'):
+        with closing(GitHub(load_token())) as github:
+            current = github.issue(state['issue']['url'])
+            if workflow.canonical_hash(current) != workflow.canonical_hash(state['issue']):
+                raise StateError('issue_changed_since_intake')
+            base_commit = github.prepare_base(Path(state['task']['repository']), state['issue']['repository'])
+    return workflow.retry(args.run_id, settings, args.output, reason=args.reason,
+                          overrides=overrides, stop_after=args.stop_after, base_commit=base_commit)
+
+
+def _decision(args):
+    if not args.reason.strip():
+        raise StateError('reason_required')
+    if args.command == 'recover':
+        return workflow.recover(args.run_id, args.output, commit=args.commit, reason=args.reason)
+    return workflow.decide(args.run_id, args.output, commit=args.commit,
+                           approved=args.command == 'approve', reason=args.reason)
+
+
+def _watch(args):
+    from .watcher import IssueQueue, load_watch_config, watch
+    queue = IssueQueue(args.output)
+    if args.acknowledge:
+        queue.acknowledge(args.acknowledge, args.reason or '')
+        return {'status': 'ok', 'queue': queue.list()}
+    if args.stop:
+        (queue.root / 'watcher.stop').write_text('stop', encoding='ascii')
+        return {'status': 'ok', 'stop_requested': True}
+    if args.status:
+        return {'status': 'ok', 'watcher': queue.health(), 'queue': queue.list()}
+    if not args.config:
+        raise StateError('watch_config_required')
+    return watch(load_watch_config(args.config), args.output, once=args.once)
+
+
+def execute_command(args):
+    """分派应用操作；凭证只在需要模型或 GitHub 的命令里加载。"""
+    if args.command in {'run', 'issue'}:
+        return _run_task(args)
+    if args.command == 'retry':
+        return _retry(args)
+    if args.command == 'resume':
+        return workflow.resume(args.run_id, load_settings(), args.output, stop_after=args.stop_after)
+    if args.command == 'watch':
+        return _watch(args)
+    if args.command in {'approve', 'reject', 'recover'}:
+        return _decision(args)
+    if args.command == 'jobs':
+        return {'status': 'ok', 'jobs': JobStore(args.output).list()}
+    if args.command == 'status':
+        state = JobStore(args.output).get(args.run_id)
+        return {key: state.get(key) for key in STATUS_FIELDS}
+    if args.command == 'publish':
+        with closing(GitHub(load_token())) as github:
+            return publish(args.run_id, args.output, github)
+    raise StateError('unknown_command')
+
+
+def main(argv=None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] not in COMMANDS and not argv[0].startswith('-'):
+        argv.insert(0, 'run')
+    args = build_parser().parse_args(argv)
     try:
-        if args.command == 'watch':
-            from .watcher import IssueQueue, load_watch_config, watch
-            if args.acknowledge:
-                queue = IssueQueue(args.output)
-                queue.acknowledge(args.acknowledge, args.reason or '')
-                result = {'status': 'ok', 'queue': queue.list()}
-            elif args.stop:
-                queue = IssueQueue(args.output)
-                (queue.root / 'watcher.stop').write_text('stop', encoding='ascii')
-                result = {'status': 'ok', 'stop_requested': True}
-            elif args.status:
-                queue = IssueQueue(args.output)
-                result = {'status': 'ok', 'watcher': queue.health(), 'queue': queue.list()}
-            elif args.config:
-                result = watch(load_watch_config(args.config), args.output, once=args.once)
-            else:
-                raise StateError('watch_config_required')
-        elif args.command == 'jobs':
-            result = {'status': 'ok', 'jobs': JobStore(args.output).list()}
-        elif args.command == 'status':
-            state = JobStore(args.output).get(args.run_id)
-            result = {k: state.get(k) for k in ('run_id', 'status', 'phase', 'in_flight', 'stop_reason',
-                'reviewed_commit', 'report', 'review_report', 'verified', 'issue', 'approval', 'pull_request')}
-        elif args.command in {'approve', 'reject', 'recover'}:
-            if not args.reason.strip():
-                raise StateError('reason_required')
-            if args.command == 'recover':
-                result = workflow.recover(args.run_id, args.output, commit=args.commit, reason=args.reason)
-            else:
-                result = workflow.decide(args.run_id, args.output, commit=args.commit,
-                    approved=args.command == 'approve', reason=args.reason)
-        elif args.command == 'publish':
-            github = GitHub(load_token())
-            result = publish(args.run_id, args.output, github)
-        else:
-            settings = load_settings()
-            overrides = load_profile(args.profile) if getattr(args, 'profile', None) else {}
-            overrides.update({k: getattr(args, k) for k in ('max_context_bytes', 'max_tool_calls', 'max_run_cost_cny', 'max_rework')
-                              if getattr(args, k, None) is not None})
-            settings = type(settings).model_validate({**settings.model_dump(), **overrides})
-            if args.command == 'resume':
-                result = workflow.resume(args.run_id, settings, args.output, stop_after=args.stop_after)
-            elif args.command == 'retry':
-                state = JobStore(args.output).get(args.run_id)
-                base_commit = None
-                if state.get('issue'):
-                    github = GitHub(load_token())
-                    if workflow.canonical_hash(github.issue(state['issue']['url'])) != workflow.canonical_hash(state['issue']):
-                        raise StateError('issue_changed_since_intake')
-                    base_commit = github.prepare_base(Path(state['task']['repository']), state['issue']['repository'])
-                result = workflow.retry(args.run_id, settings, args.output, reason=args.reason,
-                    overrides=overrides, stop_after=args.stop_after, base_commit=base_commit)
-            else:
-                task, issue, base_commit = load_task(args.task), None, None
-                if args.command == 'issue':
-                    if args.no_workspace or args.no_review:
-                        raise StateError('issue_requires_workspace_and_review')
-                    github = GitHub(load_token())
-                    task, issue = github.intake(args.url, task)
-                    base_commit = github.prepare_base(task.repository, issue['repository'])
-                result = workflow.start(task, settings, args.output, workspace=not args.no_workspace,
-                    review=not args.no_review, require_approval=True, stop_after=args.stop_after,
-                    issue=issue, base_commit=base_commit)
+        result = execute_command(args)
     except Exception as exc:
         result = {'status': 'error', 'error_type': type(exc).__name__}
         if isinstance(exc, (StateError, GitHubError)):
             result['reason'] = str(exc)
         print(json.dumps(result, ensure_ascii=True))
         return 2
-    finally:
-        if github:
-            github.close()
     print(json.dumps(result, ensure_ascii=True, indent=2))
-    return 0 if result['status'] in {'ok', 'completed', 'paused', 'awaiting_approval', 'approved', 'published', 'rejected'} else 1
+    return 0 if result['status'] in SUCCESS_STATUSES else 1
 
 
 if __name__ == '__main__':

@@ -1,7 +1,19 @@
 import json
 
+import pytest
+
 from repopilot.runtime import cli
 from repopilot.runtime.config import RuntimeSettings, Task
+
+
+@pytest.mark.parametrize('command', [['jobs'], ['watch', '--status']])
+def test_local_observation_needs_no_credentials(tmp_path, monkeypatch, capsys, command):
+    def unavailable():
+        raise AssertionError('本地查看不应读取模型或 GitHub 凭证')
+    monkeypatch.setattr(cli, 'load_settings', unavailable)
+    monkeypatch.setattr(cli, 'load_token', unavailable)
+    assert cli.main([*command, '--output', str(tmp_path)]) == 0
+    assert json.loads(capsys.readouterr().out)['status'] == 'ok'
 
 
 def test_summary_remains_console_safe_with_unicode_tool_output(tmp_path, monkeypatch, capsys):

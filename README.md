@@ -4,6 +4,8 @@ RepoPilot 面向由工单驱动的仓库研发：手动接收或自动监听已�
 
 核心不依赖 Python AST 或 pytest；UTF-8 文件工具与操作者登记的命令支持不同语言仓库。已验证范围及实际运行结果见[真实交付验证](docs/runtime-v2/VALIDATION-05.md)，完整协议见[运行时说明](docs/runtime-v2/README.md)，可按[演示步骤](docs/runtime-v2/DEMO.md)查看真实工单到草稿 PR 的证据。历史 Python 诊断入口和题集仍保留，其结果不代表新运行时的修复效果。
 
+整体进度、与原始愿景的差距、技术概念及代码阅读顺序见[架构与现状](docs/runtime-v2/ARCHITECTURE.md)。
+
 ## 安装与配置
 
 准备 Python 3.12 和 Git；JavaScript 示例另需 Node.js。
@@ -81,125 +83,9 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 
 只用于预先接入的可信仓库。本机检查以当前用户权限运行；路径限制、worktree 和环境变量清理不提供操作系统沙箱。工具拒绝 `.env*`、`.git`、`.local`、数据目录及链接等路径，但宿主进程和仓库代码仍有本机权限。远程 tracing 默认关闭；原始输入、差异及日志只留本机，不随 Git 分发。发布使用 GitHub REST 和 Git，不要求安装 `gh`。
 
-## 历史 Python 诊断入口
+## 历史实现
 
-旧入口根据缺陷描述与初始日志，调查 Python 仓库、运行指定 pytest，输出根因、证据、修改建议与验证方案。旧技术栈为原生 Tool Calling、百炼 Qwen、Python AST 和 pytest。
-
-## 一个典型场景
-
-用户报告“文章作者编辑时收到 403，其他用户却能访问”。Agent 通过工具调查鉴权实现与测试，关联作者 ID 比较条件和两种用户行为，给出代码位置、修改建议及正反权限验证方案。
-
-最终输出包含 `status`、`summary`、`root_cause`、`evidence`、`proposed_fix`、`verification`、`risks`。每次运行保留模型消息、工具结果和停止原因，可以核对答案依据，也能追查失败发生在哪一步。旧入口提供只读诊断与测试执行，修改建议由用户审阅后实施；需要直接改动文件时可改用上文的独立工作区流程。
-
-## 架构与执行链路
-
-```mermaid
-flowchart LR
-    A[任务与初始证据] --> B[运行器：准备缺陷工作副本]
-    B --> C[Agent Loop]
-    C --> D[模型适配器]
-    D --> E{工具调用或最终答案}
-    E -->|工具调用| F[工具注册表：参数与路径检查]
-    F --> G[搜索 / 读取 / 指定测试]
-    G -->|工具观察| C
-    E -->|最终答案| H[Pydantic 输出校验]
-    H --> I[结构化诊断报告]
-    C -.-> J[消息 / Trace / 用量 / 停止原因]
-```
-
-运行器负责基线预检、缺陷注入、环境选择与工具装配；Loop 负责消息循环、预算和停止条件；模型适配器隔离 SDK；检索模块负责符号索引和证据片段；评测端独立持有 Oracle。这样的边界使循环逻辑能够用 Fake 模型测试，检索算法也可以脱离模型 SDK 验证。
-
-## 关键工程设计
-
-| 设计 | 实现与取舍 | 代码入口 |
-| --- | --- | --- |
-| 显式 Agent Loop | 使用原生 `tools` / `tool_calls`，管理多轮消息与工具结果配对 | [loop.py](repopilot/agent/loop.py) |
-| 受控工具执行 | 统一工具协议、Pydantic 参数校验、工作区路径检查、指定 pytest 目标 | [工具注册表](repopilot/tools/base.py)、[路径检查](repopilot/tools/path_guard.py) |
-| 有限错误恢复 | 对允许的工具与错误组合提供一次纠错轮次；最终答案校验失败后提供一次无工具格式恢复，计入原预算 | [Loop 异常路径](repopilot/agent/loop.py) |
-| 可配置资源限制 | 限制模型轮数、工具次数、累计 Token、估算费用及执行时间 | [agent.yaml](configs/agent.yaml) |
-| 轻量代码检索 | AST 提取函数与类位置，按名称和路径排序；结果去重并按字符预算选择片段 | [retrieval](repopilot/retrieval/index.py) |
-| 可追踪与可比较 | 保存实际工具定义、初始消息、配置和任务哈希；对照脚本固定任务并交替执行两组方案 | [运行器](repopilot/agent_runner.py)、[对照脚本](scripts/compare_retrieval.py) |
-
-工具包括 `list_files`、`read_file`、`search_code`、`run_test`，以及可选的 `search_symbols`。字面搜索用于变量、配置键与调用位置，符号检索用于已知函数或类的定义定位。索引在缺陷工作副本准备后构建，避免读取干净版本；通过 AST 解析源码，无需导入被分析模块。
-
-## 评测结果与发现
-
-题集包含 10 条受控缺陷任务，覆盖 Flaskr 鉴权、密码校验、输入边界、排序、事务、配置，跨文件工单筛选与缓存，以及 Flask 框架的 Blueprint 与 Session 行为。每题分离 Agent 输入与评测答案；严格通过要求达到评分线且满足全部硬条件。
-
-| 实验 | 样本 | 严格通过 | 估算模型费用 |
-| --- | --- | --- | ---: |
-| 单次 LLM 全文基线 | 6 题 × 2 次 | 8/12 | ¥0.379332 |
-| 只读 Agent 六题批次 | 6 题 × 1 次 | 4/6 | ¥0.409940 |
-| 四工具检索方案 | 10 题 × 1 次 | 5/10 | ¥0.984730 |
-| 五工具检索方案 | 10 题 × 1 次 | 4/10 | ¥1.202716 |
-
-前两项用于观察全文输入与主动调查的行为，样本和配置不同，不能直接推导效果提升。后两项使用固定模型、任务和预算进行方案对照；新增符号工具自然被使用的任务为 2/10，本次初筛尚未证明端到端收益。
-
-对照实验还暴露了两类主要瓶颈：获得相关代码后仍缺少完整调用链或副作用验证，以及最终输出协议失败。项目将证据命中、合法答案和严格诊断通过分别记录，后续优化据此判断应调整检索、收尾策略还是协议处理。每题每组一次的结果不支持统计显著性结论。
-
-详细评分与失败案例：[基线报告](evals/reports/baseline-v1.md) · [六题 Agent 报告](evals/reports/agent-v2.md) · [检索对照报告](evals/reports/retrieval-comparison-v1.md)。费用按配置单价估算；原始模型日志未随仓库分发，重新运行可生成轨迹。本题集为受控构造任务。
-
-## 本地运行
-
-准备 Python 3.12、Git，在仓库根目录使用 PowerShell：
-
-```powershell
-python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -e .
-.\.venv\Scripts\python.exe -m pytest -q
-Copy-Item .env.example .env
-```
-
-在 `.env` 中配置 `DASHSCOPE_API_KEY` 和 `DASHSCOPE_WORKSPACE_ID`（当前配置校验要求两项均填写）。模型与预算在 `configs/agent.yaml` 配置。运行一条诊断任务（会调用模型并产生费用）：
-
-```powershell
-.\.venv\Scripts\python.exe -m scripts.run_agent --task flaskr-auth-001 --repetitions 1
-```
-
-结果保存到 `evals/runs/agent/<batch>/<task>/run-01/`：
-
-| 文件 | 内容 |
-| --- | --- |
-| `final_answer.json` | 通过输出协议校验的诊断；失败时可能不存在 |
-| `summary.json` | 运行终态、用量、耗时及停止原因 |
-| `messages.json` / `trace.jsonl` | 模型消息和逐步事件记录 |
-| `runtime.json` / `task.json` | 实际配置、工具定义及可见任务快照 |
-
-比较检索方案：
-
-```powershell
-.\.venv\Scripts\python.exe -m scripts.run_agent --task flaskr-auth-001 --repetitions 1 --retrieval-mode code
-.\.venv\Scripts\python.exe -m scripts.run_agent --task flaskr-auth-001 --repetitions 1 --retrieval-mode symbols
-```
-
-运行 Flask 源码任务 009/010 或完整十题对照前，需准备独立环境：
-
-```powershell
-.\.venv\Scripts\python.exe -m venv .venv-flask-source
-.\.venv-flask-source\Scripts\python.exe -m pip install -r configs/flask-source-test-requirements.txt
-.\.venv\Scripts\python.exe -m scripts.verify_flask_source_tasks
-```
-
-全题对照命令为 `python -m scripts.compare_retrieval`，会产生多次模型调用；指标采集后的严格评分需要按 Oracle 审核。更多说明见 [评测复现](docs/phase-2/EVALUATION.md)。自动化测试主要使用 Fake/Mock 模型，缺少独立环境或系统条件时部分测试会跳过。
-
-## 代码与文档导航
-
-```text
-repopilot/agent/       模型适配、循环协议与 Trace
-repopilot/tools/       工具注册、参数模型与执行边界
-repopilot/retrieval/   AST 索引、排序与上下文片段
-scripts/              运行、预检与对照入口
-evals/tasks/          任务输入、缺陷补丁和评测 Oracle
-evals/reports/        已归档的评测结果与失败分析
-target-repos/         固定版本的被测仓库
-tests/                循环、工具、检索及题集回归测试
-```
-
-- [任务建模与基线](docs/phase-0/README.md)
-- [Agent 执行引擎](docs/phase-1/README.md)
-- [代码检索与上下文](docs/phase-2/README.md)
-- [评测任务说明](evals/tasks/README.md)
-- [被测仓库与来源](target-repos/README.md)
+旧版 Python 只读诊断、AST 检索与十题评测保留原路径，说明集中在[历史实现文档](docs/legacy/README.md)。新版业务代码不调用旧版模块，但两版仍共用安装包；边界与保留策略见[架构与现状](docs/runtime-v2/ARCHITECTURE.md)。
 
 ## 扩展方向
 

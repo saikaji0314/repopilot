@@ -11,7 +11,7 @@ import httpx
 
 from .config import PROJECT_ROOT, Task
 from .store import JobStore, StateError, job_lock, timestamp
-from .workflow import approval_digest, attach, canonical_hash
+from .run_state import approval_digest, attach, canonical_hash
 from .workspace import run_git
 
 
