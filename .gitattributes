@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# 固定评测夹具按LF校验字节摘要，避免Windows检出转换改变基线。
+evals/repair/** text eol=lf

@@ -1,0 +1,26 @@
+{
+  "id": "python-limit",
+  "request": "修复newest：rows按新到旧排列；limit为正整数时取前N项，None返回全部，不改变输入。拒绝bool、非整数及非正数。",
+  "baseline_sha256": "b501636f70363c84cdfdf29bcb7b6cc3cd1a7df1efff77ef719a5f07bac9c100",
+  "editable": [
+    "batches.py"
+  ],
+  "regression": {
+    "existing": {
+      "argv": [
+        "{python}",
+        "{oracle}/regression.py"
+      ],
+      "timeout_seconds": 5
+    }
+  },
+  "acceptance": {
+    "requirements": {
+      "argv": [
+        "{python}",
+        "{oracle}/acceptance.py"
+      ],
+      "timeout_seconds": 5
+    }
+  }
+}

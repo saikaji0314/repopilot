@@ -1,0 +1,26 @@
+{
+  "id": "javascript-slug",
+  "request": "修复slugify：ASCII字母与数字转小写，连续非字母数字归并为一个短横线，移除首尾短横线，空白或纯符号返回空串。",
+  "baseline_sha256": "72e9bb3fcfa9ba80f02dafefc5de3b2b7133a4264c17fa08b18f9622f964ac96",
+  "editable": [
+    "slug.mjs"
+  ],
+  "regression": {
+    "existing": {
+      "argv": [
+        "node",
+        "{oracle}/regression.mjs"
+      ],
+      "timeout_seconds": 5
+    }
+  },
+  "acceptance": {
+    "requirements": {
+      "argv": [
+        "node",
+        "{oracle}/acceptance.mjs"
+      ],
+      "timeout_seconds": 5
+    }
+  }
+}
