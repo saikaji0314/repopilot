@@ -11,7 +11,8 @@ from . import workflow
 from .github import GitHub, GitHubError, load_token, publish
 from .store import JobStore, StateError
 
-COMMANDS = {'run', 'issue', 'resume', 'retry', 'status', 'jobs', 'approve', 'reject', 'recover', 'publish', 'watch', 'memory'}
+COMMANDS = {'run', 'issue', 'resume', 'retry', 'status', 'jobs', 'report', 'approve', 'reject',
+            'recover', 'publish', 'watch', 'memory'}
 SUCCESS_STATUSES = {'ok', 'completed', 'paused', 'awaiting_approval', 'approved', 'published', 'rejected'}
 STATUS_FIELDS = ('run_id', 'status', 'phase', 'in_flight', 'stop_reason', 'reviewed_commit',
                  'report', 'review_report', 'verified', 'issue', 'approval', 'pull_request')
@@ -75,6 +76,8 @@ def build_parser():
         if name in {'approve', 'reject', 'recover'}:
             command.add_argument('--commit', required=True, help='核对过的完整提交 SHA')
             command.add_argument('--reason', required=True)
+        if name == 'report':
+            command.add_argument('--html', type=Path, help='报告输出路径，默认写到输出目录的 reports/')
     return parser
 
 
@@ -160,6 +163,13 @@ def execute_command(args):
     if args.command == 'status':
         state = JobStore(args.output).get(args.run_id)
         return {key: state.get(key) for key in STATUS_FIELDS}
+    if args.command == 'report':
+        from . import report as report_module
+        state = JobStore(args.output).get(args.run_id)
+        destination = args.html or (args.output / 'reports' / f'{args.run_id}.html')
+        path = report_module.write(state, args.output / 'runs' / args.run_id, PROJECT_ROOT, destination)
+        return {'status': 'ok', 'run_id': args.run_id, 'html': str(path.resolve()),
+                'bytes': path.stat().st_size}
     if args.command == 'publish':
         with closing(GitHub(load_token())) as github:
             return publish(args.run_id, args.output, github)

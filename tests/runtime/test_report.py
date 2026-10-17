@@ -1,0 +1,144 @@
+import json
+from pathlib import Path
+
+import pytest
+
+from repopilot.runtime import report
+
+
+def sample_state(root: Path) -> dict:
+    return {
+        "run_id": "demo-run",
+        "status": "published",
+        "phase": "approval",
+        "stop_reason": "draft_pr_created",
+        "issue": {"repository": "example/repo", "number": 7,
+                  "url": "https://example.test/issues/7",
+                  "title": "标题 <script>alert(1)</script>"},
+        "control": {"model_calls": 12, "tool_calls": 30, "accounted_cny": 0.42},
+        "edits": {"edits": 3, "edit_limit": 12, "edited_files": ["a.py"]},
+        "verified": [{"name": "unit", "exit_code": 0, "timed_out": False,
+                      "output_tail": "Ran 5 tests\nOK " + str(root / "worktrees")}],
+        "history": [
+            {"attempt": 0, "commit": "abc123def456", "verdict": "changes_requested",
+             "summary": "需要补充测试",
+             "findings": [{"path": "a.py", "start_line": 9, "severity": "major",
+                           "observation": "缺边界用例", "suggestion": "补一条空输入用例"}]},
+            {"attempt": 1, "commit": "def456abc123", "verdict": "approved",
+             "summary": "已满足需求", "findings": []},
+        ],
+        "review_report": {"verdict": "approved", "findings": []},
+        "approval": {"approved": True, "commit": "e3ac2677aa", "digest": "deadbeef",
+                     "reason": "已核对候选说明", "at": "2026-10-16T15:02:06+00:00"},
+        "pull_request": {"url": "https://example.test/pull/2", "commit": "e3ac2677aa",
+                         "at": "2026-10-16T15:02:17+00:00"},
+        "report": {"summary": "实现完成",
+                   "evidence": [{"kind": "file", "path": "a.py", "start_line": 1, "observation": "改动"}]},
+    }
+
+
+def write_run(run_dir: Path, *, diff: str = "--- a/a.py\n+++ b/a.py\n+print('hi')\n") -> Path:
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "changes.json").write_text(json.dumps({
+        "base_commit": "b" * 40, "head_commit": "c" * 40, "changed_files": 1,
+        "additions": 2, "deletions": 0, "truncated": False,
+        "files": [{"path": "a.py", "status": "M", "additions": 2, "deletions": 0, "binary": False}],
+        "diff": diff,
+    }, ensure_ascii=False), encoding="utf-8")
+    (run_dir / "events.jsonl").write_text("\n".join(json.dumps(item, ensure_ascii=False) for item in [
+        {"time": "2026-10-16T15:00:00+00:00", "event": "workspace_ready",
+         "base_commit": "b" * 40, "worktree": str(run_dir / "worktrees")},
+        {"time": "2026-10-16T15:01:00+00:00", "event": "verify_finished", "name": "unit", "exit_code": 0},
+        {"time": "2026-10-16T15:02:00+00:00", "event": "review_finished", "attempt": 0,
+         "verdict": "changes_requested", "findings": 1},
+        {"time": "2026-10-16T15:03:00+00:00", "event": "rework_started", "attempt": 1, "findings": 1},
+        {"time": "2026-10-16T15:04:00+00:00", "event": "tool_started", "phase": "implement", "name": "read_file"},
+    ]) + "\n", encoding="utf-8")
+    return run_dir
+
+
+def render(tmp_path, state=None, **kwargs) -> str:
+    root = tmp_path / "repo"
+    root.mkdir(parents=True, exist_ok=True)
+    run_dir = write_run(tmp_path / "runs" / "demo-run", **kwargs)
+    return report.build(state or sample_state(root), run_dir, root)
+
+
+def test_report_contains_the_full_evidence_chain(tmp_path):
+    html = render(tmp_path)
+    for section in ("需求来源", "关键指标", "阶段时间线", "实现报告", "候选改动", "独立复核", "审核与返工", "人工决定", "远端产物"):
+        assert f"<h2>{section}</h2>" in html, section
+    assert "https://example.test/pull/2" in html
+    assert "e3ac2677aa" in html
+    assert "changes_requested" in html
+    assert "缺边界用例" in html, "审核发现必须进入报告"
+    assert "print(&#x27;hi&#x27;)" in html or "print('hi')" in html
+
+
+def test_report_escapes_html_from_untrusted_fields(tmp_path):
+    html = render(tmp_path)
+    assert "<script>alert(1)</script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_report_redacts_local_paths_and_credentials(tmp_path):
+    root = tmp_path / "repo"
+    state = sample_state(root)
+    state["verified"][0]["output_tail"] += " " + str(root / "worktrees" / "demo") + " DS_API_KEY=sk-abcdef123456789012"
+    html = render(tmp_path, state=state)
+    assert str(root) not in html
+    # 单元格内容会做 HTML 转义，因此脱敏标记以 &lt;…&gt; 形式出现。
+    assert "<本机路径>" in html or "&lt;本机路径&gt;" in html
+    assert "sk-abcdef123456789012" not in html
+    assert "<凭证已脱敏>" in html or "&lt;凭证已脱敏&gt;" in html
+
+
+def test_report_is_a_single_self_contained_document(tmp_path):
+    html = render(tmp_path)
+    assert html.startswith("<!DOCTYPE html>")
+    assert "<style>" in html, "样式需内联，离线打开才有样子"
+    assert "<script" not in html, "报告不应依赖脚本"
+    assert "http://" not in html.replace("https://", ""), "不应引用外部资源"
+    assert "src=" not in html and "href=\"http" not in html.replace("href='http", "")
+
+
+def test_missing_artifacts_degrade_instead_of_failing(tmp_path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    run_dir = tmp_path / "runs" / "empty"
+    run_dir.mkdir(parents=True)
+    state = {"run_id": "empty", "status": "failed", "stop_reason": "model_unavailable"}
+    html = report.build(state, run_dir, root)
+    assert "没有可展示的记录" in html
+    assert "<h1>empty</h1>" in html
+    assert "failed" in html
+
+
+def test_write_creates_parent_directories(tmp_path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    run_dir = write_run(tmp_path / "runs" / "demo-run")
+    destination = tmp_path / "out" / "deep" / "report.html"
+    path = report.write(sample_state(root), run_dir, root, destination)
+    assert path.exists() and path.stat().st_size > 0
+    assert "RepoPilot 运行报告" in path.read_text(encoding="utf-8")
+
+
+def test_review_findings_fall_back_to_the_earlier_round(tmp_path):
+    """最终审核通过时 review_report 没有发现，报告仍要展示上一轮的发现。"""
+
+    html = render(tmp_path)
+    assert "审核发现" in html
+    assert "补一条空输入用例" in html
+
+
+@pytest.mark.parametrize("status,expected", [
+    ("published", "ok"),
+    ("completed", "ok"),
+    ("awaiting_approval", "warn"),
+    ("failed", "bad"),
+    ("limit_reached", "bad"),
+    ("something_unknown", ""),
+])
+def test_status_colour_mapping(status, expected):
+    assert report.status_class(status) == expected
