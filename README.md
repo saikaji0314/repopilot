@@ -12,6 +12,8 @@ RepoPilot 面向由工单驱动的仓库研发：手动接收或自动监听已�
 
 可选[仓库事实记忆](docs/runtime-v2/MEMORY.md)记录带提交与文件指纹的源码书签，供实现、审核和返工定位；新运行用 `--memory` 开启，默认关闭。自动候选需要人工确认，尚无真实模型收益结论。
 
+[Docker Sandboxes 接入探针](docs/runtime-v2/VALIDATION-09.md)已验证安装和 Windows 虚拟化，但本机原生后端在镜像准备阶段失败；尚未提供产品隔离执行能力。
+
 ## 安装与配置
 
 准备 Python 3.12 和 Git；JavaScript 示例另需 Node.js。
