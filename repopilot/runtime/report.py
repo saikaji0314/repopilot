@@ -173,6 +173,39 @@ def timeline_rows(events: list[dict], root: Path, limit: int = 24) -> list[list[
     return rows
 
 
+def load_meta(run_dir: Path) -> dict:
+    """可选的展示元数据；本地任务没有 Issue 时用它给出可读标题与说明。"""
+
+    data = load_json(run_dir / "meta.json")
+    return data if isinstance(data, dict) else {}
+
+
+def next_action(state: dict) -> str:
+    """用一句话说明这次运行为什么停在这里、人需要做什么。"""
+
+    status = state.get("status")
+    run_id = str(state.get("run_id") or "")
+    commit = str(state.get("reviewed_commit") or "")
+    safe_run, safe_commit = escape(run_id), escape(commit)
+    if status == "awaiting_approval":
+        handle = f"<code>approve {safe_run} --commit {safe_commit} --reason \"已核对差异与检查\"</code>"
+        return f'<p class="note">等待人工审批：核对上方候选改动与独立复核后用 {handle} 批准，批准本身不推送。</p>'
+    if status == "approved":
+        return (f'<p class="note">已批准提交 <code>{safe_commit}</code>，'
+                f'下一步用 <code>publish {safe_run}</code> 创建草稿 PR。</p>')
+    if status == "published":
+        return '<p class="note">已创建草稿 PR，尚未合并；合并与发布仍需单独决定。</p>'
+    if status == "rework_limit_reached":
+        return '<p class="note">返工达到上限，需要人工判断是继续、改需求还是放弃。</p>'
+    if status == "review_inconclusive":
+        return '<p class="note">审核无法判断，需要人工核对独立复核结果与候选改动。</p>'
+    if status == "needs_input":
+        return '<p class="note">实现方声明需要澄清，需要补充需求后再继续。</p>'
+    if status in {"failed", "workspace_error", "phase_error", "limit_reached"}:
+        return '<p class="note">运行未完成，需要查看失败原因后决定 retry 或调整配置。</p>'
+    return ""
+
+
 def render(state: dict, run_dir: Path, events: list[dict], root: Path) -> str:
     run_id = state.get("run_id") or run_dir.name
     issue = state.get("issue") or {}
@@ -187,16 +220,25 @@ def render(state: dict, run_dir: Path, events: list[dict], root: Path) -> str:
     verified = state.get("verified") or []
     history = state.get("history") or []
     changes = load_json(run_dir / "changes.json") or {}
+    meta = load_meta(run_dir)
 
-    title = f"RepoPilot 运行报告 · {run_id}"
+    headline = str((issue.get("title") if issue else None) or meta.get("title") or run_id)
+    title = f"RepoPilot 运行报告 · {headline}"
     parts = [
         '<p class="lead">一键复盘一次工单交付：需求、改动、独立检查、审核返工、人工决定与远端产物。</p>',
-        f"<h1>{escape(str(issue.get('title') or run_id))}</h1>",
+        f"<h1>{escape(headline)}</h1>",
         f'<p class="meta">运行 <code>{escape(str(run_id))}</code>'
         f' · 状态 <span class="tag {status_class(status)}">{escape(str(status))}</span>'
         f' · 阶段 {escape(str(state.get("phase") or "-"))}'
         f' · 停止原因 <code>{escape(str(state.get("stop_reason") or "-"))}</code></p>',
     ]
+
+    action = next_action(state)
+    if action:
+        parts.append(action)
+
+    if meta.get("description"):
+        parts.append(f"<p>{escape(redact(str(meta['description']), root))}</p>")
 
     if issue:
         repository = escape(str(issue.get("repository") or ""))

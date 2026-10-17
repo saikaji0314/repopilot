@@ -142,3 +142,36 @@ def test_review_findings_fall_back_to_the_earlier_round(tmp_path):
 ])
 def test_status_colour_mapping(status, expected):
     assert report.status_class(status) == expected
+
+
+def test_next_action_explains_the_human_gate(tmp_path):
+    approved_state = {"status": "awaiting_approval", "run_id": "demo", "reviewed_commit": "a" * 40}
+    text = report.next_action(approved_state)
+    assert "等待人工审批" in text
+    assert "approve demo" in text and "a" * 40 in text
+    assert "publish" in report.next_action({"status": "approved", "run_id": "demo",
+                                            "reviewed_commit": "a" * 40})
+    assert "草稿 PR" in report.next_action({"status": "published"})
+    assert report.next_action({"status": "completed"}) == ""
+
+
+def test_meta_title_is_used_for_local_tasks_without_issue(tmp_path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    run_dir = write_run(tmp_path / "runs" / "demo-run")
+    (run_dir / "meta.json").write_text(json.dumps(
+        {"title": "同步文档里的测试数量", "description": "只改两个文档"}, ensure_ascii=False), encoding="utf-8")
+    state = {"run_id": "demo-run", "status": "awaiting_approval", "stop_reason": "awaiting_approval"}
+    html = report.build(state, run_dir, root)
+    assert "<h1>同步文档里的测试数量</h1>" in html
+    assert "只改两个文档" in html
+
+
+def test_run_id_is_escaped_in_the_next_action_block(tmp_path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    run_dir = write_run(tmp_path / "runs" / "demo-run")
+    state = {"run_id": "<img src=x onerror=alert(1)>", "status": "approved", "reviewed_commit": "b" * 40}
+    html = report.build(state, run_dir, root)
+    assert "<img" not in html, "未转义标签会真的变成元素"
+    assert "&lt;img" in html
