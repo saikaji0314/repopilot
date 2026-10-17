@@ -11,7 +11,7 @@ from . import workflow
 from .github import GitHub, GitHubError, load_token, publish
 from .store import JobStore, StateError
 
-COMMANDS = {'run', 'issue', 'resume', 'retry', 'status', 'jobs', 'approve', 'reject', 'recover', 'publish', 'watch'}
+COMMANDS = {'run', 'issue', 'resume', 'retry', 'status', 'jobs', 'approve', 'reject', 'recover', 'publish', 'watch', 'memory'}
 SUCCESS_STATUSES = {'ok', 'completed', 'paused', 'awaiting_approval', 'approved', 'published', 'rejected'}
 STATUS_FIELDS = ('run_id', 'status', 'phase', 'in_flight', 'stop_reason', 'reviewed_commit',
                  'report', 'review_report', 'verified', 'issue', 'approval', 'pull_request')
@@ -34,6 +34,8 @@ def _execution_options(parser, name):
     parser.add_argument('--max-context-bytes', type=int)
     parser.add_argument('--max-tool-calls', type=int)
     parser.add_argument('--max-run-cost-cny', type=float)
+    parser.add_argument('--memory', dest='memory_enabled', action=argparse.BooleanOptionalAction, default=None,
+                        help='启用仓库事实检索；--no-memory关闭，新运行默认关闭')
 
 
 def _task_options(parser, name):
@@ -53,6 +55,10 @@ def build_parser():
     for name in sorted(COMMANDS):
         command = sub.add_parser(name)
         command.add_argument('--output', type=Path, default=PROJECT_ROOT / '.local' / 'runtime')
+        if name == 'memory':
+            from .memory_cli import configure
+            configure(command)
+            continue
         if name == 'watch':
             _watch_options(command)
             continue
@@ -76,7 +82,7 @@ def _run_settings(args):
     settings = load_settings()
     overrides = load_profile(args.profile) if getattr(args, 'profile', None) else {}
     overrides.update({key: getattr(args, key) for key in
-                      ('max_context_bytes', 'max_tool_calls', 'max_run_cost_cny', 'max_rework')
+                      ('max_context_bytes', 'max_tool_calls', 'max_run_cost_cny', 'max_rework', 'memory_enabled')
                       if getattr(args, key, None) is not None})
     return type(settings).model_validate({**settings.model_dump(), **overrides}), overrides
 
@@ -136,6 +142,9 @@ def _watch(args):
 
 def execute_command(args):
     """分派应用操作；凭证只在需要模型或 GitHub 的命令里加载。"""
+    if args.command == 'memory':
+        from .memory_cli import execute
+        return execute(args)
     if args.command in {'run', 'issue'}:
         return _run_task(args)
     if args.command == 'retry':

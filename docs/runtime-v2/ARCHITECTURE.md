@@ -26,7 +26,7 @@
 | Harness／轻量 AI 基础设施 | 宿主控制工具、状态、检查、预算、审批和发布；模型只提出受限动作与报告 | 面向不可信租户的隔离执行平台、分布式调度及服务运维体系 |
 | LangChain／LangGraph | `create_agent` 承载单个角色内部的模型与工具循环；Pydantic 校验报告；DeepSeek 适配 | 外层业务流程是自定义 Python 状态机与 SQLite，未采用 LangGraph StateGraph／checkpointer |
 | Multi-agent | 实现与审核两个角色，提示、工具权限、输出协议不同；默认使用同一可配置模型，顺序执行 | 角色独立不等于判断独立；没有多模型委员会或自由协商网络。多 Issue worker 并发属于任务调度 |
-| Memory／上下文 | 当前运行的消息、按字节清理旧读取结果、宿主进度反馈、状态持久化 | 跨任务经验检索、长期语义记忆、向量库；SQLite 检查点不能称作长期智能 Memory |
+| Memory／上下文 | 当前上下文清理、宿主进度与状态持久化；可选跨运行文件事实书签，带提交来源、依赖指纹和人工生命周期 | 尚无任务经验归纳、长期语义检索、向量库或真实模型收益结论；检查点与文件事实分别管理 |
 | 评测 | Fake／Mock 验证状态与边界；真实模型与 GitHub 开发复测；两个公开开发题可独立评分候选补丁，保留失败和费用证据 | 两题仅验证评分机制，尚无新版留出修复题集、重复模型实验和统计成功率。旧诊断题集不能直接当新版修复成绩 |
 | 安全与可靠性 | 路径／链接约束、登记 argv、子进程环境清理、用量预留、版本绑定、锁与显式恢复 | Docker／OS 沙箱、身份鉴权、不可篡改审计、完整提示注入防御；仓库检查代码仍以当前用户权限执行 |
 
@@ -43,6 +43,7 @@ flowchart TD
     PHASE --> AGENT[agent：角色内模型与工具循环]
     AGENT --> TOOLS[repository：文件工具和登记检查]
     PHASE --> WS[workspace：Git 工作区与提交校验]
+    PHASE --> MEM[memory_context：固定事实快照与阶段复核]
     EXEC --> STORE[store / budget：状态与累计账本]
     CLI --> GH[github：接入与批准后发布]
     WF --> STATE[run_state：摘要与工作区定位规则]
@@ -61,6 +62,8 @@ flowchart TD
 | [store.py](../../repopilot/runtime/store.py)、[budget.py](../../repopilot/runtime/budget.py) | SQLite 状态与乐观并发、进程锁；模型费用预留、结算、共享累计上限 |
 | [github.py](../../repopilot/runtime/github.py)、[watcher.py](../../repopilot/runtime/watcher.py) | GitHub API 与 Git 发布；轮询准入、去重、worker 调度、停止与残留核查 |
 | [config.py](../../repopilot/runtime/config.py) | 任务／检查／模型／限额协议、环境与执行 profile 校验 |
+| [memory.py](../../repopilot/runtime/memory.py)、[memory_facts.py](../../repopilot/runtime/memory_facts.py) | SQLite仓库事实、人工确认／撤销／删除、有界检索；Git来源和文件／依赖指纹校验 |
+| [memory_context.py](../../repopilot/runtime/memory_context.py)、[memory_cli.py](../../repopilot/runtime/memory_cli.py) | 运行开始冻结命中、阶段前复核、审核后收集候选；可信操作者管理入口，见[记忆协议](MEMORY.md) |
 
 结构调整保留 `runtime` 包名、CLI、状态格式和模型提示，不引入另一个服务框架。`workflow` 保留原有状态辅助函数的导出，以兼容已有调用方。长函数并非一律需要拆分：继续保留内聚的检查、数据库事务和工具装配；以后按行为变化拆分，避免只为压行数增加跳转。
 

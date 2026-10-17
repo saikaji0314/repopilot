@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from . import agent as engine
+from . import memory_context
 from .config import RuntimeSettings, Task
 from .run_state import approval_digest, attach
 from .store import StateError
@@ -55,6 +56,8 @@ class PhaseRunner:
             self.state["expected_head"] = self.state["base_commit"]
         self.trace.event("workspace_ready", worktree=str(self.task.repository if self.workspace is None else self.workspace.path),
                          base_commit=self.state["base_commit"])
+        root = self.task.repository if self.workspace is None else self.workspace.repository()
+        memory_context.freeze(self.state, self.settings, self.store_root, root, self.trace)
         self.state["phase"] = "implement"
 
     def _implementation_payload(self, phase):
@@ -68,7 +71,14 @@ class PhaseRunner:
             self.trace.event("rework_started", attempt=self.state["reworks"], findings=len(self.state["history"][-1]["findings"]))
         if self.state.get("recovery"):
             payload["recovery"] = self.state["recovery"]
+        self._attach_memory(payload, phase)
         return payload
+
+    def _attach_memory(self, payload, phase):
+        root = self.task.repository if self.workspace is None else self.workspace.repository()
+        view = memory_context.context(self.state, self.settings, self.store_root, root, phase, self.trace)
+        if view is not None:
+            payload['repository_memory'] = view
 
     def implement(self, phase):
         root = self.task.repository if self.workspace is None else self.workspace.repository()
@@ -109,6 +119,7 @@ class PhaseRunner:
             "verified_checks": self.state["verified"], "diff": diff["diff"], "diff_truncated": diff["truncated"]}
         if self.state["history"]:
             payload["previous_findings"] = self.state["history"][-1]["findings"]
+        self._attach_memory(payload, 'review')
         return payload
 
     def review(self):
@@ -128,6 +139,8 @@ class PhaseRunner:
         self.trace.save("review-history.json", self.state["history"])
         self.trace.event("review_finished", verdict=report.verdict, commit=self.state["reviewed_commit"])
         self._review_outcome(report.verdict)
+        if report.verdict == 'approved':
+            memory_context.collect_candidates(self.state, self.settings, self.store_root, self.workspace.repository(), self.trace)
 
     def _review_outcome(self, verdict):
         if verdict == "unable_to_review":

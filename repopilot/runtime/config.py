@@ -61,6 +61,7 @@ class RuntimeSettings(Contract):
     model: str = "deepseek-flash"
     thinking: Literal["enabled", "disabled"] = "disabled"
     reasoning_effort: Literal["low", "high", "max"] = "low"
+    memory_enabled: bool = False
     max_model_calls: int = Field(default=36, gt=0, le=80)
     max_tool_calls: int = Field(default=40, gt=0, le=200)
     max_edits: int = Field(default=12, gt=0, le=50)
@@ -112,12 +113,13 @@ def load_settings(env_file: Path = PROJECT_ROOT / ".env") -> RuntimeSettings:
         thinking=get("DS_THINKING", "enabled"),
         reasoning_effort=get("DS_REASONING_EFFORT", "low"),
         budget_cny=get("REPOPILOT_BUDGET_CNY", 200),
+        memory_enabled=get("REPOPILOT_MEMORY_ENABLED", "false"),
     )
 
 
 EXECUTION_OPTIONS = {"max_model_calls", "max_tool_calls", "max_edits", "max_rework", "max_output_tokens",
                      "max_context_bytes", "run_timeout_seconds", "request_timeout_seconds", "max_run_cost_cny",
-                     "thinking", "reasoning_effort"}
+                     "thinking", "reasoning_effort", "memory_enabled"}
 
 
 def execution_options(value):
