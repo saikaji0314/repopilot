@@ -51,7 +51,11 @@ targets:
 .\.venv\Scripts\repopilot.exe watch --stop
 ```
 
-这是应用自己的常驻命令，不是系统服务或开机自启。后台部署时由操作者管理进程和日志。`--stop` 不立即杀死正在执行的检查或模型请求；可能需要等到该任务完成、超时或触限。心跳是最近一次运行观察，若进程被强杀，应结合时间判断，不能把陈旧的 running 当健康证明。
+这是应用自己的常驻命令，不是系统服务或开机自启。后台部署时由操作者管理进程和日志。`--stop` 不立即杀死正在执行的检查或模型请求；可能需要等到该任务完成、超时或触限。
+
+`watch --status` 保留外层 `status: ok` 表示查询成功，监听器状态看 `watcher.status`：`running` 表示最近30秒内有心跳，`stale` 表示超过30秒，`stopped` 表示最后记录为正常停止，`not_started` 表示无记录，`unknown` 表示时间非法／明显在未来等无法判断。返回 `recorded_status`、`heartbeat_at`、`age_seconds`、`stale_after_seconds`、`healthy` 与原因；不把陈旧running继续报告为健康，也不改写数据库历史或自动恢复队列。
+
+`healthy`只表示心跳新鲜；`stale`不证明进程已经死亡。轮询API阻塞也可能延迟心跳，需要结合PID、锁、日志及队列核查。任务中断仍由队列的interrupted与运行检查点表示；本增量没有进程身份校验、独立心跳线程或系统服务自恢复。
 
 ## 自动接单规则
 

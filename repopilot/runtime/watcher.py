@@ -14,6 +14,7 @@ import yaml
 
 from .config import Contract, RuntimeSettings, Task, execution_options, load_settings, load_task
 from .github import GitHub, GitHubError, load_token, parse_issue, remote_repository
+from .health import heartbeat_health
 from .store import JobStore, StateError, job_lock, timestamp
 from . import workflow
 
@@ -63,7 +64,8 @@ class IssueQueue:
     def health(self):
         with closing(self.store.connect()) as db:
             row = db.execute("SELECT pid,status,heartbeat_at FROM watcher_runtime WHERE id=1").fetchone()
-        return None if row is None else dict(zip(("pid", "status", "heartbeat_at"), row))
+        record = None if row is None else dict(zip(("pid", "status", "heartbeat_at"), row))
+        return heartbeat_health(record)
 
     def activation(self, repository, label):
         key = repository.lower() + ":" + (label or "*")
