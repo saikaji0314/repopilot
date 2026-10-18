@@ -67,10 +67,10 @@ def test_bad_optional_memory_database_does_not_break_delivery(tmp_path):
 def test_memory_cli_needs_no_credentials(tmp_path, monkeypatch, capsys):
     from tests.runtime.test_review_loop import make_repo
     repo = make_repo(tmp_path)
-    def unavailable():
+    def unavailable(*args, **kwargs):
         raise AssertionError('不应加载凭证')
     monkeypatch.setattr(cli, 'load_settings', unavailable)
-    monkeypatch.setattr(cli, 'load_token', unavailable)
+    monkeypatch.setattr(cli, 'open_forge', unavailable)
     base = ['--repository', str(repo), '--output', str(tmp_path / 'runtime')]
     assert cli.main(['memory', 'remember', *base, '--path', 'app.py', '--end-line', '1']) == 0
     saved = json.loads(capsys.readouterr().out)['memory']

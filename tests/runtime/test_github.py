@@ -50,6 +50,8 @@ def test_issue_intake_keeps_local_checks_and_rejects_other_repo(tmp_path):
 
 
 class FakeGitHub:
+    """在 provider 钩子层模拟；发布流程本身与平台无关，由 forge.publish 覆盖。"""
+
     def __init__(self, state):
         self.state, self.prs, self.posts, self.pushes = state, [], 0, 0
         self.lose_response = False
@@ -61,22 +63,38 @@ class FakeGitHub:
     def push(self, path, repo, branch, commit):
         self.pushes += 1
 
-    def request(self, method, path, **kwargs):
-        if path.endswith("/commits/main"):
-            return {"sha": self.state["base_commit"]}
-        if path == "/repos/owner/repo":
-            return {"full_name": "owner/repo", "default_branch": "main"}
-        assert path.endswith("/pulls")
-        if method == "GET":
-            return self.prs
+    def fail(self, code, *, retry_after=0):
+        return GitHubError(code, retry_after=retry_after)
+
+    def repository_metadata(self, repository):
+        return {"full_name": "owner/repo", "default_branch": "main"}
+
+    def commit_sha(self, repository, ref):
+        return self.state["base_commit"]
+
+    def find_pull_request(self, repository, branch, base, marker):
+        if not self.prs:
+            return None
+        assert len(self.prs) == 1 and marker in self.prs[0]["body"]
+        return self._pull(self.prs[0])
+
+    def create_pull_request(self, repository, *, title, branch, base, body):
         self.posts += 1
-        assert kwargs["json"]["draft"] is True
-        pr = {"number": 2, "html_url": "https://github.com/owner/repo/pull/2", "body": kwargs["json"]["body"],
+        pr = {"number": 2, "html_url": "https://github.com/owner/repo/pull/2", "body": body,
               "head": {"sha": self.state["reviewed_commit"], "repo": {"full_name": "owner/repo"}}}
         self.prs.append(pr)
         if self.lose_response:
             raise GitHubError("github_transport_error")
-        return pr
+        return self._pull(pr)
+
+    @staticmethod
+    def _pull(pr):
+        return {"url": pr["html_url"], "number": pr["number"],
+                "head_sha": pr["head"]["sha"], "head_repository": pr["head"]["repo"]["full_name"]}
+
+    def pull_matches(self, pull, repository, commit):
+        return (pull["head_sha"] == commit and pull["head_repository"] == "owner/repo" and
+                pull["url"].startswith("https://github.com/owner/repo/pull/"))
 
 
 def github_candidate(tmp_path):

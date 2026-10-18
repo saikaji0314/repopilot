@@ -8,7 +8,7 @@ import sys
 
 from repopilot.core.config import PROJECT_ROOT, load_profile, load_settings, load_task
 from repopilot.orchestration import workflow as workflow
-from repopilot.delivery.github import GitHub, GitHubError, load_token, publish
+from repopilot.delivery.forge import ForgeError, open_forge, publish as forge_publish
 from repopilot.storage.jobs import JobStore, StateError
 
 COMMANDS = {'run', 'issue', 'resume', 'retry', 'status', 'jobs', 'report', 'approve', 'reject',
@@ -21,7 +21,7 @@ STATUS_FIELDS = ('run_id', 'status', 'phase', 'in_flight', 'stop_reason', 'revie
 def _watch_options(parser):
     parser.add_argument('--config', type=Path)
     parser.add_argument('--once', action='store_true', help='只轮询一次并处理本轮队列')
-    parser.add_argument('--status', action='store_true', help='查看持久化 Issue 队列，不调用模型或 GitHub')
+    parser.add_argument('--status', action='store_true', help='查看持久化 Issue 队列，不调用模型或仓库平台')
     parser.add_argument('--stop', action='store_true', help='请求监听器停止接单，等待当前任务落盘后退出')
     parser.add_argument('--acknowledge', help='核查残留 worker 后确认一个 interrupted Issue 队列键')
     parser.add_argument('--reason')
@@ -96,9 +96,9 @@ def _run_task(args):
     if args.command == 'issue':
         if args.no_workspace or args.no_review:
             raise StateError('issue_requires_workspace_and_review')
-        with closing(GitHub(load_token())) as github:
-            task, issue = github.intake(args.url, task)
-            base_commit = github.prepare_base(task.repository, issue['repository'])
+        with closing(open_forge(args.url)) as forge:
+            task, issue = forge.intake(args.url, task)
+            base_commit = forge.prepare_base(task.repository, issue['repository'])
     return workflow.start(task, settings, args.output, workspace=not args.no_workspace,
                           review=not args.no_review, require_approval=True, stop_after=args.stop_after,
                           issue=issue, base_commit=base_commit)
@@ -109,11 +109,11 @@ def _retry(args):
     state = JobStore(args.output).get(args.run_id)
     base_commit = None
     if state.get('issue'):
-        with closing(GitHub(load_token())) as github:
-            current = github.issue(state['issue']['url'])
+        with closing(open_forge(state['issue']['url'])) as forge:
+            current = forge.issue(state['issue']['url'])
             if workflow.canonical_hash(current) != workflow.canonical_hash(state['issue']):
                 raise StateError('issue_changed_since_intake')
-            base_commit = github.prepare_base(Path(state['task']['repository']), state['issue']['repository'])
+            base_commit = forge.prepare_base(Path(state['task']['repository']), state['issue']['repository'])
     return workflow.retry(args.run_id, settings, args.output, reason=args.reason,
                           overrides=overrides, stop_after=args.stop_after, base_commit=base_commit)
 
@@ -144,7 +144,7 @@ def _watch(args):
 
 
 def execute_command(args):
-    """分派应用操作；凭证只在需要模型或 GitHub 的命令里加载。"""
+    """分派应用操作；凭证只在需要模型或仓库平台的命令里加载。"""
     if args.command == 'memory':
         from repopilot.memory.cli import execute
         return execute(args)
@@ -171,8 +171,12 @@ def execute_command(args):
         return {'status': 'ok', 'run_id': args.run_id, 'html': str(path.resolve()),
                 'bytes': path.stat().st_size}
     if args.command == 'publish':
-        with closing(GitHub(load_token())) as github:
-            return publish(args.run_id, args.output, github)
+        # 从待发布运行的 Issue 链接决定平台，避免让调用方再声明一次。
+        state = JobStore(args.output).get(args.run_id)
+        issue = state.get('issue') or {}
+        subject = issue.get('url') or state['task']['repository']
+        with closing(open_forge(subject)) as forge:
+            return forge_publish(args.run_id, args.output, forge)
     raise StateError('unknown_command')
 
 
@@ -185,7 +189,7 @@ def main(argv=None) -> int:
         result = execute_command(args)
     except Exception as exc:
         result = {'status': 'error', 'error_type': type(exc).__name__}
-        if isinstance(exc, (StateError, GitHubError)):
+        if isinstance(exc, (StateError, ForgeError)):
             result['reason'] = str(exc)
         print(json.dumps(result, ensure_ascii=True))
         return 2

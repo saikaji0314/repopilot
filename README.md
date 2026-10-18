@@ -1,8 +1,8 @@
 # RepoPilot
 
-**把 GitHub Issue 交给研发 Agent，获得可验证、可审核的草稿 PR。**
+**把 GitHub／GitLab Issue 交给研发 Agent，获得可验证、可审核的草稿 PR。**
 
-RepoPilot 面向企业内部及个人维护的可信代码仓库，负责接单、隔离工作区、实现、自检、独立复核和审核返工。每次运行保留需求、补丁、检查、费用及审批证据；人工批准具体提交后，再推送分支并创建草稿 PR。
+RepoPilot 面向企业内部及个人维护的可信代码仓库，负责接单、隔离工作区、实现、自检、独立复核和审核返工。每次运行保留需求、补丁、检查、费用及审批证据；人工批准具体提交后，再推送分支并创建草稿 PR／MR。
 
 [快速开始](#快速开始) · [交付演示](docs/runtime-v2/DEMO.md) · [运行协议](docs/runtime-v2/README.md) · [架构与代码导航](docs/runtime-v2/ARCHITECTURE.md)
 
@@ -75,12 +75,15 @@ git -C $demo -c user.name=RepoPilot -c user.email=demo@example.test commit -m "d
 
 默认每次运行最多 36 次模型调用、40 次工具调用、12 次编辑、3 次返工、300 秒活跃时间和估算 2 元费用。累计预算默认 200 元，暂停恢复不重置账本；费用为估算，实际以供应商账单为准。较复杂任务的参数和 profile 见[运行协议](docs/runtime-v2/README.md)。
 
-## 接入 GitHub 与交付
+## 接入仓库平台与交付
 
-GitHub 接入另需 `GITHUB_TOKEN` 或 `GH_TOKEN`；权限按目标仓库配置，读取 Issue、推送分支与创建 PR 分别需要相应权限。Issue 提供需求，不能覆盖登记的路径和命令。
+支持 GitHub 与 GitLab（含自建实例）。平台由 Issue 链接或仓库 remote 自动判断，不需要额外声明。GitHub 需要 `GITHUB_TOKEN` 或 `GH_TOKEN`；GitLab 需要 `GITLAB_TOKEN` 或 `GL_TOKEN`（个人令牌至少 `api` 与 `read_repository`）。Issue 提供需求，不能覆盖登记的路径和命令。
 
 ```powershell
+# GitHub
 .\.venv\Scripts\repopilot.exe issue https://github.com/OWNER/REPO/issues/1 --task task.yaml
+# GitLab（支持子组）
+.\.venv\Scripts\repopilot.exe issue https://gitlab.com/group/sub/project/-/issues/3 --task task.yaml
 .\.venv\Scripts\repopilot.exe jobs
 .\.venv\Scripts\repopilot.exe status RUN_ID
 .\.venv\Scripts\repopilot.exe report RUN_ID --html report.html
@@ -89,7 +92,9 @@ GitHub 接入另需 `GITHUB_TOKEN` 或 `GH_TOKEN`；权限按目标仓库配置�
 .\.venv\Scripts\repopilot.exe publish RUN_ID
 ```
 
-交付终点为草稿 PR。独立检查失败、审核结论不足或批准后版本变化时不会发布。合并、软件发布和部署继续由仓库维护者决定，不在当前产品范围；有关取舍见[交付边界](docs/runtime-v2/DELIVERY-POLICY.md)。
+交付终点为草稿 PR／MR。独立检查失败、审核结论不足或批准后版本变化时不会发布。合并、软件发布和部署继续由仓库维护者决定，不在当前产品范围；有关取舍见[交付边界](docs/runtime-v2/DELIVERY-POLICY.md)。
+
+GitLab 适配与 GitHub 共用同一套发布流程与错误语义，差异只在 REST 路径、认证头和草稿表达；**本轮只做了模拟 HTTP 测试，没有真实 GitLab 实例验证**，边界见[仓库平台接入](docs/runtime-v2/FORGES.md)。
 
 自动监听可配置仓库、标签、轮询与并发上限：
 

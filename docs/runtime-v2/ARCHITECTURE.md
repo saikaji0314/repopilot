@@ -64,7 +64,8 @@ flowchart TD
 | [execution/sandbox.py](../../repopilot/execution/sandbox.py)、[execution/transport.py](../../repopilot/execution/transport.py) | 阶段会话、Docker 生命周期、文件协议与登记检查；有界 CLI 传输，失败不回退宿主 |
 | [execution/files.py](../../repopilot/execution/files.py)、[execution/worker.py](../../repopilot/execution/worker.py)、[execution/archive.py](../../repopilot/execution/archive.py) | 无模型依赖的共用文件规则；容器固定操作协议；完整校验后导入普通文件 |
 | [storage/jobs.py](../../repopilot/storage/jobs.py)、[storage/budget.py](../../repopilot/storage/budget.py) | SQLite 状态与乐观并发、进程锁；模型费用预留、结算、共享累计上限 |
-| [delivery/github.py](../../repopilot/delivery/github.py)、[delivery/watcher.py](../../repopilot/delivery/watcher.py) | GitHub API 与 Git 发布；轮询准入、去重、worker 调度、停止与残留核查 |
+| [delivery/forge.py](../../repopilot/delivery/forge.py)、[delivery/github.py](../../repopilot/delivery/github.py)、[delivery/gitlab.py](../../repopilot/delivery/gitlab.py) | 平台识别、凭证路由与唯一的发布流程；GitHub／GitLab 各自的 REST 与 Git 差异，见[平台接入](FORGES.md) |
+| [delivery/watcher.py](../../repopilot/delivery/watcher.py) | 轮询准入、按仓库来源选择平台、去重、worker 调度、停止与残留核查 |
 | [core/config.py](../../repopilot/core/config.py) | 任务／检查／模型／限额协议、环境与执行 profile 校验 |
 | [memory/store.py](../../repopilot/memory/store.py)、[memory/facts.py](../../repopilot/memory/facts.py) | SQLite仓库事实、人工确认／撤销／删除、有界检索；Git来源和文件／依赖指纹校验 |
 | [memory/context.py](../../repopilot/memory/context.py)、[memory/cli.py](../../repopilot/memory/cli.py) | 运行开始冻结命中、阶段前复核、审核后收集候选；可信操作者管理入口，见[记忆协议](MEMORY.md) |
@@ -80,7 +81,7 @@ repopilot/
   execution/             文件工具、Git工作区、容器会话、传输和归档校验
   storage/               jobs状态与锁、budget累计费用
   memory/                事实存储、来源校验、阶段检索及管理入口
-  delivery/              GitHub接入/草稿PR、监听与健康判断
+  delivery/              平台接入（GitHub／GitLab、草稿PR／MR）、监听与健康判断
   presentation/          只读报告装配、证据片段、格式化、概览布局与内联样式
   evaluation/            新版独立修复评分，属于当前实现
   legacy/                第一代Python诊断、AST检索和旧工具

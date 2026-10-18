@@ -37,8 +37,10 @@ def test_new_issue_opt_in_and_restart_deduplication(tmp_path):
     task, settings, root, config = watch_setup(tmp_path)
     queue = watcher.IssueQueue(root)
     old = queued_issue(2, created_at=(datetime.now(timezone.utc) - timedelta(days=1)).isoformat())
-    values = [queued_issue(), old, queued_issue(3) | {'pull_request': {}}, queued_issue(4) | {'state': 'closed'},
-              queued_issue(5) | {'labels': []}]
+    # 首次激活时间会截断到秒；给「新」Issue 留出余量，避免恰好跨秒时被当成旧工单。
+    fresh = (datetime.now(timezone.utc) + timedelta(seconds=1)).isoformat()
+    values = [queued_issue(created_at=fresh), old, queued_issue(3) | {'pull_request': {}},
+              queued_issue(4) | {'state': 'closed'}, queued_issue(5) | {'labels': []}]
     class API:
         def open_issues(self, *args, **kwargs): return values
     assert watcher.poll_once(config, queue, API()) == 1
@@ -113,8 +115,7 @@ def test_worker_binds_run_before_execution_and_releases_approval_wait(tmp_path, 
     def execute(run_id, *args, **kwargs):
         assert queue.list()[0]['run_id'] == run_id
         return original(run_id, *args, **kwargs, model=FakeModel(responses=[*implementation(), review_approved()]))
-    monkeypatch.setattr(watcher, 'GitHub', API)
-    monkeypatch.setattr(watcher, 'load_token', lambda: 'synthetic')
+    monkeypatch.setattr(watcher, 'open_forge', lambda *args, **kwargs: API('synthetic'))
     monkeypatch.setattr(watcher, 'load_settings', lambda: settings)
     monkeypatch.setattr(workflow, 'resume', execute)
     result = watcher.run_queued_job(root, item)
@@ -178,8 +179,7 @@ def test_dispatcher_uses_two_real_spawn_processes_for_two_repositories(tmp_path,
         def __init__(self, token): pass
         def open_issues(self, *args, **kwargs): return []
         def close(self): pass
-    monkeypatch.setattr(watcher, 'GitHub', API)
-    monkeypatch.setattr(watcher, 'load_token', lambda: 'synthetic')
+    monkeypatch.setattr(watcher, 'open_forge', lambda *args, **kwargs: API('synthetic'))
     monkeypatch.setattr(watcher, 'run_queued_job', worker_probe)
     result = watcher.watch(config, root, once=True)
     assert result['status'] == 'completed'
@@ -198,8 +198,7 @@ def test_stop_signal_does_not_dispatch_pending_issues(tmp_path, monkeypatch):
             (root / 'watcher.stop').write_text('stop', encoding='ascii')
             return []
         def close(self): pass
-    monkeypatch.setattr(watcher, 'GitHub', API)
-    monkeypatch.setattr(watcher, 'load_token', lambda: 'synthetic')
+    monkeypatch.setattr(watcher, 'open_forge', lambda *args, **kwargs: API('synthetic'))
     monkeypatch.setattr(watcher, 'run_queued_job', worker_probe)
     result = watcher.watch(config, root)
     assert result['status'] == 'paused'

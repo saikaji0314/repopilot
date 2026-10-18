@@ -13,7 +13,7 @@ from pydantic import Field, field_validator
 import yaml
 
 from repopilot.core.config import Contract, RuntimeSettings, Task, execution_options, load_settings, load_task
-from repopilot.delivery.github import GitHub, GitHubError, load_token, parse_issue, remote_repository
+from repopilot.delivery.forge import ForgeError, open_forge, parse_issue_url, remote_origin
 from repopilot.delivery.health import heartbeat_health
 from repopilot.storage.jobs import JobStore, StateError, job_lock, timestamp
 from repopilot.orchestration import workflow as workflow
@@ -75,9 +75,10 @@ class IssueQueue:
             return db.execute("SELECT activated_at FROM watch_targets WHERE id = ?", (key,)).fetchone()[0]
 
     def enqueue(self, issue, repository, template, overrides):
-        repo, number = parse_issue(issue["html_url"])
-        if repo.lower() != repository.lower() or number != issue["number"]:
-            raise GitHubError("issue_identity_mismatch")
+        parsed = parse_issue_url(issue["html_url"])
+        if parsed["repository"].lower() != repository.lower() or parsed["number"] != issue["number"]:
+            raise ForgeError("issue_identity_mismatch")
+        repo, number = parsed["repository"], parsed["number"]
         key = f"{repo.lower()}#{number}"
         with closing(self.store.connect()) as db, db:
             db.execute("BEGIN IMMEDIATE")
@@ -140,48 +141,60 @@ class IssueQueue:
         return result
 
 
-def poll_once(config, queue, github):
+def poll_once(config, queue, forge=None):
+    """按模板仓库的远端来源选择平台；同一个监听器可以同时盯 GitHub 与 GitLab。
+
+    `forge` 参数保留给测试注入；正常轮询时按每个目标仓库自己的 origin 打开客户端。
+    """
     count = 0
     for target in config.targets:
         template = load_task(target.task)
-        repository = remote_repository(template.repository)
+        origin = remote_origin(template.repository)
+        repository = origin.repository
         activated = queue.activation(repository, target.label)
-        for issue in github.open_issues(repository, label=target.label, since=None if target.include_existing else activated):
-            if "pull_request" in issue or issue.get("state") != "open":
-                continue
-            created = datetime.fromisoformat(issue["created_at"].replace("Z", "+00:00"))
-            if not target.include_existing and created < datetime.fromisoformat(activated):
-                continue
-            if target.label and target.label not in [v["name"] for v in issue.get("labels", [])]:
-                continue
-            count += queue.enqueue(issue, repository, template, target.settings)
+        client = forge or open_forge(origin)
+        try:
+            issues = client.open_issues(repository, label=target.label,
+                                        since=None if target.include_existing else activated)
+            for issue in issues:
+                if "pull_request" in issue or issue.get("state") != "open":
+                    continue
+                created = datetime.fromisoformat(issue["created_at"].replace("Z", "+00:00"))
+                if not target.include_existing and created < datetime.fromisoformat(activated):
+                    continue
+                if target.label and target.label not in [v["name"] for v in issue.get("labels", [])]:
+                    continue
+                count += queue.enqueue(issue, repository, template, target.settings)
+        finally:
+            if forge is None:
+                client.close()
     return count
 
 
 def run_queued_job(root, item):
     """子进程执行一个任务，审批等待只是持久化状态，不占 worker。"""
     queue = IssueQueue(root)
-    github = None
+    forge = None
     try:
         settings = load_settings()
         settings = RuntimeSettings.model_validate({**settings.model_dump(), **item["settings"]})
-        github = GitHub(load_token())
-        task, issue = github.intake(item["url"], Task.model_validate(item["task"]))
-        base_commit = github.prepare_base(task.repository, issue["repository"])
+        forge = open_forge(item["url"])
+        task, issue = forge.intake(item["url"], Task.model_validate(item["task"]))
+        base_commit = forge.prepare_base(task.repository, issue["repository"])
         state = workflow.create_job(task, settings, Path(root), issue=issue, base_commit=base_commit)
         queue.bind(item["issue_key"], state["run_id"])
-        github.close()
-        github = None
+        forge.close()
+        forge = None
         result = workflow.resume(state["run_id"], settings, Path(root))
         queue.finish(item["issue_key"], result["status"])
         return {"issue_key": item["issue_key"], "run_id": state["run_id"], "status": result["status"]}
     except Exception as exc:
-        error = str(exc) if isinstance(exc, (StateError, GitHubError)) else type(exc).__name__
+        error = str(exc) if isinstance(exc, (StateError, ForgeError)) else type(exc).__name__
         queue.finish(item["issue_key"], "failed", error)
         return {"issue_key": item["issue_key"], "status": "failed", "error": error}
     finally:
-        if github:
-            github.close()
+        if forge:
+            forge.close()
 
 
 def emit(event, **values):
@@ -197,7 +210,6 @@ def watch(config, root, *, once=False):
         interrupted = queue.mark_interrupted()
         if interrupted:
             emit("attention_required", interrupted=interrupted)
-        github = GitHub(load_token())
         futures, next_poll, failures, polled, failed_poll = {}, 0, 0, False, False
         next_heartbeat = 0
         try:
@@ -215,7 +227,7 @@ def watch(config, root, *, once=False):
                             break
                         if (not once or not polled) and now >= next_poll:
                             try:
-                                added = poll_once(config, queue, github)
+                                added = poll_once(config, queue)
                                 if added:
                                     emit("issues_queued", count=added)
                                 failures, failed_poll = 0, False
@@ -226,7 +238,7 @@ def watch(config, root, *, once=False):
                                 delay = max(config.poll_seconds, min(900, config.poll_seconds * 2 ** min(failures, 5)),
                                             getattr(exc, "retry_after", 0))
                                 next_poll = time.monotonic() + delay
-                                emit("poll_failed", error=str(exc) if isinstance(exc, GitHubError) else type(exc).__name__, retry_after=delay)
+                                emit("poll_failed", error=str(exc) if isinstance(exc, ForgeError) else type(exc).__name__, retry_after=delay)
                             polled = True
                         if stop_file.exists():
                             emit("watch_stopping", active_workers=len(futures))
@@ -252,6 +264,5 @@ def watch(config, root, *, once=False):
                     # 停止接新任务，等待已开始 worker 落盘，避免随意杀死检查进程树。
                     emit("watch_stopping", active_workers=len(futures))
         finally:
-            github.close()
             queue.heartbeat("stopped")
         return {"status": "paused", "queue": queue.list()}

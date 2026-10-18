@@ -8,10 +8,11 @@ from repopilot.core.config import RuntimeSettings, Task
 
 @pytest.mark.parametrize('command', [['jobs'], ['watch', '--status']])
 def test_local_observation_needs_no_credentials(tmp_path, monkeypatch, capsys, command):
-    def unavailable():
-        raise AssertionError('本地查看不应读取模型或 GitHub 凭证')
+    def unavailable(*args, **kwargs):
+        raise AssertionError('本地查看不应读取模型或仓库平台凭证')
     monkeypatch.setattr(cli, 'load_settings', unavailable)
-    monkeypatch.setattr(cli, 'load_token', unavailable)
+    # 平台客户端在 open_forge 里加载凭证；本地命令不应走到这里。
+    monkeypatch.setattr(cli, 'open_forge', unavailable)
     assert cli.main([*command, '--output', str(tmp_path)]) == 0
     assert json.loads(capsys.readouterr().out)['status'] == 'ok'
 
