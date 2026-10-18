@@ -52,7 +52,7 @@ checks:
 .\.venv\Scripts\repopilot.exe report RUN_ID --html .\report.html
 ```
 
-运行需要 Git 提交身份和项目已有依赖。Issue、审批与草稿 PR／MR 操作见[主文档](../../README.md#接入-github-与交付)，批准绑定完整提交 SHA；合并与部署由仓库维护者决定。
+运行需要 Git 提交身份和项目已有依赖。Issue、审批与草稿 PR／MR 操作见[平台接入](FORGES.md#使用)，批准绑定完整提交 SHA；合并与部署由仓库维护者决定。
 
 ## 配置和数据目录
 
