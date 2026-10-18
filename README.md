@@ -1,127 +1,126 @@
-# RepoPilot · 通用仓库研发 Agent
+# RepoPilot
 
-RepoPilot 面向由工单驱动的仓库研发：手动接收或自动监听已登记仓库的新 GitHub Issue，在独立 Git worktree 中实现，独立重跑检查，经只读审核 Agent 与有限返工后暂停，人工批准具体提交，再发布草稿 PR。模型内层循环使用 LangChain／LangGraph，当前接入 DeepSeek。
+**把 GitHub Issue 交给研发 Agent，获得可验证、可审核的草稿 PR。**
 
-核心不依赖 Python AST 或 pytest；UTF-8 文件工具与操作者登记的命令支持不同语言仓库。已验证范围及实际运行结果见[真实交付验证](docs/runtime-v2/VALIDATION-05.md)，完整协议见[运行时说明](docs/runtime-v2/README.md)，可按[演示步骤](docs/runtime-v2/DEMO.md)查看真实工单到草稿 PR 的证据。历史 Python 诊断入口和题集仍保留，其结果不代表新运行时的修复效果。
+RepoPilot 面向企业内部及个人维护的可信代码仓库，负责接单、隔离工作区、实现、自检、独立复核和审核返工。每次运行保留需求、补丁、检查、费用及审批证据；人工批准具体提交后，再推送分支并创建草稿 PR。
 
-整体进度、与原始愿景的差距、技术概念及代码阅读顺序见[架构与现状](docs/runtime-v2/ARCHITECTURE.md)。
+[快速开始](#快速开始) · [交付演示](docs/runtime-v2/DEMO.md) · [运行协议](docs/runtime-v2/README.md) · [架构与代码导航](docs/runtime-v2/ARCHITECTURE.md)
 
-记忆、OS隔离、独立评测、展示和合并发布的候选方案及阶段验收见[后续设计](docs/runtime-v2/NEXT.md)，已完成部分与待实施内容分别标注。
+```mermaid
+flowchart LR
+    I[GitHub Issue / 本地需求] --> W[独立工作区]
+    W --> A[实现与自检]
+    A --> V[独立复核]
+    V --> R[审核 Agent]
+    R -->|要求改动| A
+    R -->|通过| H[人工批准指定提交]
+    H --> P[草稿 PR]
+```
 
-新增[两题独立修复评分](evals/repair/README.md)：不调用模型，从固定基线应用候选补丁并运行工作区外验收；目前仅用于公开开发夹具验证评分机制，不代表模型修复成绩。
+## 能做什么
 
-可选[仓库事实记忆](docs/runtime-v2/MEMORY.md)记录带提交与文件指纹的源码书签，供实现、审核和返工定位；新运行用 `--memory` 开启，默认关闭。自动候选需要人工确认，尚无真实模型收益结论。
+| 能力 | 使用方式 |
+| --- | --- |
+| 工单驱动研发 | 手动接入 Issue，或按登记仓库和标签自动监听；每项任务独立 worktree |
+| 通用仓库工具 | 文件读取、搜索、编辑和命名检查，不依赖 Python AST；语言与依赖由操作者配置 |
+| 实现、验证、审核分离 | 编排层独立重跑登记检查，审核 Agent 绑定提交判断，支持有限次返工 |
+| 暂停与恢复 | SQLite 保存阶段检查点与累计用量；中断现场需要显式核对，审批等待不占 worker |
+| 可选 Docker 隔离 | 文件工具和检查进入阶段容器，禁网、限制资源，停止后校验产物；失败不回退宿主 |
+| 可追溯仓库记忆 | 可选文件事实书签，带提交、文件指纹和人工确认；来源变化时失效 |
+| 有证据的人工交接 | 单文件离线报告展示改动、检查、审核、审批与 PR，批准绑定完整 SHA |
 
-可选 [Docker 执行后端](docs/runtime-v2/SANDBOX.md)已接入文件工具、自检、独立验证与审核：每阶段独立容器，凭证留宿主，默认禁网，停止后校验并导入普通文件。Python／Node 的真实容器流程验证见 [VALIDATION-11](docs/runtime-v2/VALIDATION-11.md)，其中模型使用确定性夹具，不是修复效果实验。Docker Sandboxes 的本机失败与普通容器前置探针见[历史记录](docs/runtime-v2/VALIDATION-09.md)。
+核心使用 LangChain／LangGraph 的 Agent 工具循环、DeepSeek、Pydantic 和 SQLite；外层业务状态机负责预算、版本绑定、恢复及交付规则。[技术边界与取舍](docs/runtime-v2/ARCHITECTURE.md)区分已有机制与仍待验证的效果。
 
-## 安装与配置
+## 看一条真实交付
 
-准备 Python 3.12 和 Git；JavaScript 示例另需 Node.js。
+[zhixianji-jobs Issue #1](https://github.com/saikaji0314/zhixianji-jobs/issues/1) → 实现 → 104 项独立检查 → 两轮审核与一次返工 → 人工批准 → [草稿 PR #2](https://github.com/saikaji0314/zhixianji-jobs/pull/2)。该 PR 未合并。
+
+![真实交付报告回放：改动、检查、审核和草稿 PR](docs/demo/delivery-report.gif)
+
+报告把交付概览与详细证据分开：先看工单结果与下一步，再通过导航查看差异、检查输出和审核记录。支持窄屏与离线打开，不依赖前端服务、不调用模型、不执行审批。动图来自真实历史运行的只读浏览回放，不是实时进度。它不展示重复的模型对话，而是直接定位候选改动、检查、审核和交付证据。
+
+[交付演示步骤](docs/runtime-v2/DEMO.md) · [展示材料与历史视频](docs/demo/README.md) · [真实交付验证](docs/runtime-v2/VALIDATION-05.md)
+
+## 快速开始
+
+需要 Python 3.12、Git 和模型 API；以下 JavaScript 示例另需 Node.js。Docker 是可选后端，不是默认安装前提。
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -c constraints.txt -e ".[test]"
-# 已有 .env 时保留内容
+# 已有配置时保留，不覆盖
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-在 `.env` 中填写 `DS_API_KEY`；默认 `DS_BASE_URL=https://api.deepseek.com`、`DS_MODEL=deepseek-flash`、`DS_THINKING=enabled`、`DS_REASONING_EFFORT=low`。旧运行保持冻结配置；新交付演示使用思考模式，SDK 接线保留其工具调用所需字段，但不记录或展示原始思考文本。GitHub 功能另需 `GITHUB_TOKEN` 或 `GH_TOKEN`，权限按目标仓库配置：读取仓库及 Issue、发布分支需要 Contents 写入、创建 PR 需要 Pull requests 写入；只有创建演示 Issue 时才需 Issues 写入。进程环境变量优先。
+在 `.env` 填写 `DS_API_KEY`。默认端点为 `https://api.deepseek.com`，模型为 `deepseek-flash`，支持通过 `DS_BASE_URL / DS_MODEL / DS_THINKING / DS_REASONING_EFFORT` 配置。凭证不写入任务 YAML 或 Git。
 
-## 运行与审批
-
-以下运行命令调用真实模型并产生费用。任务 YAML 声明可信仓库路径、需求和命名检查；路径相对 YAML，命令是参数数组，`{python}` 使用当前解释器。Issue 只提供需求，不能修改本地登记的命令或仓库路径。
+准备示例 Git 仓库，然后运行一项明确的小任务：
 
 ```powershell
-# 本地任务；兼容不写 run 的旧命令
+# 示例文件随项目提供；首次使用时初始化其独立 Git 基线
+$demo = "examples/runtime/fixtures/javascript"
+git -C $demo init -q
+git -C $demo add .
+git -C $demo -c user.name=RepoPilot -c user.email=demo@example.test commit -m "demo baseline"
+
+# 调用真实模型，会产生 API 费用
 .\.venv\Scripts\repopilot.exe run examples/runtime/javascript-implement.yaml
-# GitHub Issue；--task 指向你本机接入的仓库和检查模板
+# 从命令输出取得 RUN_ID，生成可离线查看的报告
+.\.venv\Scripts\repopilot.exe report RUN_ID --html .local/demo/report.html
+```
+
+任务 YAML 指定仓库、需求和可信检查 argv。默认使用本机执行，仅用于可信仓库；启用容器前请按 [Docker 配置](docs/runtime-v2/SANDBOX.md)准备固定镜像和项目依赖。不同语言不需要重写 Agent，但需要相应构建环境和验收命令。
+
+默认每次运行最多 36 次模型调用、40 次工具调用、12 次编辑、3 次返工、300 秒活跃时间和估算 2 元费用。累计预算默认 200 元，暂停恢复不重置账本；费用为估算，实际以供应商账单为准。较复杂任务的参数和 profile 见[运行协议](docs/runtime-v2/README.md)。
+
+## 接入 GitHub 与交付
+
+GitHub 接入另需 `GITHUB_TOKEN` 或 `GH_TOKEN`；权限按目标仓库配置，读取 Issue、推送分支与创建 PR 分别需要相应权限。Issue 提供需求，不能覆盖登记的路径和命令。
+
+```powershell
 .\.venv\Scripts\repopilot.exe issue https://github.com/OWNER/REPO/issues/1 --task task.yaml
-# 在阶段完成后主动暂停，另一个进程继续
-.\.venv\Scripts\repopilot.exe run task.yaml --stop-after implement
 .\.venv\Scripts\repopilot.exe jobs
 .\.venv\Scripts\repopilot.exe status RUN_ID
-# 把这次运行的证据渲染成单文件 HTML，可直接离线打开或截图
-.\.venv\Scripts\repopilot.exe report RUN_ID --html demo.html
-.\.venv\Scripts\repopilot.exe resume RUN_ID
-# 查看差异、检查证据和审核意见后，批准完整 SHA；批准本身不推送
+.\.venv\Scripts\repopilot.exe report RUN_ID --html report.html
+# 核对候选改动与证据后，批准具体提交；批准本身不推送
 .\.venv\Scripts\repopilot.exe approve RUN_ID --commit FULL_SHA --reason "已核对差异与检查"
 .\.venv\Scripts\repopilot.exe publish RUN_ID
-# 也可以拒绝
-.\.venv\Scripts\repopilot.exe reject RUN_ID --commit FULL_SHA --reason "需求尚未满足"
 ```
 
-默认启用工作区和审核，审核通过后的状态是 `awaiting_approval`。只有批准绑定版本才能发布 GitHub 草稿 PR；不会自动合并或发布软件。同一 Issue 重复接入返回已有运行；Issue 内容变化、原始仓库远端不符、审批后版本变化均拒绝发布。失败后可显式 `retry RUN_ID --reason "原因"` 新开一次尝试，旧运行完整保留；同一 Issue 的普通接入始终指向最新尝试。Issue 内容变化不能靠 retry 静默覆盖。
+交付终点为草稿 PR。独立检查失败、审核结论不足或批准后版本变化时不会发布。合并、软件发布和部署继续由仓库维护者决定，不在当前产品范围；有关取舍见[交付边界](docs/runtime-v2/DELIVERY-POLICY.md)。
 
-`--no-review` 只做实现；`--no-workspace` 直接只读原目录、禁用编辑，适合无 Git 的快照。这两种运行不能进入 PR 交付。`--max-rework N` 限定返工次数（默认 3，上限 5）。`completed` 仅表示报告流程完成，需同时核对报告结论，不能当作已修复或已交付。
-
-进程在阶段内部退出时，`resume` 会返回 `recovery_required`，不会盲目重放模型或检查。核对现场后可用 `recover RUN_ID --commit FULL_SHA --reason "现场核对结论"` 接纳当前工作树，再 `resume` 从该阶段重新开始。恢复不逐条重建模型对话；已完成阶段无需重新调用模型，累计用量、编辑次数、返工次数和预算保留。发布中断则直接重试 `publish`，先核对远端副作用。
-
-## 阶段成果展示
-
-![运行报告演示](docs/demo/run-report.gif)
-
-一条工单从需求到人审的完整证据链，可以直接看这段 38 秒演示（[mp4 版](docs/demo/run-report.mp4)，说明见[演示材料](docs/demo/README.md)）。视频里的画面全部来自本机真实运行：
-
-| 环节 | 展示内容 |
-| --- | --- |
-| 复现命令 | `repopilot report RUN_ID` 的真实输出，报告只读已落盘证据 |
-| 关键指标 | 模型调用、工具调用、编辑次数、估算费用、活跃时长 |
-| 阶段时间线 | 工作区创建、编排层复核、审核锚点与结论，按时间顺序 |
-| 实现报告 | 证据分「文件」与「检查」两类，逐条带路径行号或退出码 |
-| 候选改动 | 相对基线的文件清单与统一差异 |
-| 审核与返工 | 结论绑定提交 SHA，发现按严重程度列出并给出建议 |
-| 人工决定 | 批准绑定完整提交与数据摘要，批准本身不推送 |
-| 远端产物 | 草稿 PR 链接与 PR 提交，标明未合并 |
-
-已公开的真实交付：[Issue #1](https://github.com/saikaji0314/zhixianji-jobs/issues/1) → 104 项独立检查 → 两轮审核与一次返工 → 人工批准 → [草稿 PR #2](https://github.com/saikaji0314/zhixianji-jobs/pull/2)（未合并）。
-
-演示视频里那条运行是一条更小的本地工单（同步文档中过期的测试数量：¥0.29、11 次模型调用、23 次工具调用），它没有 Issue、也没有走到人审，所以视频里的报告实际只有**关键指标、阶段时间线、实现报告、候选改动、独立复核、审核与返工**六个区块；上表列的是报告支持的全部区块，人工决定与远端产物出现在已发布的那条运行里。这一点不隐藏：报告按实际状态渲染，没有的区块不会画出来。
-
-单页报告本身也是可交付物：`repopilot report RUN_ID --html <路径>` 生成**单文件、可离线打开**的 HTML，含需求来源、关键指标、阶段时间线、实现报告、候选改动与差异、编排层独立复核、审核与返工、人工决定（绑定提交）与远端 PR。它不调模型、不改结果、无写操作，本机绝对路径与常见凭证会被脱敏，内容经 HTML 转义。详见[展示记录](docs/runtime-v2/VALIDATION-10.md)。
-
-## 自动监听与真实交付
-
-已有真实结果：[zhixianji-jobs Issue #1](https://github.com/saikaji0314/zhixianji-jobs/issues/1) 经实现、104 项独立检查、两轮审核和一次返工，再由用户批准具体提交后创建[草稿 PR #2](https://github.com/saikaji0314/zhixianji-jobs/pull/2)，未合并。[Issue #3](https://github.com/saikaji0314/zhixianji-jobs/issues/3) 则由常驻监听自动接单并完成，93 项检查通过，停在人工审批。
+自动监听可配置仓库、标签、轮询与并发上限：
 
 ```powershell
-# 先复制并修改 watch.example.yaml，登记可信本机仓库、检查和接单标签
-.\.venv\Scripts\repopilot.exe watch --config .local/watch.yaml
+.\.venv\Scripts\repopilot.exe watch --config watch.yaml
 .\.venv\Scripts\repopilot.exe watch --status
 .\.venv\Scripts\repopilot.exe watch --stop
-# 手动接入可使用与成功功能演示一致的执行参数
-.\.venv\Scripts\repopilot.exe issue ISSUE_URL --task task.yaml --profile examples/runtime/deepseek-delivery.yaml
 ```
 
-监听器按仓库和标签准入，SQLite 去重后交给有上限的 worker 进程池，每个任务独立 worktree。默认每 60 秒轮询、一个 worker、同仓库一次一个任务；审批等待不占 worker，失败不自动无限重试。停止后等待当前任务落盘；没有安装系统服务或开机自启。参数与恢复边界见[监听说明](docs/runtime-v2/WATCH.md)。
+默认每 60 秒轮询，一个 worker，同一仓库一次一个任务。没有安装系统服务或开机自启；[监听协议](docs/runtime-v2/WATCH.md)提供配置、停止和残留核查方式。
 
-这两条工单是开发复测，不能代表通用成功率。前期非思考模式的过度调查、接线失败与费用记录均保留；当前仍需人审，模型审核可能遗漏问题。[验证记录](docs/runtime-v2/VALIDATION-05.md)区分真实 GitHub／模型结果和模拟测试。
+## 验证与边界
 
-## 证据与限制
+真实模型和 GitHub 开发复测、FakeModel 流程测试、容器机制测试和修复评测分别记录，不相互替代：
 
-运行数据保存在被忽略的 `.local/runtime/`：`jobs.sqlite3` 是任务状态与审批记录，`budget.sqlite3` 是既有累计预算账本，`locks/` 防止同一任务并行写入，`worktrees/<id>/` 保留工作区，`runs/<id>/` 保存本地证据。
+- [真实交付](docs/runtime-v2/VALIDATION-05.md)：公开个人仓库的小规模开发复测，不能据此计算通用成功率。
+- [容器接入](docs/runtime-v2/VALIDATION-11.md)：Python／Node 真实容器与确定性模型流程；尚无容器后端真实模型交付结论。
+- [独立修复评分](evals/repair/README.md)：两个公开开发夹具验证评分机制，尚无隐藏留出题集成绩。
+- [仓库记忆](docs/runtime-v2/MEMORY.md)：可追溯文件事实，尚无真实模型收益对照结论。
 
-| 产物 | 内容 |
+默认本机检查拥有当前用户权限。可选 Docker 后端有网络、资源、输出和产物边界，但没有工作卷磁盘配额、硬杀后自动回收或 microVM 级隔离；宿主 Git 和 Docker 控制面仍需信任。模型审核不能替代人工判断。运行数据默认放在被忽略的 `.local/runtime/`，不要提交密钥、原始会话或业务运行数据。
+
+## 代码导航与文档
+
+新版代码按职责分包，`repopilot/legacy/` 保存第一代 Python 诊断实现；`repopilot/runtime/` 只保留历史导入兼容。现有运行数据路径不变。升级现有 checkout 后重新执行可编辑安装，以更新命令入口。
+
+| 入口 | 内容 |
 | --- | --- |
-| `input.json` / `events.jsonl` | 冻结输入、配置版本与模型／工具事件 |
-| `report.json` / `changes.json` | 实现结论、相对基线的差异与文件统计 |
-| `verification.json` | 编排层独立执行全部登记检查的真实退出码与输出尾部 |
-| `review.json` / `review-history.json` | 只读审核结论、逐轮提交与 findings |
-| `summary.json` | 最近一次运行或恢复的摘要、用量与原仓库内容是否变化；发布后的最新状态以 `status` 为准 |
-
-审核对象绑定提交。独立检查失败、超时或缺少登记检查时，即使模型批准也不能通过；检查及审核前后工作树必须保持该版本干净。人工批准绑定需求、Issue、提交、审核及验证结果的摘要；发布前再次核对。工作区提交使用单次命令的 Git 身份，不改写原仓库共享配置。
-
-上下文增长时，框架按字节阈值清理较早的读取结果并保留近期内容、工具配对、编辑和检查证据；完整输出仍留在事件中。这不是语义总结，可能需要重新读取文件。
-
-默认每次运行最多 36 次模型请求、40 次工具调用、12 次编辑、3 次返工、300 秒活跃执行时间，估算费用上限 2 元；累计窗口默认 200 元。可在启动或显式 retry 时用 `--profile` 或 `--max-context-bytes`、`--max-tool-calls`、`--max-run-cost-cny` 调整限额，resume 保持原配置。公开的交付 profile 为 48 次模型、80 次工具、24 次编辑、8192 输出 tokens、900 秒和单次 8 元；现有累计账本仍为硬边界。不清零既有账本；失败或用量不明仍保留费用预留。暂停等待不消耗活跃执行期限。费用是保守估算，实付以供应商账单为准。
-
-只用于预先接入的可信仓库。默认 `local` 后端的检查以当前用户权限运行；配置 `execution.backend: docker` 后，文件工具及仓库检查在容器中执行，启动失败不会回退宿主。工具拒绝 `.env*`、`.git`、`.local`、数据目录及链接等路径。Docker 控制端和宿主 Git 仍需信任，当前不是不可信租户平台。远程 tracing 默认关闭；原始输入、差异及日志只留本机，不随 Git 分发。发布使用 GitHub REST 和 Git，不要求安装 `gh`。
-
-## 历史实现
-
-旧版 Python 只读诊断、AST 检索与十题评测保留原路径，说明集中在[历史实现文档](docs/legacy/README.md)。新版业务代码不调用旧版模块，但两版仍共用安装包；边界与保留策略见[架构与现状](docs/runtime-v2/ARCHITECTURE.md)。
-
-## 扩展方向
-
-自动合并、软件发布、跨机器恢复和长期部署仍是后续范围。支持人工触发与常驻监听、默认本机或可选 Docker 执行、审批后草稿 PR。容器卷磁盘配额、硬杀后的自动回收、更强虚拟机隔离仍未完成。历史诊断通过率与新运行时实现效果分别记录。
+| [架构与代码地图](docs/runtime-v2/ARCHITECTURE.md) | 包职责、调用链、新旧边界与阅读顺序 |
+| [设计取舍与阅读路线](docs/runtime-v2/DESIGN.md) | 为什么这样划分职责、可替代方案及逐模块阅读任务 |
+| [运行协议](docs/runtime-v2/README.md) | 工具、状态、恢复、预算和审批 |
+| [Docker 后端](docs/runtime-v2/SANDBOX.md) | 环境准备、权限与产物导入 |
+| [记忆协议](docs/runtime-v2/MEMORY.md) | 事实来源、检索与生命周期 |
+| [历史实现](docs/legacy/README.md) | 旧入口、题集与诊断结果 |
 
 Flask 源码与教程样例来自 Pallets，保留其上游 README 和 BSD-3-Clause 许可证。

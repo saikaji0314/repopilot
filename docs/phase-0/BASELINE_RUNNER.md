@@ -149,4 +149,4 @@ evals/runs/<run-id>/
 - 超时；
 - 单价估算。
 
-路径统一从 `repopilot/config.py` 所在项目推导，不依赖命令的当前工作目录。
+路径统一从 `repopilot/legacy/config.py` 所在项目推导，不依赖命令的当前工作目录。

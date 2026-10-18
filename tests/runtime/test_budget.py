@@ -2,7 +2,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from repopilot.runtime.budget import Budget, RunLimit
+from repopilot.storage.budget import Budget, RunLimit
 
 
 def test_unknown_and_abandoned_calls_remain_accounted_after_restart(tmp_path):

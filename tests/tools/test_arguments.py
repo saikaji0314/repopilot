@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from repopilot.tools.arguments import (
+from repopilot.legacy.tools.arguments import (
     ListFilesArguments,
     ReadFileArguments,
     RunTestArguments,

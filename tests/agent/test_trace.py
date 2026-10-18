@@ -4,8 +4,8 @@ import json
 
 import pytest
 
-from repopilot.agent.schemas import Usage
-from repopilot.agent.trace import TraceEvent, save_trace, save_trace_event
+from repopilot.legacy.agent.schemas import Usage
+from repopilot.legacy.agent.trace import TraceEvent, save_trace, save_trace_event
 
 
 @pytest.mark.parametrize("payload", [[], [{"role": "user", "content": "你好"},

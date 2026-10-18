@@ -1,5 +1,5 @@
-from repopilot.config import TASKS_DIR
-from repopilot.task_loader import get_task_user_prompt, parse_task
+from repopilot.legacy.config import TASKS_DIR
+from repopilot.legacy.task_loader import get_task_user_prompt, parse_task
 
 
 def test_prompt_contains_output_contract_and_no_tool_boundary():

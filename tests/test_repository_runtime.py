@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from repopilot import repository_runtime as runtime
-from repopilot.tools import testing
+from repopilot.legacy import repository_runtime as runtime
+from repopilot.legacy.tools import testing
 
 
 def test_selects_declared_repository_not_global_default(tmp_path, monkeypatch):

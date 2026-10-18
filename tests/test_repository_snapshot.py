@@ -1,4 +1,4 @@
-from repopilot.repository_snapshot import collect_source_files
+from repopilot.legacy.repository_snapshot import collect_source_files
 
 
 def test_snapshot_includes_allowed_text_and_excludes_sensitive_files(tmp_path):

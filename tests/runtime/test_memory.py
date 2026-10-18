@@ -6,9 +6,9 @@ import json
 
 import pytest
 
-from repopilot.runtime.memory import MemoryStore, MAX_CONTEXT_BYTES
-from repopilot.runtime.memory_facts import MemoryFault, capture, repository_id
-from repopilot.runtime.workspace import run_git
+from repopilot.memory.store import MemoryStore, MAX_CONTEXT_BYTES
+from repopilot.memory.facts import MemoryFault, capture, repository_id
+from repopilot.execution.workspace import run_git
 from tests.runtime.test_review_loop import make_repo
 
 
@@ -36,7 +36,7 @@ def test_source_proof_persists_without_cross_repository_reads(tmp_path):
 
 
 def test_worktrees_share_identity_and_unrelated_commit_keeps_fact(tmp_path):
-    from repopilot.runtime.workspace import Workspace
+    from repopilot.execution.workspace import Workspace
     repo = make_repo(tmp_path)
     store = MemoryStore(tmp_path / 'runtime')
     record = store.remember(repo, 'app.py', 1, 1)
@@ -81,7 +81,7 @@ def test_candidates_require_confirmation_and_do_not_resurrect(tmp_path):
 
 
 def test_expired_fact_requires_explicit_revalidation(tmp_path, monkeypatch):
-    from repopilot.runtime import memory
+    import repopilot.memory.store as memory
     repo = make_repo(tmp_path)
     store = MemoryStore(tmp_path / 'runtime')
     record = store.remember(repo, 'app.py', 1, 1)

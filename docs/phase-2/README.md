@@ -10,11 +10,11 @@
 
 | 模块 | 职责 |
 | --- | --- |
-| [schema.py](../../repopilot/retrieval/schema.py) | 文件、符号与命中模型 |
-| [index.py](../../repopilot/retrieval/index.py) | 路径检查、源码扫描与 AST 提取 |
-| [search.py](../../repopilot/retrieval/search.py) | 名称与路径排序 |
-| [context.py](../../repopilot/retrieval/context.py) | 去重、片段选择与字符预算 |
-| [工具包装](../../repopilot/tools/base.py) | 将索引查询接入统一 ToolResult |
+| [schema.py](../../repopilot/legacy/retrieval/schema.py) | 文件、符号与命中模型 |
+| [index.py](../../repopilot/legacy/retrieval/index.py) | 路径检查、源码扫描与 AST 提取 |
+| [search.py](../../repopilot/legacy/retrieval/search.py) | 名称与路径排序 |
+| [context.py](../../repopilot/legacy/retrieval/context.py) | 去重、片段选择与字符预算 |
+| [工具包装](../../repopilot/legacy/tools/base.py) | 将索引查询接入统一 ToolResult |
 
 `search_symbols` 适合已知函数或类名的定义定位；`search_code` 适合变量、配置键、表达式和调用位置。当前采用确定性的轻量索引，未引入 Embedding 或向量数据库；跨文件调用链仍需模型结合搜索与文件读取调查。
 

@@ -2,7 +2,7 @@ import subprocess
 
 import pytest
 
-from repopilot.runtime.workspace import EditBudget, Workspace, WorkspaceError, source_snapshot
+from repopilot.execution.workspace import EditBudget, Workspace, WorkspaceError, source_snapshot
 
 
 def init_repo(root):

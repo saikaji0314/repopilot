@@ -2,9 +2,9 @@
 
 import pytest
 
-from repopilot.runtime import workflow
-from repopilot.runtime.store import JobStore, StateError, job_lock
-from repopilot.runtime.workspace import WorkspaceError, head_commit
+import repopilot.orchestration.workflow as workflow
+from repopilot.storage.jobs import JobStore, StateError, job_lock
+from repopilot.execution.workspace import WorkspaceError, head_commit
 from tests.runtime.test_review_loop import setup, FakeModel, turn, implement_done, review_approved
 
 
@@ -105,7 +105,7 @@ def test_explicit_retry_preserves_old_attempt_and_shared_cost(tmp_path):
 
 
 def test_recover_interrupted_worktree_creation(tmp_path, monkeypatch):
-    from repopilot.runtime.workspace import Workspace
+    from repopilot.execution.workspace import Workspace
     task, settings, root = setup(tmp_path)
     original = Workspace.prepare
     def interrupt(self):
@@ -121,7 +121,7 @@ def test_recover_interrupted_worktree_creation(tmp_path, monkeypatch):
 
 
 def test_independent_check_must_not_mutate_reviewed_tree(tmp_path):
-    from repopilot.runtime.config import Check
+    from repopilot.core.config import Check
     task, settings, root = setup(tmp_path)
     task.checks['unit'] = Check(argv=['{python}', '-c', "from pathlib import Path;Path('app.py').write_text('mutated\\n')"])
     result = workflow.start(task, settings, root, model=FakeModel(responses=[*implementation(), review_approved()]))
@@ -131,7 +131,7 @@ def test_independent_check_must_not_mutate_reviewed_tree(tmp_path):
 
 
 def test_remote_pinned_base_can_resume_without_moving_source_head(tmp_path, monkeypatch):
-    from repopilot.runtime.workspace import Workspace, source_snapshot
+    from repopilot.execution.workspace import Workspace, source_snapshot
     task, settings, root = setup(tmp_path)
     before = source_snapshot(task.repository)
     remote = Workspace(task.repository, tmp_path / 'remote-worktrees').prepare()

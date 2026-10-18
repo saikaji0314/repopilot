@@ -4,8 +4,8 @@ import shutil
 
 import pytest
 
-from repopilot.runtime.config import Check, Task, load_task
-from repopilot.runtime.repository import Repository, build_tools, run_check
+from repopilot.core.config import Check, Task, load_task
+from repopilot.execution.repository import Repository, build_tools, run_check
 
 
 @pytest.mark.parametrize("name", ["main.py", "main.mjs", "main.go", "main.rs", "Makefile"])
@@ -93,7 +93,7 @@ def test_javascript_example_executes_with_node():
 
 
 def test_named_check_can_run_again_after_an_edit(tmp_path):
-    from repopilot.runtime.workspace import EditBudget
+    from repopilot.execution.workspace import EditBudget
     task = task_with(tmp_path, "print('checked')")
     edits = EditBudget(3)
     tools = {t.name: t for t in build_tools(task, lambda: 10, workspace=tmp_path, edits=edits)}

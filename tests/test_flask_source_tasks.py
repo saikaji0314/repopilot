@@ -2,7 +2,7 @@
 import os
 import pytest
 
-from repopilot.config import PROJECT_ROOT
+from repopilot.legacy.config import PROJECT_ROOT
 from scripts.verify_flask_source_tasks import TASK_COUNTS, verify_source_task
 
 

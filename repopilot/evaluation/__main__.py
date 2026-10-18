@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
-from repopilot.runtime.config import PROJECT_ROOT
+from repopilot.core.config import PROJECT_ROOT
 from .grading import evaluate
 
 

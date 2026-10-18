@@ -3,10 +3,10 @@
 import json
 from types import SimpleNamespace
 
-from repopilot.agent.loop import FakeChatModel, agent_loop
-from repopilot.agent.schemas import AgentStatus, ModelTurn, StopReason, ToolCall, Usage
-from repopilot.retrieval.index import build_index
-from repopilot.tools.base import SearchSymbolsTool, ToolRegistry
+from repopilot.legacy.agent.loop import FakeChatModel, agent_loop
+from repopilot.legacy.agent.schemas import AgentStatus, ModelTurn, StopReason, ToolCall, Usage
+from repopilot.legacy.retrieval.index import build_index
+from repopilot.legacy.tools.base import SearchSymbolsTool, ToolRegistry
 
 
 def test_symbols_result_reaches_next_model_request_and_trace(tmp_path):

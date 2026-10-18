@@ -1,7 +1,7 @@
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 
-from repopilot.runtime.agent import make_model
-from repopilot.runtime.config import RuntimeSettings
+from repopilot.agents.loop import make_model
+from repopilot.core.config import RuntimeSettings
 
 
 def test_thinking_preserves_provider_field_and_uses_supported_tool_choice():

@@ -3,18 +3,18 @@
 import pytest
 import json
 
-from repopilot.config import PROJECT_ROOT
-from repopilot.retrieval.index import build_index
-from repopilot.task_loader import parse_task
-from repopilot.tools.base import SearchSymbolsTool, ToolRegistry
-from repopilot.workspace import prepared_task_workspace
+from repopilot.legacy.config import PROJECT_ROOT
+from repopilot.legacy.retrieval.index import build_index
+from repopilot.legacy.task_loader import parse_task
+from repopilot.legacy.tools.base import SearchSymbolsTool, ToolRegistry
+from repopilot.legacy.workspace import prepared_task_workspace
 import json
 
-from repopilot.config import PROJECT_ROOT
-from repopilot.retrieval.index import build_index
-from repopilot.task_loader import parse_task
-from repopilot.tools.base import SearchSymbolsTool, ToolRegistry
-from repopilot.workspace import prepared_task_workspace
+from repopilot.legacy.config import PROJECT_ROOT
+from repopilot.legacy.retrieval.index import build_index
+from repopilot.legacy.task_loader import parse_task
+from repopilot.legacy.tools.base import SearchSymbolsTool, ToolRegistry
+from repopilot.legacy.workspace import prepared_task_workspace
 
 from scripts.verify_ticket_tasks import TASK_IDS, verify_ticket_task
 

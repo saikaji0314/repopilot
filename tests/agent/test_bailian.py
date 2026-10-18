@@ -5,8 +5,8 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from repopilot.agent import bailian
-from repopilot.agent.schemas import ModelTurn
+from repopilot.legacy.agent import bailian
+from repopilot.legacy.agent.schemas import ModelTurn
 
 
 def response(content="最终答案", calls=None):

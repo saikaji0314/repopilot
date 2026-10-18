@@ -1,8 +1,8 @@
 import pytest
 
-from repopilot.runtime.config import Task
-from repopilot.runtime.repository import MAX_WRITE_CHARS, Repository, build_tools
-from repopilot.runtime.workspace import EditBudget
+from repopilot.core.config import Task
+from repopilot.execution.repository import MAX_WRITE_CHARS, Repository, build_tools
+from repopilot.execution.workspace import EditBudget
 
 
 def tool(task, name, edits=None):

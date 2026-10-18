@@ -15,7 +15,7 @@
 
 ## 实现
 
-新增 `repopilot/runtime/report.py`，从 `JobStore` 的状态与 run 目录读取，生成自包含 HTML（内联样式、不含脚本、不引用外部资源）。新增 CLI 子命令：
+新增 `repopilot/presentation/report.py`，从 `JobStore` 的状态与 run 目录读取，生成自包含 HTML（内联样式、不含脚本、不引用外部资源）。新增 CLI 子命令：
 
 ```powershell
 .\.venv\Scripts\repopilot.exe report <run_id> --html <路径>

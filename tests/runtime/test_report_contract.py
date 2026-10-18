@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from repopilot.runtime.agent import CheckEvidence, FileEvidence, Finding, ImplementationReport, ReviewReport
+from repopilot.agents.loop import CheckEvidence, FileEvidence, Finding, ImplementationReport, ReviewReport
 
 
 def file_evidence(**overrides):

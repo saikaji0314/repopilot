@@ -1,4 +1,4 @@
-from repopilot.agent_runner import main
+from repopilot.legacy.agent_runner import main
 
 
 if __name__ == "__main__":

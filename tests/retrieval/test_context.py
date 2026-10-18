@@ -7,8 +7,8 @@
 - max_chars 限制返回文本的长度，包括来源、行号、换行和截断提示。
 """
 
-from repopilot.retrieval import context
-from repopilot.retrieval.schema import HitReason, SearchHit
+from repopilot.legacy.retrieval import context
+from repopilot.legacy.retrieval.schema import HitReason, SearchHit
 
 
 def make_hit(

@@ -6,7 +6,7 @@
 
 ## 步骤 1：明确现有搜索契约
 
-涉及现有 `repopilot/tools/search.py`、`base.py`、`arguments.py` 和 `tests/tools/test_search.py`。保持函数签名与 ToolResult 外壳。
+涉及现有 `repopilot/legacy/tools/search.py`、`base.py`、`arguments.py` 和 `tests/tools/test_search.py`。保持函数签名与 ToolResult 外壳。
 
 约定：query 是区分大小写的非空字面子串，`.*` 不表示正则；path 指目录；不存在返回 `path_not_found`，传文件返回 `not_a_directory`，不能默默当零命中。file_pattern 仍用现有白名单简单扩展名模式，输出相对路径和从 1 开始的行号。
 

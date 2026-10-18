@@ -10,12 +10,13 @@ import tarfile
 import pytest
 from pydantic import ValidationError
 
-from repopilot.runtime.config import Check, ExecutionConfig
-from repopilot.runtime import sandbox_archive as archive
-from repopilot.runtime.sandbox import repository_session
-from repopilot.runtime.sandbox_process import DockerTransport, SandboxError
-from repopilot.runtime import repository, workflow
-from repopilot.runtime.workspace import run_git
+from repopilot.core.config import Check, ExecutionConfig
+import repopilot.execution.archive as archive
+from repopilot.execution.sandbox import repository_session
+from repopilot.execution.transport import DockerTransport, SandboxError
+import repopilot.execution.repository as repository
+import repopilot.orchestration.workflow as workflow
+from repopilot.execution.workspace import run_git
 from tests.runtime.test_review_loop import setup, FakeModel, turn, implement_done, review_approved
 
 IMAGE = 'python@sha256:' + 'a' * 64

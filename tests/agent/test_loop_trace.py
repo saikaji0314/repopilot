@@ -10,8 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from repopilot.agent.loop import FakeChatModel, agent_loop
-from repopilot.agent.schemas import ModelTurn, ToolCall, ToolError, ToolResult, Usage
+from repopilot.legacy.agent.loop import FakeChatModel, agent_loop
+from repopilot.legacy.agent.schemas import ModelTurn, ToolCall, ToolError, ToolResult, Usage
 
 
 def read_json(path):

@@ -1,12 +1,12 @@
 """Flask 源码任务本地预检；不读取密钥、不调用模型。"""
-from repopilot.agent.trace import save_trace
-from repopilot.agent_runner import _run_id
-from repopilot.config import PROJECT_ROOT
-from repopilot.repository_runtime import resolve_repository
-from repopilot.task_loader import parse_task
-from repopilot.tools.testing import run_test
-from repopilot.verification import run_command, verify_task_defect
-from repopilot.workspace import apply_mutation, prepared_task_workspace
+from repopilot.legacy.agent.trace import save_trace
+from repopilot.legacy.agent_runner import _run_id
+from repopilot.legacy.config import PROJECT_ROOT
+from repopilot.legacy.repository_runtime import resolve_repository
+from repopilot.legacy.task_loader import parse_task
+from repopilot.legacy.tools.testing import run_test
+from repopilot.legacy.verification import run_command, verify_task_defect
+from repopilot.legacy.workspace import apply_mutation, prepared_task_workspace
 from scripts.verify_ticket_tasks import _restore
 
 

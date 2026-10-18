@@ -8,10 +8,10 @@ import json
 import subprocess
 from pathlib import Path
 
-from repopilot.config import PROJECT_ROOT
-from repopilot.task_loader import parse_task
-from repopilot.verification import run_command, verify_task_defect
-from repopilot.workspace import apply_mutation, prepared_task_workspace
+from repopilot.legacy.config import PROJECT_ROOT
+from repopilot.legacy.task_loader import parse_task
+from repopilot.legacy.verification import run_command, verify_task_defect
+from repopilot.legacy.workspace import apply_mutation, prepared_task_workspace
 
 
 TASK_IDS = ("flaskr-filter-007", "flaskr-cache-008")

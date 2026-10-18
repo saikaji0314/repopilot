@@ -1,34 +1,49 @@
 # 演示材料
 
-本目录存放可复现的展示材料，全部由本机真实运行产物生成，不含凭证、原始模型会话与个人资料。
+## 当前首页动图
 
-| 文件 | 内容 |
-| --- | --- |
-| [run-report.mp4](run-report.mp4) | 38 秒演示视频：开场 → 复现命令与真实输出 → 整页报告滚动 → 四个区块特写 → 能力与缺口总结 |
-| [run-report.gif](run-report.gif) | 视频关键帧拼成的动图，用于 README 预览（GitHub 不内嵌播放 mp4） |
+[delivery-report.gif](delivery-report.gif)：16.7 秒，868×610，约435 KiB。五幅画面依次浏览交付概览、候选改动、独立复核、审核返工、人工决定与草稿 PR；最后一幅同时包含人工决定和 PR。
 
-## 这条视频展示的是什么
+![真实历史运行的只读报告回放](delivery-report.gif)
 
-运行 `demo-test-count-sync-07d7b2a3519d`：目标仓库 README 写「82 项离线测试」、`docs/validation.md` 写「86 项」，而登记检查实测 93 项。工单要求只改这两处文档并复跑检查。
+静态预览为 [delivery-overview.png](delivery-overview.png)。原始截图来自浏览器，导出时裁掉预览面板外的右侧／底部空白，统一画布，不拉伸、不重排截图内容。PNG 按实际格式重新编码，不用文件扩展名冒充格式。
 
-画面里的每一项都能在本地核对：终端里是真实的 `repopilot report` 命令与输出，报告页是真实的运行状态、候选改动与差异、编排层独立复核的退出码、审核结论与绑定提交。视频不模拟进行中的进度，也不把历史回放说成实时。
+来源是历史运行 `issue-1-1d3bc15b6211`：公开仓库的 [Issue #1](https://github.com/saikaji0314/zhixianji-jobs/issues/1)，104 项测试、两轮审核与一次返工，批准的提交为 `e3ac2677a620a93b844eaae98ab0fa7898efeaed`，产物为[草稿 PR #2](https://github.com/saikaji0314/zhixianji-jobs/pull/2)，尚未合并。
+
+动图是**同一次已结束运行的证据浏览**，不是 Agent 实时执行的录屏；画面切换不表示后台重新执行了实现、检查或发布。生成没有模型费用，也没有远端写入。
 
 ## 重新生成
 
-视频由脚本合成，帧来自真实产物；重新录制不会产生模型费用：
+先用本机已有运行生成离线报告：
 
 ```powershell
-# 1) 生成报告（不调用模型）
-.\.venv\Scripts\repopilot.exe report demo-test-count-sync-07d7b2a3519d --html .local\demo\report.html
-
-# 2) 合成视频（需要 Pillow、Chrome 与 ffmpeg；用带 Pillow 的 Python 运行）
-python scripts/record_demo.py --run-id demo-test-count-sync-07d7b2a3519d --output docs\demo\run-report.mp4
+.\.venv\Scripts\repopilot.exe report RUN_ID --html .local/demo/report.html
 ```
 
-脚本会先用 Chrome 无头渲染整页报告并截图，再按垂直留白切出区块，逐段推进并叠加字幕，最后交给 ffmpeg 编码。它读取的只是该 run 已落盘的 `summary.json` 与报告 HTML。
+在浏览器打开报告，固定视口，依次定位概览、候选改动、独立复核、审核与交付区域并保存截图。不要截取应用外层的聊天面板或空白；不要用不同尺寸的截图直接拉伸拼接。
 
-## 边界
+截图和清单留在被忽略的本地证据目录。清单示例（路径相对清单文件，crop 需按实际截图确定）：
 
-- 这是**开发复测**的回放，不是隐藏评测，也不构成成功率结论。
-- 视频里出现的仓库是公开的个人练习仓库；画面中的工单、提交与检查数字都来自该次真实运行。
-- 本目录没有录屏软件录制的实时操作画面；如需实时演示，命令与步骤见[交付演示](../runtime-v2/DEMO.md)。
+```json
+{
+  "crop": [0, 0, 868, 610],
+  "frames": [
+    {"file": "00-overview.jpg", "duration_ms": 3200},
+    {"file": "02-changes.jpg", "duration_ms": 3500}
+  ]
+}
+```
+
+使用带 Pillow 的 Python 编码，运行时产品不依赖 Pillow：
+
+```powershell
+python scripts/assemble_report_gif.py path/to/frames.json --output docs/demo/delivery-report.gif --poster docs/demo/delivery-overview.png
+```
+
+脚本按图像内容识别输入格式，校验裁切区域，统一裁切并量化成 GIF，同时输出尺寸、帧数、时长和字节数。它不生成页面内容，也不访问凭证、模型或 GitHub。
+
+## 历史视频
+
+[run-report.mp4](run-report.mp4) 与 [run-report.gif](run-report.gif) 保留为前一版报告的38秒演示，来源是另一条较小的本地任务 `demo-test-count-sync-07d7b2a3519d`。它没有接入 Issue，也没有发布 PR；不能拿它代表完整交付。视频由脚本排版、截图及字幕合成，终端画面不是现场终端录屏。
+
+本轮没有重录该视频，历史脚本基于旧布局的像素分段，不能保证适用于当前页面。当前主页以本页的新 GIF 为准。真实执行演示步骤见[交付演示](../runtime-v2/DEMO.md)。

@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 
-from repopilot.tools.search import search_code, search_symbols
-from repopilot.retrieval.index import build_index
+from repopilot.legacy.tools.search import search_code, search_symbols
+from repopilot.legacy.retrieval.index import build_index
 
 
 @pytest.mark.parametrize("line_count, expected_truncated", [(45, False), (180, True)])

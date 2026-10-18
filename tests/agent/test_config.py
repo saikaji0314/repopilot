@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import pytest
 
-from repopilot.config import AgentSettings, load_agent_settings
+from repopilot.legacy.config import AgentSettings, load_agent_settings
 
 
 def _make_settings(tmp_path) -> AgentSettings:

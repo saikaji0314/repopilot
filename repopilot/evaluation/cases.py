@@ -8,8 +8,8 @@ import re
 
 from pydantic import Field
 
-from repopilot.runtime.config import Check, Contract, PROJECT_ROOT, Task
-from repopilot.runtime.repository import linked
+from repopilot.core.config import Check, Contract, PROJECT_ROOT, Task
+from repopilot.execution.repository import linked
 
 CASE_ROOT = PROJECT_ROOT / 'evals' / 'repair' / 'tasks'
 

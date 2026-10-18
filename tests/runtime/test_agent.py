@@ -5,10 +5,10 @@ import pytest
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage
 
-from repopilot.runtime.agent import RunControl, consistent_status, investigate
-from repopilot.runtime.agent import ImplementationReport
-from repopilot.runtime.budget import Budget
-from repopilot.runtime.config import RuntimeSettings, Task
+from repopilot.agents.loop import RunControl, consistent_status, investigate
+from repopilot.agents.loop import ImplementationReport
+from repopilot.storage.budget import Budget
+from repopilot.core.config import RuntimeSettings, Task
 
 
 class ScriptedModel(FakeMessagesListChatModel):

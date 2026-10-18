@@ -14,16 +14,25 @@ import sys
 
 class RejectLegacy(MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname.startswith('repopilot.') and not (
-            fullname == 'repopilot.runtime' or fullname.startswith('repopilot.runtime.')
-        ):
+        if fullname == 'repopilot.legacy' or fullname.startswith('repopilot.legacy.'):
             raise AssertionError('legacy dependency: ' + fullname)
 
 sys.meta_path.insert(0, RejectLegacy())
+import repopilot
+for name in ('agents', 'core', 'delivery', 'execution', 'memory', 'orchestration', 'presentation', 'storage'):
+    package = importlib.import_module('repopilot.' + name)
+    for module in pkgutil.walk_packages(package.__path__, package.__name__ + '.'):
+        importlib.import_module(module.name)
+import repopilot.cli
 import repopilot.runtime
-for module in pkgutil.walk_packages(repopilot.runtime.__path__, 'repopilot.runtime.'):
-    importlib.import_module(module.name)
 """
     result = subprocess.run([sys.executable, '-c', script],
         cwd=Path(__file__).resolve().parents[2], capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
+
+
+def test_compatibility_imports_share_module_identity():
+    from repopilot.runtime import workflow, sandbox
+    import repopilot.orchestration.workflow as actual_workflow
+    import repopilot.execution.sandbox as actual_sandbox
+    assert workflow is actual_workflow and sandbox is actual_sandbox

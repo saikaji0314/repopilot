@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-from repopilot import agent_runner as runner
+from repopilot.legacy import agent_runner as runner
 
 
 def get_main():

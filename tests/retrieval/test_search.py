@@ -1,12 +1,12 @@
 """第 2 期步骤 3：用文件和符号索引检索，不调用模型。"""
 
-from repopilot.retrieval.schema import (
+from repopilot.legacy.retrieval.schema import (
     HitReason,
     RepositoryIndex,
     Symbol,
     SymbolKind,
 )
-from repopilot.retrieval.search import search_index
+from repopilot.legacy.retrieval.search import search_index
 
 
 def make_index(symbols: list[Symbol], files: list[str]) -> RepositoryIndex:

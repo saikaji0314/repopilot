@@ -5,8 +5,8 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel, ConfigDict, StrictStr
 
-from repopilot.agent.schemas import ToolResult
-from repopilot.tools.base import ReadFileTool, Tool, ToolRegistry
+from repopilot.legacy.agent.schemas import ToolResult
+from repopilot.legacy.tools.base import ReadFileTool, Tool, ToolRegistry
 
 
 class EchoArgs(BaseModel):

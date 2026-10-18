@@ -5,7 +5,7 @@ import sys
 
 import pytest
 
-from repopilot.tools import testing
+from repopilot.legacy.tools import testing
 
 
 @pytest.mark.parametrize(

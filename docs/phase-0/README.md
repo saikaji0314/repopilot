@@ -34,10 +34,10 @@
 
 | 模块 | 职责 |
 | --- | --- |
-| [baseline.py](../../repopilot/baseline.py) | 单次调用与结果归档 |
-| [repository_snapshot.py](../../repopilot/repository_snapshot.py) | 仓库快照收集 |
-| [schemas.py](../../repopilot/schemas.py) | 统一诊断答案协议 |
-| [workspace.py](../../repopilot/workspace.py) | 工作副本与缺陷注入 |
-| [verification.py](../../repopilot/verification.py) | 干净基线与缺陷测试验证 |
+| [baseline.py](../../repopilot/legacy/baseline.py) | 单次调用与结果归档 |
+| [repository_snapshot.py](../../repopilot/legacy/repository_snapshot.py) | 仓库快照收集 |
+| [schemas.py](../../repopilot/legacy/schemas.py) | 统一诊断答案协议 |
+| [workspace.py](../../repopilot/legacy/workspace.py) | 工作副本与缺陷注入 |
+| [verification.py](../../repopilot/legacy/verification.py) | 干净基线与缺陷测试验证 |
 
 设计细节：[仓库选型](MAIN_REPOSITORY.md) · [模型选型记录](MODEL_BASELINE.md) · [基线运行说明](BASELINE_RUNNER.md) · [任务格式示例](TASK_SAMPLE.md)。

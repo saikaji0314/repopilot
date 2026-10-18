@@ -8,9 +8,9 @@ import platform
 import shutil
 import tempfile
 
-from repopilot.runtime.repository import run_check
-from repopilot.runtime.config import Check
-from repopilot.runtime.workspace import WorkspaceError, run_git
+from repopilot.execution.repository import run_check
+from repopilot.core.config import Check
+from repopilot.execution.workspace import WorkspaceError, run_git
 from .cases import load_case, tree_digest
 
 MAX_PATCH_BYTES = 300_000

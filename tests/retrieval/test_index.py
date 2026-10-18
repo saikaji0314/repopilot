@@ -2,8 +2,8 @@
 
 import pytest
 
-from repopilot.retrieval.index import build_index
-from repopilot.retrieval.schema import SymbolKind
+from repopilot.legacy.retrieval.index import build_index
+from repopilot.legacy.retrieval.schema import SymbolKind
 
 
 def test_build_index_finds_class_method_and_decorated_async_function(tmp_path):

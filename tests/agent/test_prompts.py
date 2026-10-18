@@ -1,8 +1,8 @@
 """步骤 1：Agent Prompt 与初始消息的测试。"""
 
-from repopilot.agent.prompts import build_initial_messages
-from repopilot.config import TASKS_DIR
-from repopilot.task_loader import get_agent_prompt, parse_task
+from repopilot.legacy.agent.prompts import build_initial_messages
+from repopilot.legacy.config import TASKS_DIR
+from repopilot.legacy.task_loader import get_agent_prompt, parse_task
 
 
 def test_agent_prompt_contains_task_tools_and_final_output_contract():

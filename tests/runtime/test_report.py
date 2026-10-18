@@ -1,9 +1,10 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
 
-from repopilot.runtime import report
+import repopilot.presentation.report as report
 
 
 def sample_state(root: Path) -> dict:
@@ -67,7 +68,7 @@ def render(tmp_path, state=None, **kwargs) -> str:
 def test_report_contains_the_full_evidence_chain(tmp_path):
     html = render(tmp_path)
     for section in ("需求来源", "关键指标", "阶段时间线", "实现报告", "候选改动", "独立复核", "审核与返工", "人工决定", "远端产物"):
-        assert f"<h2>{section}</h2>" in html, section
+        assert re.search(r'<h2(?: id="[^"]+")?>' + re.escape(section) + '</h2>', html), section
     assert "https://example.test/pull/2" in html
     assert "e3ac2677aa" in html
     assert "changes_requested" in html
@@ -175,3 +176,47 @@ def test_run_id_is_escaped_in_the_next_action_block(tmp_path):
     html = report.build(state, run_dir, root)
     assert "<img" not in html, "未转义标签会真的变成元素"
     assert "&lt;img" in html
+
+
+def test_delivery_overview_does_not_turn_completion_into_approval(tmp_path):
+    from repopilot.presentation.layout import delivery_steps
+    state = {'status': 'completed', 'phase': 'approval', 'report': {'status': 'blocked'}}
+    assert all(kind == 'pending' for _, kind, _ in delivery_steps(state, {}))
+    html = render(tmp_path, state=state)
+    assert '报告流程结束' in html and '合并与部署尚未接入' in html
+    assert '不是实时监控' in html
+
+
+def test_failed_checks_and_stale_approval_are_visible(tmp_path):
+    from repopilot.presentation.layout import delivery_steps
+    state = sample_state(tmp_path)
+    state['verified'][0]['exit_code'] = 1
+    state['reviewed_commit'] = 'new-head'
+    steps = {name: (kind, detail) for name, kind, detail in delivery_steps(state, {})}
+    assert steps['独立复核'][0] == 'failed'
+    assert steps['人工审批'] == ('failed', '批准版本已变化')
+
+
+def test_evidence_urls_cannot_execute_scripts(tmp_path):
+    state = sample_state(tmp_path)
+    state['issue']['url'] = 'javascript:alert(1)'
+    state['pull_request']['url'] = 'data:text/html,<script>alert(1)</script>'
+    html = render(tmp_path, state=state)
+    assert "href='javascript:" not in html and "href='data:" not in html
+    assert '<script>' not in html
+
+
+def test_timeline_does_not_invent_findings_and_keeps_round_after_truncation(tmp_path):
+    events = []
+    for number in range(3):
+        events.extend([{'event': 'review_started', 'commit': str(number)},
+                       {'event': 'review_finished', 'verdict': 'changes_requested'}])
+    rows = report.timeline_rows(events, tmp_path, limit=1)
+    assert len(rows) == 1 and '第 3 轮' in rows[0][2]
+    assert '0 条发现' not in rows[0][2]
+
+
+def test_independent_check_error_cannot_be_rendered_as_passed(tmp_path):
+    from repopilot.presentation.sections import checks
+    html = checks([{'name': 'unit', 'exit_code': 0, 'error': 'transport_failed'}], tmp_path)
+    assert 'check-result failed' in html and '未通过' in html

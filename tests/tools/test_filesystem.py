@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from repopilot.tools.filesystem import list_files, read_file
+from repopilot.legacy.tools.filesystem import list_files, read_file
 
 
 def test_list_files_returns_sorted_files_and_directories(tmp_path):

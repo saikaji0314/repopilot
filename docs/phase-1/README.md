@@ -8,12 +8,12 @@
 
 | 模块 | 职责 |
 | --- | --- |
-| [agent/schemas.py](../../repopilot/agent/schemas.py) | 模型轮次、运行状态、停止原因与接口协议 |
-| [agent/bailian.py](../../repopilot/agent/bailian.py) | 模型 SDK 适配 |
-| [agent/loop.py](../../repopilot/agent/loop.py) | 多轮消息、工具观察、恢复与停止 |
-| [tools/base.py](../../repopilot/tools/base.py) | 工具协议、注册与派发 |
-| [tools/arguments.py](../../repopilot/tools/arguments.py) | 工具参数模型 |
-| [agent_runner.py](../../repopilot/agent_runner.py) | 任务环境准备与能力装配 |
+| [agent/schemas.py](../../repopilot/legacy/agent/schemas.py) | 模型轮次、运行状态、停止原因与接口协议 |
+| [agent/bailian.py](../../repopilot/legacy/agent/bailian.py) | 模型 SDK 适配 |
+| [agent/loop.py](../../repopilot/legacy/agent/loop.py) | 多轮消息、工具观察、恢复与停止 |
+| [tools/base.py](../../repopilot/legacy/tools/base.py) | 工具协议、注册与派发 |
+| [tools/arguments.py](../../repopilot/legacy/tools/arguments.py) | 工具参数模型 |
+| [agent_runner.py](../../repopilot/legacy/agent_runner.py) | 任务环境准备与能力装配 |
 
 模型接口与循环分离，单元测试可以使用 Fake 模型构造工具调用、非法答案和异常响应，无需真实 API。
 

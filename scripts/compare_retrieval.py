@@ -7,9 +7,9 @@ from pathlib import Path
 
 import yaml
 
-from repopilot.agent_runner import run_agent, _run_id
-from repopilot.agent.trace import save_trace
-from repopilot.config import PROJECT_ROOT, load_agent_settings
+from repopilot.legacy.agent_runner import run_agent, _run_id
+from repopilot.legacy.agent.trace import save_trace
+from repopilot.legacy.config import PROJECT_ROOT, load_agent_settings
 
 
 def measure_run(run_dir: Path, oracle: dict) -> dict:

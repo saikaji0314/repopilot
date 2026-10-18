@@ -3,7 +3,7 @@ import os
 import pytest
 from pydantic import ValidationError
 
-from repopilot.runtime.config import Check, RuntimeSettings, load_settings, load_task
+from repopilot.core.config import Check, RuntimeSettings, load_settings, load_task
 
 
 def test_ds_file_config_is_private_and_process_environment_wins(tmp_path, monkeypatch):
@@ -50,7 +50,7 @@ def test_check_must_be_an_argv_array_and_not_a_windows_shell_script():
 
 def test_native_deepseek_payload_uses_provider_parameters_without_sdk_retries():
     from langchain_core.messages import HumanMessage
-    from repopilot.runtime.agent import make_model
+    from repopilot.agents.loop import make_model
 
     settings = RuntimeSettings(api_key="synthetic-private")
     model = make_model(settings)

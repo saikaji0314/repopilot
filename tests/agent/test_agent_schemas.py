@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from repopilot.agent.schemas import (
+from repopilot.legacy.agent.schemas import (
     AgentRunStatus,
     AgentStatus,
     ModelTurn,

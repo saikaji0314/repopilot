@@ -3,7 +3,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from repopilot.schemas import BaselineAnswer
+from repopilot.legacy.schemas import BaselineAnswer
 
 
 def _valid_answer() -> dict:

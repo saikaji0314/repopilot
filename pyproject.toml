@@ -26,8 +26,8 @@ dependencies = [
 test = ["coverage>=7.0"]
 
 [project.scripts]
-run-baseline = "repopilot.baseline:main"
-repopilot = "repopilot.runtime.cli:main"
+run-baseline = "repopilot.legacy.baseline:main"
+repopilot = "repopilot.cli:main"
 
 [build-system]
 requires = ["flit_core<4"]

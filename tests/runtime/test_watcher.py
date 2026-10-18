@@ -7,12 +7,13 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
-from repopilot.runtime.config import RuntimeSettings, Task
-from repopilot.runtime.github import GitHub, GitHubError
-from repopilot.runtime import watcher, workflow
-from repopilot.runtime.store import JobStore
-from repopilot.runtime.store import StateError
-from repopilot.runtime.workspace import run_git
+from repopilot.core.config import RuntimeSettings, Task
+from repopilot.delivery.github import GitHub, GitHubError
+import repopilot.delivery.watcher as watcher
+import repopilot.orchestration.workflow as workflow
+from repopilot.storage.jobs import JobStore
+from repopilot.storage.jobs import StateError
+from repopilot.execution.workspace import run_git
 from tests.runtime.test_review_loop import setup, FakeModel, review_approved
 from tests.runtime.test_workflow import implementation
 
@@ -105,7 +106,7 @@ def test_worker_binds_run_before_execution_and_releases_approval_wait(tmp_path, 
         def intake(self, url, template):
             return template, {'repository': 'owner/repo', 'number': 1, 'url': url, 'title': 'change', 'body': 'request'}
         def prepare_base(self, path, repo):
-            from repopilot.runtime.workspace import head_commit
+            from repopilot.execution.workspace import head_commit
             return head_commit(path)
         def close(self): pass
     original = workflow.resume

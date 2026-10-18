@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from repopilot.tools.path_guard import WorkspacePathGuard
+from repopilot.legacy.tools.path_guard import WorkspacePathGuard
 
 
 def test_relative_path_inside_workspace_is_allowed(tmp_path):

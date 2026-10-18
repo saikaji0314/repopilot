@@ -2,8 +2,8 @@ import json
 
 import pytest
 
-from repopilot.runtime import cli
-from repopilot.runtime.config import RuntimeSettings, Task
+import repopilot.cli as cli
+from repopilot.core.config import RuntimeSettings, Task
 
 
 @pytest.mark.parametrize('command', [['jobs'], ['watch', '--status']])

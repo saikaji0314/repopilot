@@ -9,8 +9,8 @@ from types import SimpleNamespace as NS
 
 import pytest
 
-from repopilot import agent_runner as runner
-from repopilot.agent.schemas import AgentResult, AgentStatus, StopReason, Usage
+from repopilot.legacy import agent_runner as runner
+from repopilot.legacy.agent.schemas import AgentResult, AgentStatus, StopReason, Usage
 
 
 @pytest.fixture

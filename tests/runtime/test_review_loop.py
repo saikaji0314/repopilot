@@ -5,8 +5,8 @@ from uuid import uuid4
 from langchain_core.language_models.fake_chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage
 
-from repopilot.runtime.agent import investigate
-from repopilot.runtime.config import Check, RuntimeSettings, Task
+from repopilot.agents.loop import investigate
+from repopilot.core.config import Check, RuntimeSettings, Task
 
 
 class FakeModel(FakeMessagesListChatModel):

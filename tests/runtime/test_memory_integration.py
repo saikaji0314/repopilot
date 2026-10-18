@@ -2,9 +2,11 @@
 
 import json
 
-from repopilot.runtime import agent as engine, cli, workflow
-from repopilot.runtime.memory import MemoryStore
-from repopilot.runtime.store import JobStore
+import repopilot.agents.loop as engine
+import repopilot.cli as cli
+import repopilot.orchestration.workflow as workflow
+from repopilot.memory.store import MemoryStore
+from repopilot.storage.jobs import JobStore
 from tests.runtime.test_memory import add_file
 from tests.runtime.test_review_loop import setup, FakeModel, turn, implement_done, review_approved, review_changes
 

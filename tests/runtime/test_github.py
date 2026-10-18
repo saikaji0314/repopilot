@@ -3,10 +3,10 @@
 import httpx
 import pytest
 
-from repopilot.runtime.github import GitHub, GitHubError, parse_issue, publish
-from repopilot.runtime.store import JobStore, StateError
-from repopilot.runtime import workflow
-from repopilot.runtime.workspace import run_git
+from repopilot.delivery.github import GitHub, GitHubError, parse_issue, publish
+from repopilot.storage.jobs import JobStore, StateError
+import repopilot.orchestration.workflow as workflow
+from repopilot.execution.workspace import run_git
 from tests.runtime.test_review_loop import setup, FakeModel, review_approved
 from tests.runtime.test_workflow import implementation
 
@@ -127,7 +127,7 @@ def test_issue_edit_blocks_publication(tmp_path):
 
 def test_issue_deduplication_avoids_second_model_run(tmp_path):
     state, root, api = github_candidate(tmp_path)
-    from repopilot.runtime.config import Task, RuntimeSettings
+    from repopilot.core.config import Task, RuntimeSettings
     result = workflow.start(Task.model_validate(state["task"]), RuntimeSettings(api_key="synthetic"), root,
         issue=ISSUE, model=FakeModel(responses=[]))
     assert result["run_id"] == state["run_id"]
@@ -135,8 +135,8 @@ def test_issue_deduplication_avoids_second_model_run(tmp_path):
 
 
 def test_git_push_reuses_exact_head_and_rejects_conflicting_branch(tmp_path, monkeypatch):
-    from repopilot.runtime import github as module
-    from repopilot.runtime.workspace import Workspace, head_commit
+    import repopilot.delivery.github as module
+    from repopilot.execution.workspace import Workspace, head_commit
     from tests.runtime.test_review_loop import make_repo
     source = make_repo(tmp_path)
     workspace = Workspace(source, tmp_path / "worktrees").prepare()
@@ -163,8 +163,8 @@ def test_git_push_reuses_exact_head_and_rejects_conflicting_branch(tmp_path, mon
 
 
 def test_fetch_remote_base_does_not_checkout_or_reset_source(tmp_path, monkeypatch):
-    from repopilot.runtime import github as module
-    from repopilot.runtime.workspace import Workspace, head_commit, source_snapshot
+    import repopilot.delivery.github as module
+    from repopilot.execution.workspace import Workspace, head_commit, source_snapshot
     from tests.runtime.test_review_loop import make_repo
     source = make_repo(tmp_path)
     run_git(source, 'remote', 'add', 'origin', 'https://github.com/owner/repo.git')

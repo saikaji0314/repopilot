@@ -6,8 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from repopilot.agent.loop import FakeChatModel, agent_loop
-from repopilot.agent.schemas import (
+from repopilot.legacy.agent.loop import FakeChatModel, agent_loop
+from repopilot.legacy.agent.schemas import (
     AgentStatus,
     ModelTurn,
     StopReason,
@@ -16,9 +16,9 @@ from repopilot.agent.schemas import (
     ToolResult,
     Usage,
 )
-from repopilot.schemas import BaselineAnswer
-from repopilot.tools import testing
-from repopilot.tools.base import RunTestTool, SearchCodeTool, ToolRegistry
+from repopilot.legacy.schemas import BaselineAnswer
+from repopilot.legacy.tools import testing
+from repopilot.legacy.tools.base import RunTestTool, SearchCodeTool, ToolRegistry
 
 
 def _settings(**changes):

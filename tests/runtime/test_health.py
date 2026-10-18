@@ -5,8 +5,8 @@ from contextlib import closing
 
 import pytest
 
-from repopilot.runtime.health import heartbeat_health
-from repopilot.runtime.watcher import IssueQueue
+from repopilot.delivery.health import heartbeat_health
+from repopilot.delivery.watcher import IssueQueue
 
 NOW = datetime(2026, 10, 17, tzinfo=timezone.utc)
 

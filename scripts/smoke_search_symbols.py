@@ -6,21 +6,21 @@
 
 import json
 
-from repopilot.agent.bailian import BailianChatModel
-from repopilot.agent.loop import agent_loop
-from repopilot.agent.prompts import build_initial_messages
-from repopilot.agent.schemas import AgentStatus
-from repopilot.agent.trace import save_trace
-from repopilot.agent_runner import _run_id, task_fields
-from repopilot.config import load_agent_settings
-from repopilot.retrieval.index import build_index
-from repopilot.task_loader import parse_task
-from repopilot.tools.base import (
+from repopilot.legacy.agent.bailian import BailianChatModel
+from repopilot.legacy.agent.loop import agent_loop
+from repopilot.legacy.agent.prompts import build_initial_messages
+from repopilot.legacy.agent.schemas import AgentStatus
+from repopilot.legacy.agent.trace import save_trace
+from repopilot.legacy.agent_runner import _run_id, task_fields
+from repopilot.legacy.config import load_agent_settings
+from repopilot.legacy.retrieval.index import build_index
+from repopilot.legacy.task_loader import parse_task
+from repopilot.legacy.tools.base import (
     ListFilesTool, ReadFileTool, RunTestTool, SearchCodeTool,
     SearchSymbolsTool, ToolRegistry,
 )
-from repopilot.verification import verify_clean_repository, verify_task_defect
-from repopilot.workspace import prepared_task_workspace
+from repopilot.legacy.verification import verify_clean_repository, verify_task_defect
+from repopilot.legacy.workspace import prepared_task_workspace
 
 
 SMOKE_INSTRUCTION = (

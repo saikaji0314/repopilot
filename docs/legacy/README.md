@@ -32,12 +32,12 @@ flowchart LR
 
 | 设计 | 实现与取舍 | 代码入口 |
 | --- | --- | --- |
-| 显式 Agent Loop | 使用原生 `tools` / `tool_calls`，管理多轮消息与工具结果配对 | [loop.py](../../repopilot/agent/loop.py) |
-| 受控工具执行 | 统一工具协议、Pydantic 参数校验、工作区路径检查、指定 pytest 目标 | [工具注册表](../../repopilot/tools/base.py)、[路径检查](../../repopilot/tools/path_guard.py) |
-| 有限错误恢复 | 对允许的工具与错误组合提供一次纠错轮次；最终答案校验失败后提供一次无工具格式恢复，计入原预算 | [Loop 异常路径](../../repopilot/agent/loop.py) |
+| 显式 Agent Loop | 使用原生 `tools` / `tool_calls`，管理多轮消息与工具结果配对 | [loop.py](../../repopilot/legacy/agent/loop.py) |
+| 受控工具执行 | 统一工具协议、Pydantic 参数校验、工作区路径检查、指定 pytest 目标 | [工具注册表](../../repopilot/legacy/tools/base.py)、[路径检查](../../repopilot/legacy/tools/path_guard.py) |
+| 有限错误恢复 | 对允许的工具与错误组合提供一次纠错轮次；最终答案校验失败后提供一次无工具格式恢复，计入原预算 | [Loop 异常路径](../../repopilot/legacy/agent/loop.py) |
 | 可配置资源限制 | 限制模型轮数、工具次数、累计 Token、估算费用及执行时间 | [agent.yaml](../../configs/agent.yaml) |
-| 轻量代码检索 | AST 提取函数与类位置，按名称和路径排序；结果去重并按字符预算选择片段 | [retrieval](../../repopilot/retrieval/index.py) |
-| 可追踪与可比较 | 保存实际工具定义、初始消息、配置和任务哈希；对照脚本固定任务并交替执行两组方案 | [运行器](../../repopilot/agent_runner.py)、[对照脚本](../../scripts/compare_retrieval.py) |
+| 轻量代码检索 | AST 提取函数与类位置，按名称和路径排序；结果去重并按字符预算选择片段 | [retrieval](../../repopilot/legacy/retrieval/index.py) |
+| 可追踪与可比较 | 保存实际工具定义、初始消息、配置和任务哈希；对照脚本固定任务并交替执行两组方案 | [运行器](../../repopilot/legacy/agent_runner.py)、[对照脚本](../../scripts/compare_retrieval.py) |
 
 工具包括 `list_files`、`read_file`、`search_code`、`run_test`，以及可选的 `search_symbols`。字面搜索用于变量、配置键与调用位置，符号检索用于已知函数或类的定义定位。索引在缺陷工作副本准备后构建，避免读取干净版本；通过 AST 解析源码，无需导入被分析模块。
 
@@ -104,9 +104,9 @@ Copy-Item .env.example .env
 ## 代码与文档导航
 
 ```text
-repopilot/agent/       模型适配、循环协议与 Trace
-repopilot/tools/       工具注册、参数模型与执行边界
-repopilot/retrieval/   AST 索引、排序与上下文片段
+repopilot/legacy/agent/       模型适配、循环协议与 Trace
+repopilot/legacy/tools/       工具注册、参数模型与执行边界
+repopilot/legacy/retrieval/   AST 索引、排序与上下文片段
 scripts/              运行、预检与对照入口
 evals/tasks/          任务输入、缺陷补丁和评测 Oracle
 evals/reports/        已归档的评测结果与失败分析
@@ -122,3 +122,6 @@ tests/                循环、工具、检索及题集回归测试
 
 
 Flask 源码与教程样例来自 Pallets，保留其上游 README 和 BSD-3-Clause 许可证。
+
+
+源码位置更新（2026-10-18）：第一代实现已集中到 `repopilot/legacy/`，Python导入使用 `repopilot.legacy.*`；`run-baseline`命令保留。新版独立评分位于 `repopilot/evaluation/`，不属于本历史实现。题集、补丁与历史报告保留原路径。
