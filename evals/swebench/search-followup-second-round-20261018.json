@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "parent_protocol": "search-followup-20261018.json",
+  "first_round_revision": "664f843",
+  "first_round_observations": {
+    "sympy__sympy-20212": {"model_calls": 24, "search_calls": 14, "scoped_searches": 12, "first_edit_tool_position": null, "stop_reason": "max_model_calls", "official_status": "empty_patch"},
+    "sympy__sympy-19254": {"model_calls": 21, "search_calls": 20, "scoped_searches": 14, "first_edit_tool_position": 38, "stop_reason": "context_bytes", "official_status": "unresolved"}
+  },
+  "single_change": "Budget-aware investigation convergence guidance in editable implementation/rework phases after at least one third of model calls and three distinct successful read/search/list observations, while no edits have succeeded. Read-only/reviewer phases are excluded. Guidance stops after an edit and permits an honest blocked report; no tool is disabled.",
+  "unchanged": ["model and thinking parameters", "all execution limits", "tasks and registered checks", "memory disabled", "scoped search API", "official grader"],
+  "verification": "One fresh attempt for each of the same two instances. Record all outcomes and stop; no further harness tuning in this increment.",
+  "estimated_additional_cap_cny": 4,
+  "estimated_total_cap_cny": 8
+}
