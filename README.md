@@ -29,7 +29,7 @@ flowchart LR
 | 可追溯仓库记忆 | 可选文件事实书签，带提交、文件指纹和人工确认；来源变化时失效 |
 | 有证据的人工交接 | 单文件离线报告展示改动、检查、审核、审批与 PR，批准绑定完整 SHA |
 
-核心使用 LangChain／LangGraph 的 Agent 工具循环、DeepSeek、Pydantic 和 SQLite；外层业务状态机负责预算、版本绑定、恢复及交付规则。[技术边界与取舍](docs/runtime-v2/ARCHITECTURE.md)区分已有机制与仍待验证的效果。
+核心使用 LangChain／LangGraph 的 Agent 工具循环、Pydantic 和 SQLite；默认 DeepSeek，另提供 Qwen／兼容接口与 Claude 的[模型配置入口](docs/runtime-v2/MODELS.md)，后者目前仅完成离线兼容验证。外层业务状态机负责预算、版本绑定、恢复及交付规则。[技术边界与取舍](docs/runtime-v2/ARCHITECTURE.md)区分已有机制与仍待验证的效果。
 
 ## 看一条真实交付
 
@@ -53,6 +53,8 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
 在 `.env` 填写 `DS_API_KEY`。默认端点为 `https://api.deepseek.com`，模型为 `deepseek-flash`，支持通过 `DS_BASE_URL / DS_MODEL / DS_THINKING / DS_REASONING_EFFORT` 配置。凭证不写入任务 YAML 或 Git。
+
+使用其他模型时，按[模型配置](docs/runtime-v2/MODELS.md)填写 `REPOPILOT_PROVIDER`、密钥、端点、模型及估算价格；Claude 另需可选依赖。不会自动将 DeepSeek 的密钥或价格用于其他供应商。
 
 准备示例 Git 仓库，然后运行一项明确的小任务：
 

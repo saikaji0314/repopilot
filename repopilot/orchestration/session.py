@@ -1,6 +1,6 @@
 """单次执行会话：恢复计数、保存检查点、调度阶段并统一收敛错误。"""
 
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 import json
 from threading import RLock
 import time
@@ -20,6 +20,18 @@ CONTROL_FIELDS = ("model_calls", "tool_calls", "input_tokens", "output_tokens",
                   "accounted_cny", "checks", "progress")
 
 
+def installed_versions(provider):
+    packages = ("langchain", "langgraph", {"deepseek": "langchain-deepseek",
+                "anthropic": "langchain-anthropic"}.get(provider, "langchain-openai"))
+    result = {}
+    for package in packages:
+        try:
+            result[package] = version(package)
+        except PackageNotFoundError:
+            result[package] = None
+    return result
+
+
 class RunSession:
     def __init__(self, store, state, settings, model):
         self.store, self.state = store, state
@@ -37,8 +49,7 @@ class RunSession:
         self.saving = RLock()
         self.trace.on_event = self.checkpoint
         self.trace.save("input.json", {"task": state["task"], "settings": state["settings"],
-            "issue": state["issue"], "versions": {n: version(n) for n in
-                ("langchain", "langgraph", "langchain-deepseek")}})
+            "issue": state["issue"], "versions": installed_versions(settings.provider)})
         usable_model = engine.make_model(settings) if model is None else model
         self.runner = PhaseRunner(state, Task.model_validate(state["task"]), settings,
             self.control, self.trace, self.edits, usable_model, attach(state, store.root),

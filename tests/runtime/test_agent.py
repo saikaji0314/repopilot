@@ -115,10 +115,11 @@ def test_tool_limit_stops_further_execution(tmp_path):
     assert summary["model_calls"] == 2
 
 
-def test_truncated_completion_is_a_limit_with_usage_not_a_format_error(tmp_path):
+@pytest.mark.parametrize("metadata", [{"finish_reason": "length"}, {"stop_reason": "max_tokens"}])
+def test_truncated_completion_is_a_limit_with_usage_not_a_format_error(tmp_path, metadata):
     task, settings, output = setup(tmp_path)
     truncated = message("ImplementationReport", {"status": "implemented"})
-    truncated.response_metadata["finish_reason"] = "length"
+    truncated.response_metadata.update(metadata)
     model = ScriptedModel(responses=[truncated])
     summary = investigate(task, settings, output, model=model, workspace=False)
     assert summary["stop_reason"] == "max_output_tokens", summary

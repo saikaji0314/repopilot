@@ -16,7 +16,7 @@ from langchain.agents.structured_output import StructuredOutputValidationError, 
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import SystemMessage
 from langchain_core.utils.function_calling import convert_to_openai_tool
-from langchain_deepseek import ChatDeepSeek
+from repopilot.agents.models import DeepSeekModel, make_model
 from langsmith import tracing_context
 from pydantic import Field, ValidationError, model_validator
 
@@ -247,7 +247,8 @@ class RunControl(AgentMiddleware):
                          output_tokens=output_tokens, estimated_cny=cost,
                          finish_reasons=[m.response_metadata.get("finish_reason") for m in messages],
                          tool_calls=[call for m in messages for call in getattr(m, "tool_calls", [])])
-        if any(m.response_metadata.get("finish_reason") == "length" for m in messages):
+        if any(m.response_metadata.get("finish_reason") == "length" or
+               m.response_metadata.get("stop_reason") == "max_tokens" for m in messages):
             raise RunLimit("max_output_tokens")
         self.remaining()
 
@@ -308,31 +309,6 @@ def consistent_status(report: ImplementationReport, changes: dict) -> Implementa
         return ImplementationReport.model_validate({**report.model_dump(mode="json"), "status": "blocked",
                                                     "questions": report.questions or ["实现报告声称已完成，但工作区没有任何文件变更"]})
     return report
-
-
-class DeepSeekModel(ChatDeepSeek):
-    """补齐当前适配器遗漏的思考字段回传；不记录或展示原始思考文本。"""
-
-    def _get_request_payload(self, input_, *, stop=None, **kwargs):
-        payload = super()._get_request_payload(input_, stop=stop, **kwargs)
-        if (self.extra_body or {}).get("thinking", {}).get("type") == "enabled":
-            # ToolStrategy 默认强制 required；DeepSeek 思考模式仅接受 auto／none。
-            if payload.get("tool_choice") == "required" or isinstance(payload.get("tool_choice"), dict):
-                payload["tool_choice"] = "auto"
-            messages = self._convert_input(input_).to_messages()
-            for original, outbound in zip(messages, payload["messages"], strict=True):
-                if outbound["role"] == "assistant":
-                    outbound["reasoning_content"] = original.additional_kwargs.get("reasoning_content") or ""
-        return payload
-
-
-def make_model(settings: RuntimeSettings):
-    return DeepSeekModel(
-        model=settings.model, api_key=settings.api_key, api_base=settings.base_url,
-        max_tokens=settings.max_output_tokens, timeout=settings.request_timeout_seconds,
-        max_retries=0, streaming=False,
-        extra_body={"thinking": {"type": settings.thinking}, "reasoning_effort": settings.reasoning_effort},
-    )
 
 
 def validation_details(exc: Exception) -> list[str]:

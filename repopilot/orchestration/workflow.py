@@ -6,7 +6,7 @@ from uuid import uuid4
 
 from repopilot.agents import loop as engine
 from repopilot.storage.budget import Budget
-from repopilot.core.config import RuntimeSettings, Task
+from repopilot.core.config import RuntimeSettings, Task, execution_options
 from repopilot.orchestration.session import execute_run
 from repopilot.orchestration.state import TERMINAL, approval_digest, attach, canonical_hash
 from repopilot.storage.jobs import JobStore, StateError, job_lock, timestamp
@@ -41,6 +41,14 @@ def create_job(task, settings, output_root, *, workspace=True, review=True,
     return state
 
 
+def frozen_settings(saved, current, overrides=None):
+    """恢复旧模型配置；只从匹配供应商端点取得当前凭证，允许同端点轮换密钥。"""
+    if (saved.get("provider", "deepseek"), saved["base_url"]) != (current.provider, current.base_url):
+        raise StateError("model_credentials_endpoint_mismatch")
+    return RuntimeSettings.model_validate({**saved, **execution_options(overrides or {}),
+                                          "api_key": current.api_key})
+
+
 def retry(run_id, settings, root, *, reason, overrides=None, model=None, stop_after=None, base_commit=None):
     """明确开始新尝试，保留失败运行及同一累计预算；不自动循环重试。"""
     store = JobStore(root)
@@ -51,7 +59,7 @@ def retry(run_id, settings, root, *, reason, overrides=None, model=None, stop_af
             raise StateError("retry_requires_finished_attempt")
         if not reason.strip():
             raise StateError("reason_required")
-        frozen = RuntimeSettings.model_validate({**state["settings"], **(overrides or {}), "api_key": settings.api_key})
+        frozen = frozen_settings(state["settings"], settings, overrides)
         return start(Task.model_validate(state["task"]), frozen, root, model=model,
             workspace=state["workspace_enabled"], review=state["review_enabled"],
             require_approval=state["require_approval"], issue=state["issue"], stop_after=stop_after,
@@ -62,7 +70,7 @@ def resume(run_id, settings, output_root, *, model=None, stop_after=None):
     store = JobStore(output_root)
     with job_lock(store.root, run_id):
         state = store.get(run_id)
-        settings = RuntimeSettings.model_validate({**state["settings"], "api_key": settings.api_key})
+        settings = frozen_settings(state["settings"], settings)
         if state["in_flight"] == "publish":
             return snapshot(store, state, settings)
         if state["in_flight"]:

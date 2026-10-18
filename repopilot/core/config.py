@@ -84,6 +84,7 @@ def load_task(path: Path) -> Task:
 
 
 class RuntimeSettings(Contract):
+    provider: Literal["deepseek", "openai-compatible", "qwen", "anthropic"] = "deepseek"
     api_key: SecretStr = Field(repr=False)
     base_url: str = "https://api.deepseek.com"
     model: str = "deepseek-flash"
@@ -104,11 +105,21 @@ class RuntimeSettings(Contract):
     input_cny_per_million: float = Field(default=3, gt=0)
     output_cny_per_million: float = Field(default=12, gt=0)
 
+    @model_validator(mode="after")
+    def provider_contract(self):
+        if self.provider != "deepseek":
+            required = {"model", "base_url", "input_cny_per_million", "output_cny_per_million"}
+            if not required <= self.model_fields_set:
+                raise ValueError("non-DeepSeek providers require explicit model, base_url and CNY token rates")
+            if self.thinking != "disabled":
+                raise ValueError("thinking is currently supported only by the DeepSeek adapter")
+        return self
+
     @field_validator("api_key")
     @classmethod
     def key_present(cls, value):
         if not value.get_secret_value().strip():
-            raise ValueError("DS_API_KEY is required")
+            raise ValueError("model API key is required")
         return value
 
     @field_validator("base_url")
@@ -117,14 +128,14 @@ class RuntimeSettings(Contract):
         url = urlsplit(value)
         if (url.scheme != "https" or not url.hostname or url.username or
                 url.password or url.query or url.fragment):
-            raise ValueError("DS_BASE_URL must be an HTTPS URL without credentials")
+            raise ValueError("model base_url must be an HTTPS URL without credentials")
         return value.rstrip("/")
 
     @field_validator("model")
     @classmethod
     def model_present(cls, value):
         if not value.strip():
-            raise ValueError("DS_MODEL must not be empty")
+            raise ValueError("model must not be empty")
         return value.strip()
 
 
@@ -134,15 +145,23 @@ def load_settings(env_file: Path = PROJECT_ROOT / ".env") -> RuntimeSettings:
     def get(name, default):
         return os.environ.get(name, file_values.get(name)) or default
 
-    return RuntimeSettings(
-        api_key=get("DS_API_KEY", ""),
-        base_url=get("DS_BASE_URL", "https://api.deepseek.com"),
-        model=get("DS_MODEL", "deepseek-flash"),
-        thinking=get("DS_THINKING", "enabled"),
-        reasoning_effort=get("DS_REASONING_EFFORT", "low"),
+    provider = get("REPOPILOT_PROVIDER", "deepseek")
+    legacy = provider == "deepseek"
+    options = dict(
+        provider=provider,
+        api_key=get("REPOPILOT_API_KEY", get("DS_API_KEY", "") if legacy else ""),
+        base_url=get("REPOPILOT_BASE_URL", get("DS_BASE_URL", "https://api.deepseek.com") if legacy else ""),
+        model=get("REPOPILOT_MODEL", get("DS_MODEL", "deepseek-flash") if legacy else ""),
+        thinking=get("DS_THINKING", "enabled") if legacy else "disabled",
+        reasoning_effort=get("DS_REASONING_EFFORT", "low") if legacy else "low",
         budget_cny=get("REPOPILOT_BUDGET_CNY", 200),
         memory_enabled=get("REPOPILOT_MEMORY_ENABLED", "false"),
     )
+    for key in ("input_cny_per_million", "output_cny_per_million"):
+        value = get("REPOPILOT_" + key.upper(), None)
+        if value is not None:
+            options[key] = value
+    return RuntimeSettings(**options)
 
 
 EXECUTION_OPTIONS = {"max_model_calls", "max_tool_calls", "max_edits", "max_rework", "max_output_tokens",

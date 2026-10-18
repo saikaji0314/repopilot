@@ -52,7 +52,7 @@ GitHub 仅接收标准 `https://github.com/OWNER/REPO/issues/N`；Issue 必须�
 
 默认模型请求 36、工具调用 40、编辑 12、返工 3（最大 5）、输出 2048 tokens、上下文 60,000 bytes。活跃执行期限 300 秒，暂停等待不计时；HTTP 超时不超过 30 秒，检查按剩余时间收紧。无法保证毫秒级硬截止或清理刻意脱离的后台进程。采用 LangChain ContextEditingMiddleware／ClearToolUsesEdit：按字节计数，在上限一半处开始清理较早的读取输出，随上下文大小保留最近 5–12 条（极小上限至少 2 条），保留工具配对、编辑和检查结果，本地事件仍保留完整输出。它不生成语义摘要，可能丢失此前源码细节；最终超过硬上限仍停止。启动或 retry 可显式调整 --max-context-bytes（最大 500,000）与 --max-tool-calls（最大 200），resume 不放大原限额。
 
-预算在每次模型请求前由 SQLite 原子预留。每次运行估算上限 2 元；累计账本默认 200 元，不按日期清零、不自动放大。缺失用量或中断保留预留。估算输入按字节加余量，单价输入 3／输出 12 元每百万 tokens，不折扣缓存；不是供应商实付或账户级限额。
+预算在每次模型请求前由 SQLite 原子预留。每次运行估算上限 2 元；累计账本默认 200 元，不按日期清零、不自动放大。缺失用量或中断保留预留。估算输入按字节加余量，DeepSeek 默认估算单价输入 3／输出 12 元每百万 tokens，其他供应商须显式配置；不折扣缓存，不是供应商实付或账户级限额。
 
 本地原始证据见 `runs/<id>/`；状态与审批在 `jobs.sqlite3`，费用在 `budget.sqlite3`。状态库是本机可信数据，不具备防恶意管理员篡改的签名。JSON 产物原子替换，但非跨文件事务，恢复以 SQLite 为准。本机后端输出先写临时文件，未设置磁盘配额；Docker 后端有流式输出限额，但工作卷仍无磁盘配额。密钥替换不是通用脱敏器，不提交原始日志。
 
@@ -72,6 +72,8 @@ GitHub 仅接收标准 `https://github.com/OWNER/REPO/issues/N`；Issue 必须�
 
 
 ## 交付 profile 与模型接线
+
+供应商选择、参数边界和恢复凭证规则见[模型配置](MODELS.md)，离线适配证据见[增量16](VALIDATION-16.md)。5 题开发基线暴露的工具、上下文、阶段预算及记忆证据边界见[Harness 诊断](HARNESS-FINDINGS.md)。
 
 `run / issue / retry --profile PATH` 接收经过校验的执行参数 YAML，直接命令行参数优先。只允许调整单次执行限制与思考选项，不接受 API key、端点、模型名或累计预算。`examples/runtime/deepseek-delivery.yaml` 是真实功能演示使用的参数；凭证与模型配置仍来自 .env，resume 不改变已冻结的参数。
 
