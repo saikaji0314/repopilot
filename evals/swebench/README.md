@@ -73,3 +73,5 @@ swebench eval case-01/scoring-record.jsonl -p reference-01/predictions.jsonl \
 API 推理可能收费；本地评分也需要下载与算力。“离线评测”不等于无网络或零成本。恢复、审批、预算、监听和执行隔离继续用专门协议测试，不能由 SWE-bench 分数代替。
 
 上游来源：[评分器源码与许可](https://github.com/SWE-bench/SWE-bench)、[Lite 数据集](https://huggingface.co/datasets/SWE-bench/SWE-bench_Lite)。下载的数据、答案、日志与第三方 checkout 留在本地，不随本仓库分发。实际验证见 [增量13](../../docs/runtime-v2/VALIDATION-13.md)。
+
+首轮完整开发子集见[冻结的5题协议](development-20261018.json)、[脱敏结果](results-20261018.json)与[增量15](../../docs/runtime-v2/VALIDATION-15.md)：2/5官方验收通过，1/5同时完成本地复核与审核，估算费用2.703557元。与同一工具调用序列的生命周期对照一起，验证了超限产物保存修复；不据此宣称生产级可靠性或组件带来修复率提升。

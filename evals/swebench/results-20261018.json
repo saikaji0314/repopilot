@@ -1,0 +1,330 @@
+{
+  "active_seconds": 423.781,
+  "cases": [
+    {
+      "active_seconds": 88.25,
+      "base_commit": "cffd4e0f86fefd4802349a9f9b19ed70934ea354",
+      "context_editing_observed": true,
+      "estimated_cost_cny": 0.414072,
+      "instance_id": "sympy__sympy-20590",
+      "max_observed_input_bytes": 52795,
+      "model_calls": 17,
+      "official_resolved": true,
+      "official_status": "resolved",
+      "patch_bytes": 1000,
+      "patch_sha256": "f080629b0977fb0974e36abd7ae399a3611899298149db7967be15b6be736cc9",
+      "predictions_sha256": "2d43f8fbd1403d63adbaabc2323a88a7a7e905dac86c6530d94909e8e7008115",
+      "public_tests": [
+        {
+          "exit_code": 0,
+          "name": "import-workspace",
+          "timed_out": false,
+          "truncated": false
+        },
+        {
+          "exit_code": 0,
+          "name": "public-tests",
+          "timed_out": false,
+          "truncated": false
+        }
+      ],
+      "reference_resolved": true,
+      "repopilot_dirty": false,
+      "repopilot_revision": "2c842aceb3b7c724ec67b1c653e16113670da89c",
+      "run_id": "bench-sympy__sympy-20590-2e2900b8dde3",
+      "scoring_image": {
+        "id": "sha256:3a282752833ce34730ee0621e22033501c993f45742775ca57f04c9ff27178a0",
+        "repo_digests": [
+          "swebench/sweb.eval.x86_64.sympy_1776_sympy-20590@sha256:3a282752833ce34730ee0621e22033501c993f45742775ca57f04c9ff27178a0"
+        ],
+        "requested": "swebench/sweb.eval.x86_64.sympy_1776_sympy-20590:latest"
+      },
+      "scoring_record_sha256": "0b40172c76108724be0e7ad6641e74ff51c1e43799c023ec993665d6e84b01b2",
+      "source_unchanged": true,
+      "stop_reason": "max_tool_calls",
+      "tokens": {
+        "input_tokens": 122180,
+        "output_tokens": 3961
+      },
+      "tool_calls": 40,
+      "tool_counts": {
+        "list_files": 1,
+        "read_file": 17,
+        "replace_in_file": 2,
+        "run_registered_check": 2,
+        "search_text": 18
+      },
+      "wall_seconds": 89.407,
+      "workflow_status": "limit_reached"
+    },
+    {
+      "active_seconds": 50.437,
+      "base_commit": "d57aaf064041fe52c0fa357639b069100f8b28e1",
+      "context_editing_observed": true,
+      "estimated_cost_cny": 0.287923,
+      "instance_id": "sympy__sympy-20049",
+      "max_observed_input_bytes": 60622,
+      "model_calls": 9,
+      "official_resolved": false,
+      "official_status": "empty_patch",
+      "patch_bytes": 0,
+      "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "predictions_sha256": "712e5e7bed14d0720b8b155b2b2e426e68360a584d5632fa16f02dbb81d2bc10",
+      "public_tests": [],
+      "reference_resolved": true,
+      "repopilot_dirty": false,
+      "repopilot_revision": "2c842aceb3b7c724ec67b1c653e16113670da89c",
+      "run_id": "bench-sympy__sympy-20049-70a4e3a0d2be",
+      "scoring_image": {
+        "id": "sha256:61abec126653930f705ca9d1fddb1ed7b7ac338a15af1d8377de7ef584aa1284",
+        "repo_digests": [
+          "swebench/sweb.eval.x86_64.sympy_1776_sympy-20049@sha256:61abec126653930f705ca9d1fddb1ed7b7ac338a15af1d8377de7ef584aa1284"
+        ],
+        "requested": "swebench/sweb.eval.x86_64.sympy_1776_sympy-20049:latest"
+      },
+      "scoring_record_sha256": "f87db24aaada8c9d471a69b89a7bb2db5a11af5449f9f06042953068b90cbb3b",
+      "source_unchanged": true,
+      "stop_reason": "max_output_tokens",
+      "tokens": {
+        "input_tokens": 73810,
+        "output_tokens": 5541
+      },
+      "tool_calls": 11,
+      "tool_counts": {
+        "list_files": 1,
+        "read_file": 7,
+        "search_text": 3
+      },
+      "wall_seconds": 52.375,
+      "workflow_status": "limit_reached"
+    },
+    {
+      "active_seconds": 84.25,
+      "base_commit": "a106f4782a9dbe7f8fd16030f15401d977e03ae9",
+      "context_editing_observed": true,
+      "estimated_cost_cny": 0.768582,
+      "instance_id": "sympy__sympy-20212",
+      "max_observed_input_bytes": 88540,
+      "model_calls": 24,
+      "official_resolved": false,
+      "official_status": "empty_patch",
+      "patch_bytes": 0,
+      "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "predictions_sha256": "420bf37edde59b784cc6e92d31bb8ed3a060d7c42f9130b128752141ddbeef12",
+      "public_tests": [],
+      "reference_resolved": true,
+      "repopilot_dirty": false,
+      "repopilot_revision": "2c842aceb3b7c724ec67b1c653e16113670da89c",
+      "run_id": "bench-sympy__sympy-20212-9b0c02deb73d",
+      "scoring_image": {
+        "id": "sha256:10acbbc49c1905919809c0d8ca6305ee0d5e546fa541246c18fca3e222f79626",
+        "repo_digests": [
+          "swebench/sweb.eval.x86_64.sympy_1776_sympy-20212@sha256:10acbbc49c1905919809c0d8ca6305ee0d5e546fa541246c18fca3e222f79626"
+        ],
+        "requested": "swebench/sweb.eval.x86_64.sympy_1776_sympy-20212:latest"
+      },
+      "scoring_record_sha256": "fca33773ee1d11c35f6eff81b19c757c879ae234585700fa93115fb4d2b27b7a",
+      "source_unchanged": true,
+      "stop_reason": "max_model_calls",
+      "tokens": {
+        "input_tokens": 224582,
+        "output_tokens": 7903
+      },
+      "tool_calls": 36,
+      "tool_counts": {
+        "list_files": 1,
+        "read_file": 11,
+        "search_text": 24
+      },
+      "wall_seconds": 86.062,
+      "workflow_status": "limit_reached"
+    },
+    {
+      "active_seconds": 88.922,
+      "base_commit": "25fbcce5b1a4c7e3956e6062930f4a44ce95a632",
+      "context_editing_observed": true,
+      "estimated_cost_cny": 0.395106,
+      "instance_id": "sympy__sympy-19487",
+      "max_observed_input_bytes": 48289,
+      "model_calls": 15,
+      "official_resolved": true,
+      "official_status": "resolved",
+      "patch_bytes": 1797,
+      "patch_sha256": "5e6e35bd2a4e536b65763b3763c4a39fed19ad0febce1396d255986d0554c0e9",
+      "predictions_sha256": "c46d63dd556a386f0c6d660bf510f5180ebc73576ba1f436b74da6aa2b1d29ca",
+      "public_tests": [
+        {
+          "exit_code": 0,
+          "name": "import-workspace",
+          "timed_out": false,
+          "truncated": false
+        },
+        {
+          "exit_code": 0,
+          "name": "public-tests",
+          "timed_out": false,
+          "truncated": false
+        }
+      ],
+      "reference_resolved": true,
+      "repopilot_dirty": false,
+      "repopilot_revision": "2c842aceb3b7c724ec67b1c653e16113670da89c",
+      "run_id": "bench-sympy__sympy-19487-ce271119c5a2",
+      "scoring_image": {
+        "id": "sha256:e1639993ded139b637273d1d9aa124197c4a61d753594b00f52ed62f3b41c775",
+        "repo_digests": [
+          "swebench/sweb.eval.x86_64.sympy_1776_sympy-19487@sha256:e1639993ded139b637273d1d9aa124197c4a61d753594b00f52ed62f3b41c775"
+        ],
+        "requested": "swebench/sweb.eval.x86_64.sympy_1776_sympy-19487:latest"
+      },
+      "scoring_record_sha256": "50a86f639f40a0e6fbf1137046bfb76f751c9f71d0ffe882bb75ec92a5a0fd87",
+      "source_unchanged": true,
+      "stop_reason": "awaiting_approval",
+      "tokens": {
+        "input_tokens": 108690,
+        "output_tokens": 5753
+      },
+      "tool_calls": 20,
+      "tool_counts": {
+        "list_files": 2,
+        "read_file": 9,
+        "replace_in_file": 3,
+        "run_registered_check": 2,
+        "search_text": 4
+      },
+      "wall_seconds": 89.985,
+      "workflow_status": "awaiting_approval"
+    },
+    {
+      "active_seconds": 111.922,
+      "base_commit": "e0ef1da13e2ab2a77866c05246f73c871ca9388c",
+      "context_editing_observed": true,
+      "estimated_cost_cny": 0.837874,
+      "instance_id": "sympy__sympy-19254",
+      "max_observed_input_bytes": 88470,
+      "model_calls": 16,
+      "official_resolved": false,
+      "official_status": "unresolved",
+      "patch_bytes": 1787,
+      "patch_sha256": "83a704a431a3a3eacfb6b291ac3e76735ed8d55ddd215a46a2f3a26959a019a7",
+      "predictions_sha256": "307087c311c11cec3ad2db8c9e81ba122128fe9a431077aa087e82184769e33d",
+      "public_tests": [
+        {
+          "exit_code": 0,
+          "name": "import-workspace",
+          "timed_out": false,
+          "truncated": false
+        },
+        {
+          "exit_code": 1,
+          "name": "public-tests",
+          "timed_out": false,
+          "truncated": false
+        }
+      ],
+      "reference_resolved": true,
+      "repopilot_dirty": false,
+      "repopilot_revision": "2c842aceb3b7c724ec67b1c653e16113670da89c",
+      "run_id": "bench-sympy__sympy-19254-cba5e861babc",
+      "scoring_image": {
+        "id": "sha256:0a7fd05b3c9f34c0264d90e724ad16f7bf5ba1e34f54f73bb08cd241dc952326",
+        "repo_digests": [
+          "swebench/sweb.eval.x86_64.sympy_1776_sympy-19254@sha256:0a7fd05b3c9f34c0264d90e724ad16f7bf5ba1e34f54f73bb08cd241dc952326"
+        ],
+        "requested": "swebench/sweb.eval.x86_64.sympy_1776_sympy-19254:latest"
+      },
+      "scoring_record_sha256": "1b15aad4a54b69dab3d0f8486d34acbd6ed284527fb9e372eb5ffc14e2a4a40e",
+      "source_unchanged": true,
+      "stop_reason": "context_bytes",
+      "tokens": {
+        "input_tokens": 217219,
+        "output_tokens": 15518
+      },
+      "tool_calls": 34,
+      "tool_counts": {
+        "list_files": 1,
+        "read_file": 15,
+        "replace_in_file": 3,
+        "run_registered_check": 2,
+        "search_text": 13
+      },
+      "wall_seconds": 113.265,
+      "workflow_status": "limit_reached"
+    }
+  ],
+  "dataset_name": "SWE-bench/SWE-bench_Lite",
+  "dataset_revision": "b0dde1093fe417d83b7184254edf8199c1f0dff5",
+  "deterministic_lifecycle_comparison": {
+    "cases": [
+      {
+        "changed_files": 0,
+        "model_calls_replayed": 20,
+        "patch_bytes": 0,
+        "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "reason": "max_tool_calls",
+        "source_unchanged": true,
+        "status": "limit_reached",
+        "tool_calls": 40,
+        "variant": "prior"
+      },
+      {
+        "changed_files": 2,
+        "model_calls_replayed": 20,
+        "patch_bytes": 1073,
+        "patch_sha256": "b4ee4405efd540fda3c95bf0412b53fdbaac259723daa6a1feffdf3eb5a1b292",
+        "reason": "max_tool_calls",
+        "source_unchanged": true,
+        "status": "limit_reached",
+        "tool_calls": 40,
+        "variant": "fixed"
+      }
+    ],
+    "mode": "recorded-tool-sequence-replay-not-api-or-benchmark-score",
+    "sequence_sha256": "2f7ccd7a205583170c33bbadf527ea72ade451d21ee611d4b3c1eea03cfd37e9",
+    "turns": 20
+  },
+  "estimated_cost_cny": 2.703557,
+  "harness_revision": "02e7a74ffd0b707aab73d203fe87bdc7c76afc8e",
+  "harness_version": "5.0.2",
+  "instances": 5,
+  "model": "deepseek-flash",
+  "model_calls": 81,
+  "official_resolved": 2,
+  "official_runs": {
+    "agent": {
+      "completed_instances": 3,
+      "empty_patch_instances": 2,
+      "error_instances": 0,
+      "infra_failure_instances": 0,
+      "resolved_instances": 2,
+      "run_id": "repopilot-dev15-agent-20261018-01",
+      "submitted_instances": 5,
+      "summary_sha256": "4aed6d60a5c00e139698b2b9d413f2973316475127de6d3bc447a64141b07f07",
+      "total_instances": 5,
+      "unresolved_instances": 1
+    },
+    "reference": {
+      "completed_instances": 5,
+      "empty_patch_instances": 0,
+      "error_instances": 0,
+      "infra_failure_instances": 0,
+      "resolved_instances": 5,
+      "run_id": "repopilot-dev15-reference-20261018-01",
+      "submitted_instances": 5,
+      "summary_sha256": "a3ffd5413782ae4ffc5eec9a3be9f74425ce14a8627eda31e3ca2b57ef09da74",
+      "total_instances": 5,
+      "unresolved_instances": 0
+    }
+  },
+  "plan_canonical_sha256": "aa14bcb9a223b6086ff61ed1a0b78afcf677a4cc000d3df24d7efc9185d2a82d",
+  "plan_file": "evals/swebench/development-20261018.json",
+  "reasoning_effort": "low",
+  "reference_resolved": 5,
+  "resolved_and_awaiting_approval": 1,
+  "schema_version": "1.0",
+  "scope": "five SymPy 1.7 development cases; not held-out or full Lite",
+  "scoring_complete": true,
+  "thinking": "enabled",
+  "tool_calls": 141,
+  "workflow_awaiting_approval": 1
+}

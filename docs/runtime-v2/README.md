@@ -62,6 +62,8 @@ GitHub 仅接收标准 `https://github.com/OWNER/REPO/issues/N`；Issue 必须�
 
 [SWE-bench 接入协议](../../evals/swebench/README.md)提供单题输入边界与官方补丁导出；[增量13](VALIDATION-13.md)记录实际评分环境预检，尚非模型修复效果评测。
 
+[增量15](VALIDATION-15.md)提供冻结5题的真实开发基线，以及同一工具响应重放的产物保存对照；区分官方验收、审核完成、空补丁与未修复，不外推完整Lite或生产能力。
+
 - [LangChain Agent](https://docs.langchain.com/oss/python/langchain/agents)
 - [LangGraph 暂停与副作用](https://docs.langchain.com/oss/python/langgraph/interrupts)
 - [DeepSeek 工具调用](https://api-docs.deepseek.com/guides/tool_calls/)
