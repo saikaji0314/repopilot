@@ -59,13 +59,15 @@ flowchart TD
 | [orchestration/session.py](../../repopilot/orchestration/session.py) | `RunSession`：恢复计数与活跃时间、统一保存脱敏检查点；`execute_run` 调度阶段，集中映射错误状态 |
 | [orchestration/phases.py](../../repopilot/orchestration/phases.py) | `PhaseRunner` 每个阶段一个方法；实现／审核载荷与结果转换分开，检查点由执行会话控制，固定基线仍在副作用前落盘 |
 | [orchestration/state.py](../../repopilot/orchestration/state.py) | 终态集合、规范哈希、批准摘要、从持久化状态定位工作区；避免发布层依赖整套执行流程 |
-| [agents/loop.py](../../repopilot/agents/loop.py) | DeepSeek 接线、结构化报告、上下文与进度中间件、角色内循环、独立检查入口 |
+| [agents/loop.py](../../repopilot/agents/loop.py) | 角色内循环、上下文与进度中间件、用量控制、独立检查入口 |
+| [agents/models.py](../../repopilot/agents/models.py)、[reports.py](../../repopilot/agents/reports.py)、[prompts.py](../../repopilot/agents/prompts.py)、[trace.py](../../repopilot/agents/trace.py) | 分别管理供应商适配、报告契约、固定角色提示与脱敏日志；修改提示与整理代码分别验证 |
 | [execution/repository.py](../../repopilot/execution/repository.py)、[execution/workspace.py](../../repopilot/execution/workspace.py) | 文件访问、受控命令、编辑限额；Git 基线、差异、提交、干净状态核对 |
 | [execution/sandbox.py](../../repopilot/execution/sandbox.py)、[execution/transport.py](../../repopilot/execution/transport.py) | 阶段会话、Docker 生命周期、文件协议与登记检查；有界 CLI 传输，失败不回退宿主 |
 | [execution/files.py](../../repopilot/execution/files.py)、[execution/worker.py](../../repopilot/execution/worker.py)、[execution/archive.py](../../repopilot/execution/archive.py) | 无模型依赖的共用文件规则；容器固定操作协议；完整校验后导入普通文件 |
 | [storage/jobs.py](../../repopilot/storage/jobs.py)、[storage/budget.py](../../repopilot/storage/budget.py) | SQLite 状态与乐观并发、进程锁；模型费用预留、结算、共享累计上限 |
 | [delivery/forge.py](../../repopilot/delivery/forge.py)、[delivery/github.py](../../repopilot/delivery/github.py)、[delivery/gitlab.py](../../repopilot/delivery/gitlab.py) | 平台识别、凭证路由与唯一的发布流程；GitHub／GitLab 各自的 REST 与 Git 差异，见[平台接入](FORGES.md) |
-| [delivery/watcher.py](../../repopilot/delivery/watcher.py) | 轮询准入、按仓库来源选择平台、去重、worker 调度、停止与残留核查 |
+| [delivery/watcher.py](../../repopilot/delivery/watcher.py) | 轮询准入、按仓库来源选择平台、有界进程调度与停止 |
+| [delivery/queue.py](../../repopilot/delivery/queue.py) | SQLite 去重、领取、任务绑定、心跳与残留任务确认；不启动进程或调用模型 |
 | [core/config.py](../../repopilot/core/config.py) | 任务／检查／模型／限额协议、环境与执行 profile 校验 |
 | [memory/store.py](../../repopilot/memory/store.py)、[memory/facts.py](../../repopilot/memory/facts.py) | SQLite仓库事实、人工确认／撤销／删除、有界检索；Git来源和文件／依赖指纹校验 |
 | [memory/context.py](../../repopilot/memory/context.py)、[memory/cli.py](../../repopilot/memory/cli.py) | 运行开始冻结命中、阶段前复核、审核后收集候选；可信操作者管理入口，见[记忆协议](MEMORY.md) |
@@ -77,11 +79,11 @@ repopilot/
   cli.py                 命令入口与参数，不承载业务流程
   core/config.py         任务、模型与执行后端契约
   orchestration/         workflow生命周期、session检查点、phases业务阶段、state版本规则
-  agents/loop.py         模型适配、角色内工具循环与结构化报告
+  agents/                loop循环与限额、models适配、reports契约、prompts角色提示、trace证据
   execution/             文件工具、Git工作区、容器会话、传输和归档校验
   storage/               jobs状态与锁、budget累计费用
   memory/                事实存储、来源校验、阶段检索及管理入口
-  delivery/              平台接入（GitHub／GitLab、草稿PR／MR）、监听与健康判断
+  delivery/              平台接入、发布、watcher监听调度、queue持久化与健康判断
   presentation/          只读报告装配、证据片段、格式化、概览布局与内联样式
   evaluation/            新版独立修复评分，属于当前实现
   legacy/                第一代Python诊断、AST检索和旧工具
@@ -90,9 +92,9 @@ repopilot/
 
 依赖方向：CLI调用编排或交付操作；编排组合Agent、执行、存储和记忆；展示只读取状态与证据。新版不导入legacy。`core`保存契约，避免业务包互相定义重复配置；包拆分不引入微服务、RPC或新框架。
 
-阅读一条交付链：`core.config.Task` → `cli._run_task` → `orchestration.workflow.start/resume` → `orchestration.session.execute_run` → `orchestration.phases.PhaseRunner` → `agents.loop.run_phase`，再看 `workflow.decide` 与 `delivery.github.publish`。报告入口为 `presentation.report`，片段、布局和证据格式分别在 `sections / layout / formatting`，不再由一个长函数同时处理整页。
+阅读一条交付链：`core.config.Task` → `cli._run_task` → `orchestration.workflow.start/resume` → `orchestration.session.execute_run` → `orchestration.phases.PhaseRunner` → `agents.loop.run_phase`，再看 `workflow.decide` 与 `delivery.forge.publish`。报告入口为 `presentation.report`，片段、布局和证据格式分别在 `sections / layout / formatting`，不再由一个长函数同时处理整页。
 
-`agents.loop`仍包含模型适配、中间件和报告协议；`delivery.watcher`仍同时包含队列与调度。持久化状态仍为字典。这些内聚代码本轮没有继续细拆或改写状态协议，避免把目录迁移扩大成行为重构。
+`agents.loop`集中处理角色内执行与限额；协议、提示和日志已拆出，旧导入名继续指向同一对象。监听调度使用独立的`delivery.queue.IssueQueue`，旧`watcher.IssueQueue`保持可用。拆分没有更改提示文本、报告字段、SQL／数据库结构和持久化状态字典，也不改变审批及发布规则。
 
 ## 新旧实现与迁移兼容
 

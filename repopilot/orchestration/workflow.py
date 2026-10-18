@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from uuid import uuid4
 
-from repopilot.agents import loop as engine
+from repopilot.agents.trace import Trace
 from repopilot.storage.budget import Budget
 from repopilot.core.config import RuntimeSettings, Task, execution_options
 from repopilot.orchestration.session import execute_run
@@ -138,7 +138,7 @@ def recover(run_id, root, *, commit, reason):
 def snapshot(store, state, settings):
     directory = store.root / "runs" / state["run_id"]
     directory.mkdir(parents=True, exist_ok=True)
-    trace = engine.Trace(directory, settings.api_key.get_secret_value())
+    trace = Trace(directory, settings.api_key.get_secret_value())
     workspace = attach(state, store.root)
     changes = None
     if workspace and workspace.path.exists():

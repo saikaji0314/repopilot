@@ -5,6 +5,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 from repopilot.agents import loop as engine
+from repopilot.agents.trace import Trace
+from repopilot.agents.prompts import SYSTEM_PROMPT, REVIEW_PROMPT
+from repopilot.agents.reports import ImplementationReport, ReviewReport
 from repopilot.memory import context as memory_context
 from repopilot.core.config import RuntimeSettings, Task
 from repopilot.orchestration.state import approval_digest, attach
@@ -19,7 +22,7 @@ class PhaseRunner:
     task: Task
     settings: RuntimeSettings
     control: engine.RunControl
-    trace: engine.Trace
+    trace: Trace
     edits: EditBudget
     model: Any
     workspace: Workspace | None
@@ -88,7 +91,7 @@ class PhaseRunner:
             tools = engine.build_tools(self.task, self.control.remaining, workspace=None if self.workspace is None else root,
                                        edits=None if self.workspace is None else self.edits,
                                        **({} if session is None else {"repository": session, "checker": session.run_check}))
-            report = engine.run_phase(prompt=engine.SYSTEM_PROMPT, schema=engine.ImplementationReport,
+            report = engine.run_phase(prompt=SYSTEM_PROMPT, schema=ImplementationReport,
                 payload=self._implementation_payload(phase), tools=tools, settings=self.settings,
                 control=self.control, model=self.model, phase=phase)
         report = engine.consistent_status(report, self.workspace.changes() if self.workspace else {})
@@ -135,7 +138,7 @@ class PhaseRunner:
         self.trace.event("review_started", commit=self.state["reviewed_commit"])
         with repository_session(self.task, self.workspace.repository(), writable=False,
                                 deadline=self.control.remaining, trace=self.trace) as session:
-            report = engine.run_phase(prompt=engine.REVIEW_PROMPT, schema=engine.ReviewReport,
+            report = engine.run_phase(prompt=REVIEW_PROMPT, schema=ReviewReport,
                 payload=payload, tools=engine.build_tools(self.task, self.control.remaining, workspace=self.workspace.path,
                     **({} if session is None else {"repository": session, "checker": session.run_check})),
                 settings=self.settings, control=self.control, model=self.model, phase="review")

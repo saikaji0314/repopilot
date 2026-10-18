@@ -9,6 +9,7 @@ from langchain.agents.structured_output import StructuredOutputValidationError
 from pydantic import ValidationError
 
 from repopilot.agents import loop as engine
+from repopilot.agents.trace import Trace
 from repopilot.storage.budget import Budget, RunLimit
 from repopilot.core.config import Task
 from repopilot.orchestration.phases import PhaseRunner
@@ -37,7 +38,7 @@ class RunSession:
         self.store, self.state = store, state
         directory = store.root / "runs" / state["run_id"]
         directory.mkdir(parents=True, exist_ok=True)
-        self.trace = engine.Trace(directory, settings.api_key.get_secret_value())
+        self.trace = Trace(directory, settings.api_key.get_secret_value())
         budget = Budget(store.root / "budget.sqlite3", settings.budget_cny)
         self.control = engine.RunControl(settings, budget, self.trace, state["run_id"])
         self._restore_control(budget)
