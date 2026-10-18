@@ -181,18 +181,6 @@ class RunControl(AgentMiddleware):
             raise RunLimit("run_timeout")
         return remaining
 
-    def investigation_guidance(self, tools):
-        """在可编辑阶段提醒收敛；不屏蔽取证工具，不将缺乏证据强制转成编辑。"""
-        writable = any(getattr(tool, "name", None) in {"write_file", "replace_in_file"} for tool in tools)
-        if (not writable or self.phase not in {"implement", "rework"} or
-                self.progress["edited_files"] or len(self.progress["reads"]) < 3 or
-                self.model_calls < max(3, (self.settings.max_model_calls + 2) // 3)):
-            return ""
-        return ("\n阶段收敛提醒：调查已占用至少三分之一的模型调用预算，尚无编辑。"
-                "停止扩展式调查，优先依据已读证据做最小可逆修改并补针对性测试。"
-                "若只缺一个关键事实，最多再查一个精确位置，然后选择修改或报告blocked及具体缺项。"
-                "为检查、实现报告和独立审核保留轮次；证据不足不得声称完成。")
-
     def wrap_model_call(self, request, handler):
         remaining = self.remaining()
         settings = self.settings
@@ -206,7 +194,6 @@ class RunControl(AgentMiddleware):
                     json.dumps(progress, ensure_ascii=False) +
                     "\n避免重复调查已读内容；具备相关实现和测试约定后直接编辑、运行检查、完成文档并交付报告。"
                     "若剩余额度不足，报告实际未完成项，不要声称成功。")
-        reminder += self.investigation_guidance(request.tools or [])
         base = request.system_message.content if request.system_message else ""
         request = request.override(system_message=SystemMessage(content=base + reminder))
         messages = ([request.system_message] if request.system_message else []) + request.messages

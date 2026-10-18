@@ -1,0 +1,185 @@
+{
+  "baseline": [
+    {
+      "estimated_cost_cny": 0.768582,
+      "first_edit_tool_position": null,
+      "instance_id": "sympy__sympy-20212",
+      "model_calls": 24,
+      "official_resolved": false,
+      "official_status": "empty_patch",
+      "patch_bytes": 0,
+      "run_id": "bench-sympy__sympy-20212-9b0c02deb73d",
+      "stop_reason": "max_model_calls",
+      "tool_calls": 36,
+      "tool_counts": {
+        "list_files": 1,
+        "read_file": 11,
+        "search_text": 24
+      },
+      "workflow_status": "limit_reached"
+    },
+    {
+      "estimated_cost_cny": 0.837874,
+      "first_edit_tool_position": 29,
+      "instance_id": "sympy__sympy-19254",
+      "model_calls": 16,
+      "official_resolved": false,
+      "official_status": "unresolved",
+      "patch_bytes": 1787,
+      "run_id": "bench-sympy__sympy-19254-cba5e861babc",
+      "stop_reason": "context_bytes",
+      "tool_calls": 34,
+      "tool_counts": {
+        "list_files": 1,
+        "read_file": 15,
+        "replace_in_file": 3,
+        "run_registered_check": 2,
+        "search_text": 13
+      },
+      "workflow_status": "limit_reached"
+    }
+  ],
+  "further_tuning_allowed": false,
+  "protocol_sha256": "b152d0c45fde1d140fa2a56d2ec11a098ba5112647de2182929e2e313a76d96e",
+  "rounds": [
+    {
+      "cases": [
+        {
+          "active_seconds": 65.09400000000005,
+          "duplicate_searches": 0,
+          "estimated_cost_cny": 0.711879,
+          "first_edit_tool_position": null,
+          "instance_id": "sympy__sympy-20212",
+          "max_observed_input_bytes": 73087,
+          "model_calls": 24,
+          "official_resolved": false,
+          "official_status": "empty_patch",
+          "patch_bytes": 0,
+          "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "run_id": "bench-sympy__sympy-20212-b5f840e49f76",
+          "scoped_searches": 12,
+          "source_unchanged": true,
+          "stop_reason": "max_model_calls",
+          "tokens": {
+            "input_tokens": 216677,
+            "output_tokens": 5154
+          },
+          "tool_calls": 31,
+          "tool_counts": {
+            "read_file": 17,
+            "search_text": 14
+          },
+          "uncertain_calls": 0,
+          "workflow_status": "limit_reached"
+        },
+        {
+          "active_seconds": 109.24999999999977,
+          "duplicate_searches": 0,
+          "estimated_cost_cny": 0.964239,
+          "first_edit_tool_position": 38,
+          "instance_id": "sympy__sympy-19254",
+          "max_observed_input_bytes": 89120,
+          "model_calls": 21,
+          "official_resolved": false,
+          "official_status": "unresolved",
+          "patch_bytes": 932,
+          "patch_sha256": "a9d4126d88469695d10cd24d560218523dc18f4b436407dc7f3a669bfbe5cbca",
+          "run_id": "bench-sympy__sympy-19254-0e5fdf093ff6",
+          "scoped_searches": 14,
+          "source_unchanged": true,
+          "stop_reason": "context_bytes",
+          "tokens": {
+            "input_tokens": 260721,
+            "output_tokens": 15173
+          },
+          "tool_calls": 38,
+          "tool_counts": {
+            "list_files": 7,
+            "read_file": 10,
+            "replace_in_file": 1,
+            "search_text": 20
+          },
+          "uncertain_calls": 0,
+          "workflow_status": "limit_reached"
+        }
+      ],
+      "estimated_cost_cny": 1.676118,
+      "revision": "664f8435d4cf1ea8b71bbfbb5c9868633acc25fa",
+      "round": "r1",
+      "scoring_complete": true
+    },
+    {
+      "cases": [
+        {
+          "active_seconds": 83.29700000000003,
+          "duplicate_searches": 1,
+          "estimated_cost_cny": 0.805549,
+          "first_edit_tool_position": 28,
+          "instance_id": "sympy__sympy-20212",
+          "max_observed_input_bytes": 77393,
+          "model_calls": 24,
+          "official_resolved": false,
+          "official_status": "unresolved",
+          "patch_bytes": 447,
+          "patch_sha256": "b01de5f7bcaace45bcc3ecd6bd4357dbab51ec265b9e1051889dab9d0e0940e6",
+          "run_id": "bench-sympy__sympy-20212-34eefe2399dc",
+          "scoped_searches": 11,
+          "source_unchanged": true,
+          "stop_reason": "max_model_calls",
+          "tokens": {
+            "input_tokens": 247088,
+            "output_tokens": 5357
+          },
+          "tool_calls": 31,
+          "tool_counts": {
+            "list_files": 1,
+            "read_file": 14,
+            "replace_in_file": 1,
+            "run_registered_check": 3,
+            "search_text": 12
+          },
+          "uncertain_calls": 0,
+          "workflow_status": "limit_reached"
+        },
+        {
+          "active_seconds": 99.17200000000003,
+          "duplicate_searches": 0,
+          "estimated_cost_cny": 0.731091,
+          "first_edit_tool_position": null,
+          "instance_id": "sympy__sympy-19254",
+          "max_observed_input_bytes": 82212,
+          "model_calls": 16,
+          "official_resolved": false,
+          "official_status": "empty_patch",
+          "patch_bytes": 0,
+          "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "run_id": "bench-sympy__sympy-19254-c9d1a3453de0",
+          "scoped_searches": 10,
+          "source_unchanged": true,
+          "stop_reason": "context_bytes",
+          "tokens": {
+            "input_tokens": 189053,
+            "output_tokens": 13661
+          },
+          "tool_calls": 32,
+          "tool_counts": {
+            "list_files": 2,
+            "read_file": 16,
+            "run_registered_check": 1,
+            "search_text": 13
+          },
+          "uncertain_calls": 0,
+          "workflow_status": "limit_reached"
+        }
+      ],
+      "estimated_cost_cny": 1.53664,
+      "revision": "bbecd55fc9dcd1600f9cf3d948bda44a4f8d3978",
+      "round": "r2",
+      "scoring_complete": true
+    }
+  ],
+  "schema_version": "1.0",
+  "scope": "two targeted SymPy development cases, not held-out or full Lite",
+  "second_round_policy_retained_in_runtime": false,
+  "total_estimated_cost_cny": 3.212758
+}
