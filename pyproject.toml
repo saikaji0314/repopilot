@@ -3,6 +3,8 @@ name = "repopilot"
 version = "1.0.0"
 description = "通用仓库任务调查与受控验证 Agent"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 classifiers = [
     "Private :: Do Not Upload",
