@@ -17,6 +17,8 @@ from repopilot.execution.transport import DockerTransport, SandboxError
 import repopilot.execution.repository as repository
 import repopilot.orchestration.workflow as workflow
 from repopilot.execution.workspace import run_git
+from repopilot.storage.budget import RunLimit
+from repopilot.storage.jobs import JobStore
 from tests.runtime.test_review_loop import setup, FakeModel, turn, implement_done, review_approved
 
 IMAGE = 'python@sha256:' + 'a' * 64
@@ -230,3 +232,33 @@ def test_real_docker_readonly_check_mutation_is_rejected(tmp_path):
                 session.write('app.py', 'value = 100\n')
             assert session.run_check('mutate', 10)['exit_code'] == 0
     assert (task.repository / 'app.py').read_bytes() == before
+
+
+def test_real_docker_controlled_limit_preserves_validated_partial_changes(tmp_path):
+    task, settings, root = setup(tmp_path, max_model_calls=1, run_timeout_seconds=120)
+    task = task.model_copy(update={'execution': docker_config()})
+    result = workflow.start(task, settings, root, model=FakeModel(responses=[
+        turn('write_file', {'path': 'app.py', 'content': 'value = 2\n'})]))
+    assert result['status'] == 'limit_reached' and result['stop_reason'] == 'max_model_calls'
+    state = JobStore(root).get(result['run_id'])
+    candidate = workflow.attach(state, root).path
+    assert (candidate / 'app.py').read_text() == 'value = 2\n'
+    assert (task.repository / 'app.py').read_text() == 'value = 1\n'
+    assert state['in_flight'] == 'implement'  # 恢复仍需显式核对，没有自动继续或批准。
+    events = [json.loads(line) for line in
+              (root / 'runs' / result['run_id'] / 'events.jsonl').read_text(encoding='utf-8').splitlines()]
+    assert any(item['event'] == 'sandbox_partial_checkpoint' for item in events)
+
+
+def test_real_docker_controlled_limit_still_rejects_unsafe_partial_artifacts(tmp_path):
+    task, _, _ = setup(tmp_path)
+    task = task.model_copy(update={'execution': docker_config(), 'checks': {'link': Check(
+        argv=['{python}', '-c', "import os; os.symlink('/etc/passwd','unsafe-link')"])}})
+    before = (task.repository / 'app.py').read_bytes()
+    with pytest.raises(ValueError, match='archive_special_file'):
+        with repository_session(task, task.repository, writable=True, deadline=lambda: 60) as session:
+            session.write('app.py', 'value = 2\n')
+            assert session.run_check('link', 10)['exit_code'] == 0
+            raise RunLimit('max_tool_calls')
+    assert (task.repository / 'app.py').read_bytes() == before
+    assert not (task.repository / 'unsafe-link').exists()

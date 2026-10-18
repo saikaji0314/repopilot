@@ -11,6 +11,7 @@ from repopilot.execution import archive as archives
 from repopilot.core.config import Task
 from repopilot.execution.files import MAX_OUTPUT_BYTES, Repository
 from repopilot.execution.transport import DockerTransport, SandboxError
+from repopilot.storage.budget import RunLimit
 
 
 class DockerSession:
@@ -175,7 +176,16 @@ def repository_session(task, root, *, writable, deadline, trace=None):
     session = DockerSession(task, root, writable=writable, deadline=deadline, trace=trace)
     try:
         session.prepare()
-        yield session
-        session.finish()
+        try:
+            yield session
+        except RunLimit as error:
+            # 受控超限不丢弃已完成的编辑；仍停止容器并走相同的完整产物校验。
+            # 非法产物会使finish失败，不能以“保存进度”为由绕过导入边界。
+            if writable:
+                session.finish()
+                session.emit('sandbox_partial_checkpoint', reason=str(error))
+            raise
+        else:
+            session.finish()
     finally:
         session.close()

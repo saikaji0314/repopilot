@@ -25,7 +25,7 @@ checks:
 
 把此段加入已有任务（仍需 `id / request / repository`）。原有 `run / issue / watch / resume` 入口无需改变。任务开始后冻结执行配置；恢复读取原检查点，不从修改后的 YAML 静默切换后端或镜像。镜像必须已存在且匹配不可变摘要或镜像 ID；候选运行期间不拉取镜像、不安装依赖。
 
-工具镜像需包含 `python3` 标准库供文件协议使用，无需安装 LangChain 或模型 SDK。`{python}` 替换为容器中的 `python3`，其他 argv 原样执行；登记命令、cwd 和依赖需适用于该 Linux 镜像。不能直接使用 Windows 的 `.venv` 或绝对解释器路径。
+工具镜像需包含 Python 3.10 或更高版本的 `python3` 标准库供文件协议使用，无需安装 LangChain 或模型 SDK。`{python}` 替换为容器中的 `python3`，其他 argv 原样执行；登记命令、cwd 和依赖需适用于该 Linux 镜像。不能直接使用 Windows 的 `.venv` 或绝对解释器路径。项目依赖解释器可通过登记的 Linux 绝对路径单独指定，无须与文件服务解释器相同。
 
 Python／Node 的 amd64 示例见 [PythonNode.Dockerfile](../../examples/runtime/docker/PythonNode.Dockerfile)。它基于两个固定摘要的 Debian bookworm 镜像，提供 Python 与 Node，不提供 npm。依赖准备属于可信操作，应在运行前构建专用镜像；不要把凭证写入镜像。构建后将完整镜像 ID 填入任务，不能把可变 tag 直接交给运行时：
 
@@ -65,6 +65,8 @@ flowchart LR
 
 正常退出或可捕获异常会移除本阶段容器和卷，并记录 `sandbox_preparing / sandbox_ready / sandbox_imported / sandbox_verified / sandbox_cleanup` 事件。容器名在 preparing 事件中，资源带 `repopilot.runtime=true` 标签。阶段完成后可按原机制暂停恢复；阶段中断的容器改动可能未导回宿主，不能声称逐工具恢复。硬杀、系统崩溃和 Docker 失联后的残留资源仍需核查，不提供自动扫描回收；清理失败会阻断运行并保留失败事件。
 
+受控的预算、调用次数或活跃时间超限（RunLimit）是一个明确例外：可写阶段在重新抛出原超限前，先停止容器，按相同归档／宿主快照规则完整校验，再导入合法的部分改动并记录 `sandbox_partial_checkpoint`。失败状态和中断阶段仍保留，不会自动提交、恢复、审核或发布；非法产物会阻断导入。其他异常、准备失败和硬杀不承诺保留尚未导出的容器编辑。
+
 这仍是可信仓库的本机执行后端。Docker daemon 是受信高权限控制面，宿主 Git 仍信任已登记仓库的现有配置、钩子和过滤器；没有隔离宿主管理员。普通容器共享 Linux 内核，尚无 microVM、rootless 或 gVisor 后端。工作卷没有磁盘配额；输出与导出限额不能阻止仓库代码先写满宿主磁盘。归档校验通过后的单文件替换是原子的，但跨文件导入不是事务，磁盘故障或硬杀可能留下部分改动，需人工核对后 recover。
 
-真实执行验证见 [VALIDATION-11](VALIDATION-11.md)；Docker Sandboxes 本机失败及前置资源探针见 [VALIDATION-09](VALIDATION-09.md)。本次尚未在 Docker 后端重跑真实模型、真实 Issue 到 PR，也未做不可信租户或逃逸攻击评估。
+真实执行验证见 [VALIDATION-11](VALIDATION-11.md)；Docker Sandboxes 本机失败及前置资源探针见 [VALIDATION-09](VALIDATION-09.md)。[增量14](VALIDATION-14.md)记录真实模型单题失败及受控超限的产物保存修复；尚无 Docker 后端真实 Issue 到 PR 成功结论，也未做不可信租户或逃逸攻击评估。
