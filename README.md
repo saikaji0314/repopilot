@@ -6,6 +6,8 @@ RepoPilot 面向企业内部及个人维护的可信代码仓库，负责接单�
 
 [快速开始](#快速开始) · [交付演示](docs/runtime-v2/DEMO.md) · [运行协议](docs/runtime-v2/README.md) · [架构与代码导航](docs/runtime-v2/ARCHITECTURE.md)
 
+从预发行 wheel 安装及升级现有运行，见[安装指南](docs/runtime-v2/INSTALL.md)。当前候选版本为 `0.1.0rc1`，适用于可信仓库中的实验性小任务；[复杂任务复测](docs/runtime-v2/VALIDATION-18.md)记录了尚未解决的调查与上下文限制。
+
 ```mermaid
 flowchart LR
     I[GitHub Issue / 本地需求] --> W[独立工作区]
@@ -132,3 +134,5 @@ GitLab 适配与 GitHub 共用同一套发布流程与错误语义，差异只�
 | [历史实现](docs/legacy/README.md) | 旧入口、题集与诊断结果 |
 
 Flask 源码与教程样例来自 Pallets，保留其上游 README 和 BSD-3-Clause 许可证。
+
+RepoPilot 自有代码采用 [MIT 许可证](LICENSE)，第三方材料保留原有许可。

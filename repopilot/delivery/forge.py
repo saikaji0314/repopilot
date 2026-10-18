@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 from dotenv import dotenv_values
 import httpx
 
-from repopilot.core.config import PROJECT_ROOT
+from repopilot.core.paths import default_env_file
 from repopilot.storage.jobs import JobStore, StateError, job_lock, timestamp
 from repopilot.orchestration.state import approval_digest, attach, canonical_hash
 from repopilot.execution.workspace import run_git
@@ -102,7 +102,7 @@ def remote_origin(path):
 TOKEN_VARIABLES = {"github": ("GH_TOKEN", "GITHUB_TOKEN"), "gitlab": ("GITLAB_TOKEN", "GL_TOKEN")}
 
 
-def load_token(provider, env_file=PROJECT_ROOT / ".env"):
+def load_token(provider, env_file=None):
     """按平台读取令牌：进程环境整体优先于 .env；缺失时明确失败而不是空令牌重试。"""
     if provider not in TOKEN_VARIABLES:
         raise ForgeError("unsupported_provider")
@@ -111,7 +111,8 @@ def load_token(provider, env_file=PROJECT_ROOT / ".env"):
         token = os.environ.get(name)
         if token and token.strip():
             return token.strip()
-    values = dotenv_values(env_file, interpolate=False) if Path(env_file).exists() else {}
+    env_file = default_env_file() if env_file is None else Path(env_file)
+    values = dotenv_values(env_file, interpolate=False) if env_file.exists() else {}
     for name in names:
         token = values.get(name)
         if token and token.strip():
@@ -119,7 +120,7 @@ def load_token(provider, env_file=PROJECT_ROOT / ".env"):
     raise ForgeError(f"{provider}_token_required")
 
 
-def open_forge(subject, *, transport=None, token=None, env_file=PROJECT_ROOT / ".env"):
+def open_forge(subject, *, transport=None, token=None, env_file=None):
     """按 Issue 链接或 Origin 打开对应平台的客户端；凭证默认从环境/.env 读取。"""
     if isinstance(subject, Origin):
         origin = subject

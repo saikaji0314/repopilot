@@ -124,4 +124,4 @@ tests/                循环、工具、检索及题集回归测试
 Flask 源码与教程样例来自 Pallets，保留其上游 README 和 BSD-3-Clause 许可证。
 
 
-源码位置更新（2026-10-18）：第一代实现已集中到 `repopilot/legacy/`，Python导入使用 `repopilot.legacy.*`；`run-baseline`命令保留。新版独立评分位于 `repopilot/evaluation/`，不属于本历史实现。题集、补丁与历史报告保留原路径。
+源码位置更新（2026-10-18）：第一代实现已集中到 `repopilot/legacy/`，Python导入使用 `repopilot.legacy.*`。从0.1.0rc1起安装包只提供新版CLI，不再安装`run-baseline`；历史运行需在完整源码根目录使用 `python -c "from repopilot.legacy.baseline import main; main()" --all`，并准备原配置与题集。新版独立评分位于 `repopilot/evaluation/`，不属于本历史实现。题集、补丁与历史报告保留原路径。

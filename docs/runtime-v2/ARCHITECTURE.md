@@ -98,7 +98,7 @@ repopilot/
 
 正式入口改为 `repopilot.cli:main`；旧的 `python -m repopilot.runtime.cli` 保留兼容。历史 `repopilot.runtime.<模块>` 映射到同一个实际模块对象，而非复制实现，避免两份模块状态或 monkeypatch 分叉。新代码及仓库内调用方使用实际包路径。兼容层集中在runtime的短映射表，后续新模块不继续登记旧别名。
 
-第一代源码统一移入 `repopilot.legacy`，旧命令 `run-baseline` 保留，内部导入与维护脚本已迁移；旧Python导入应改用 `repopilot.legacy.*`。升级现有checkout后重新执行可编辑安装以更新命令入口。新版独立修复评测 `repopilot.evaluation` 不属于legacy。
+第一代源码统一移入 `repopilot.legacy`，内部导入与维护脚本已迁移；旧Python导入应改用 `repopilot.legacy.*`。0.1.0rc1起wheel仅安装新版`repopilot`命令，旧基线需要完整源码与题集，调用方式见[历史说明](../legacy/README.md)。升级现有checkout后重新执行可编辑安装以更新命令入口。新版独立修复评测 `repopilot.evaluation` 不属于legacy。
 
 外部任务YAML、状态字段、SQLite数据库、运行ID、预算、活动配置、`.local`目标仓库和worktree路径不迁移。旧产物中的源码位置代表当时版本，不批量改写历史证据。旧题集和报告保留原目录，旧说明见[历史实现](../legacy/README.md)。两版仍共用一个发行包和依赖，尚未拆分optional dependencies；不把目录分开等同于独立发布产品。
 

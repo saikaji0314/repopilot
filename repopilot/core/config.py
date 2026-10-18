@@ -9,7 +9,7 @@ from dotenv import dotenv_values
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 import yaml
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+from repopilot.core.paths import PROJECT_ROOT, default_env_file
 
 
 class Contract(BaseModel):
@@ -139,7 +139,8 @@ class RuntimeSettings(Contract):
         return value.strip()
 
 
-def load_settings(env_file: Path = PROJECT_ROOT / ".env") -> RuntimeSettings:
+def load_settings(env_file: Path | None = None) -> RuntimeSettings:
+    env_file = default_env_file() if env_file is None else Path(env_file)
     file_values = dotenv_values(env_file, interpolate=False) if env_file.exists() else {}
 
     def get(name, default):

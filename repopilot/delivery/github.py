@@ -14,7 +14,7 @@ class GitHubError(ForgeError):
     """GitHub 接入失败；保留原有的错误码前缀与异常类型。"""
 
 
-def load_token(env_file=PROJECT_ROOT / ".env"):
+def load_token(env_file=None):
     return load_forge_token("github", env_file)
 
 

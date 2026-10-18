@@ -1,12 +1,14 @@
 """命令解析与输出；各命令的应用操作由独立处理函数负责。"""
 
 import argparse
+from importlib.metadata import version
 from contextlib import closing
 import json
 from pathlib import Path
 import sys
 
 from repopilot.core.config import PROJECT_ROOT, load_profile, load_settings, load_task
+from repopilot.core.paths import default_runtime_root
 from repopilot.orchestration import workflow as workflow
 from repopilot.delivery.forge import ForgeError, open_forge, publish as forge_publish
 from repopilot.storage.jobs import JobStore, StateError
@@ -52,10 +54,12 @@ def _task_options(parser, name):
 
 def build_parser():
     parser = argparse.ArgumentParser(description='RepoPilot: Issue -> worktree -> review -> approval -> draft PR')
+    parser.add_argument('--version', action='version', version='RepoPilot ' + version('repopilot'))
     sub = parser.add_subparsers(dest='command', required=True)
     for name in sorted(COMMANDS):
         command = sub.add_parser(name)
-        command.add_argument('--output', type=Path, default=PROJECT_ROOT / '.local' / 'runtime')
+        command.add_argument('--output', type=Path, default=default_runtime_root(),
+                             help='持久化运行目录（默认：%(default)s）')
         if name == 'memory':
             from repopilot.memory.cli import configure
             configure(command)
