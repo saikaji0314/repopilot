@@ -395,7 +395,7 @@ def review_count(payload: dict, feedback: list | None) -> int:
     return len(feedback or [])
 
 
-def verify_checks(task: Task, root: Path, control: RunControl, trace: Trace, deadline) -> list[dict]:
+def verify_checks(task: Task, root: Path, control: RunControl, trace: Trace, deadline, *, checker=None) -> list[dict]:
     """由编排层独立重跑全部登记检查，不信实现方自己的说法。
 
     检查结果只作为审核阶段的输入事实；模型仍可通过工具自行运行检查。
@@ -408,7 +408,8 @@ def verify_checks(task: Task, root: Path, control: RunControl, trace: Trace, dea
             remaining = min(deadline(), check.timeout_seconds)
             if remaining <= 0:
                 raise RunLimit("run_timeout")
-            outcome = run_check(task, name, remaining, root=root)
+            outcome = (checker(name, remaining) if checker is not None else
+                       run_check(task, name, remaining, root=root))
         except RunLimit:
             raise
         except Exception as exc:

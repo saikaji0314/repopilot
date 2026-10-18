@@ -9,6 +9,7 @@ from . import memory_context
 from .config import RuntimeSettings, Task
 from .run_state import approval_digest, attach
 from .store import StateError
+from .sandbox import repository_session
 from .workspace import EditBudget, Workspace, WorkspaceError, head_commit, source_snapshot
 
 
@@ -82,11 +83,14 @@ class PhaseRunner:
 
     def implement(self, phase):
         root = self.task.repository if self.workspace is None else self.workspace.repository()
-        tools = engine.build_tools(self.task, self.control.remaining, workspace=None if self.workspace is None else root,
-                                   edits=None if self.workspace is None else self.edits)
-        report = engine.run_phase(prompt=engine.SYSTEM_PROMPT, schema=engine.ImplementationReport,
-            payload=self._implementation_payload(phase), tools=tools, settings=self.settings,
-            control=self.control, model=self.model, phase=phase)
+        with repository_session(self.task, root, writable=self.workspace is not None,
+                                deadline=self.control.remaining, trace=self.trace) as session:
+            tools = engine.build_tools(self.task, self.control.remaining, workspace=None if self.workspace is None else root,
+                                       edits=None if self.workspace is None else self.edits,
+                                       **({} if session is None else {"repository": session, "checker": session.run_check}))
+            report = engine.run_phase(prompt=engine.SYSTEM_PROMPT, schema=engine.ImplementationReport,
+                payload=self._implementation_payload(phase), tools=tools, settings=self.settings,
+                control=self.control, model=self.model, phase=phase)
         report = engine.consistent_status(report, self.workspace.changes() if self.workspace else {})
         self.state["report"] = report.model_dump(mode="json")
         self.trace.save("report.json", self.state["report"])
@@ -106,7 +110,10 @@ class PhaseRunner:
 
     def verify(self):
         self.workspace.assert_clean(self.state["reviewed_commit"])
-        self.state["verified"] = engine.verify_checks(self.task, self.workspace.repository(), self.control, self.trace, self.control.remaining)
+        with repository_session(self.task, self.workspace.repository(), writable=False,
+                                deadline=self.control.remaining, trace=self.trace) as session:
+            self.state["verified"] = engine.verify_checks(self.task, self.workspace.repository(), self.control,
+                self.trace, self.control.remaining, **({} if session is None else {"checker": session.run_check}))
         self.workspace.assert_clean(self.state["reviewed_commit"])
         self.trace.save("verification.json", self.state["verified"])
         self.state["phase"] = "review"
@@ -126,9 +133,12 @@ class PhaseRunner:
         self.workspace.assert_clean(self.state["reviewed_commit"])
         payload = self._review_payload()
         self.trace.event("review_started", commit=self.state["reviewed_commit"])
-        report = engine.run_phase(prompt=engine.REVIEW_PROMPT, schema=engine.ReviewReport,
-            payload=payload, tools=engine.build_tools(self.task, self.control.remaining, workspace=self.workspace.path),
-            settings=self.settings, control=self.control, model=self.model, phase="review")
+        with repository_session(self.task, self.workspace.repository(), writable=False,
+                                deadline=self.control.remaining, trace=self.trace) as session:
+            report = engine.run_phase(prompt=engine.REVIEW_PROMPT, schema=engine.ReviewReport,
+                payload=payload, tools=engine.build_tools(self.task, self.control.remaining, workspace=self.workspace.path,
+                    **({} if session is None else {"repository": session, "checker": session.run_check})),
+                settings=self.settings, control=self.control, model=self.model, phase="review")
         self.workspace.assert_clean(self.state["reviewed_commit"])
         if report.verdict == "approved" and not engine.verification_passed(self.task, self.state["verified"]):
             report = report.model_copy(update={"verdict": "unable_to_review", "summary": "本地复核未全部通过，拒绝模型批准。"})

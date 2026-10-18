@@ -12,7 +12,7 @@ RepoPilot 面向由工单驱动的仓库研发：手动接收或自动监听已�
 
 可选[仓库事实记忆](docs/runtime-v2/MEMORY.md)记录带提交与文件指纹的源码书签，供实现、审核和返工定位；新运行用 `--memory` 开启，默认关闭。自动候选需要人工确认，尚无真实模型收益结论。
 
-[隔离执行前置验证](docs/runtime-v2/VALIDATION-09.md)中，Docker Sandboxes 的 Windows 原生与 WSL KVM 路线失败；改用 Ubuntu 内普通 Docker Engine 后，Python／Node执行、权限、网络、资源及生命周期探针通过。正式运行时尚未接入该后端。
+可选 [Docker 执行后端](docs/runtime-v2/SANDBOX.md)已接入文件工具、自检、独立验证与审核：每阶段独立容器，凭证留宿主，默认禁网，停止后校验并导入普通文件。Python／Node 的真实容器流程验证见 [VALIDATION-11](docs/runtime-v2/VALIDATION-11.md)，其中模型使用确定性夹具，不是修复效果实验。Docker Sandboxes 的本机失败与普通容器前置探针见[历史记录](docs/runtime-v2/VALIDATION-09.md)。
 
 ## 安装与配置
 
@@ -114,7 +114,7 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 
 默认每次运行最多 36 次模型请求、40 次工具调用、12 次编辑、3 次返工、300 秒活跃执行时间，估算费用上限 2 元；累计窗口默认 200 元。可在启动或显式 retry 时用 `--profile` 或 `--max-context-bytes`、`--max-tool-calls`、`--max-run-cost-cny` 调整限额，resume 保持原配置。公开的交付 profile 为 48 次模型、80 次工具、24 次编辑、8192 输出 tokens、900 秒和单次 8 元；现有累计账本仍为硬边界。不清零既有账本；失败或用量不明仍保留费用预留。暂停等待不消耗活跃执行期限。费用是保守估算，实付以供应商账单为准。
 
-只用于预先接入的可信仓库。本机检查以当前用户权限运行；路径限制、worktree 和环境变量清理不提供操作系统沙箱。工具拒绝 `.env*`、`.git`、`.local`、数据目录及链接等路径，但宿主进程和仓库代码仍有本机权限。远程 tracing 默认关闭；原始输入、差异及日志只留本机，不随 Git 分发。发布使用 GitHub REST 和 Git，不要求安装 `gh`。
+只用于预先接入的可信仓库。默认 `local` 后端的检查以当前用户权限运行；配置 `execution.backend: docker` 后，文件工具及仓库检查在容器中执行，启动失败不会回退宿主。工具拒绝 `.env*`、`.git`、`.local`、数据目录及链接等路径。Docker 控制端和宿主 Git 仍需信任，当前不是不可信租户平台。远程 tracing 默认关闭；原始输入、差异及日志只留本机，不随 Git 分发。发布使用 GitHub REST 和 Git，不要求安装 `gh`。
 
 ## 历史实现
 
@@ -122,6 +122,6 @@ if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 
 ## 扩展方向
 
-自动合并、软件发布、操作系统沙箱、跨机器恢复和长期部署仍是后续范围。首版支持人工触发与常驻监听、受控本机执行和审批后草稿 PR。历史诊断通过率与新运行时实现效果分别记录。
+自动合并、软件发布、跨机器恢复和长期部署仍是后续范围。支持人工触发与常驻监听、默认本机或可选 Docker 执行、审批后草稿 PR。容器卷磁盘配额、硬杀后的自动回收、更强虚拟机隔离仍未完成。历史诊断通过率与新运行时实现效果分别记录。
 
 Flask 源码与教程样例来自 Pallets，保留其上游 README 和 BSD-3-Clause 许可证。

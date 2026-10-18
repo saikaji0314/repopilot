@@ -6,6 +6,8 @@
 
 阶段B已接入[可选仓库文件事实记忆](MEMORY.md)：Git来源、依赖指纹、有界关键词检索、固定运行快照与人工确认候选。以下关于任务经验、长期语义检索及真实模型效果实验的方案仍未完成；机制验证见[VALIDATION-08](VALIDATION-08.md)。
 
+阶段C已接入[可选 Docker 执行后端](SANDBOX.md)，文件工具、自检、独立验证与审核均进入按阶段隔离的容器；Python／Node 真实容器机制验证见 [VALIDATION-11](VALIDATION-11.md)。工作卷磁盘配额、硬杀后自动回收、宿主 Git 的进一步加固及真实模型容器交付仍待完成。下方首版配置中的这些要求仍是计划，不能当作已全部完成。
+
 目标是逐步完成“可靠处理多个仓库的 Issue，并交付有证据、可审核的改动”。Memory、沙箱、评测和展示围绕这条主线建设，每个增量必须有独立验收。先完成小规模可比较实验和一个可演示闭环，再扩语言、并发与部署范围。
 
 ## 1. 顺序与完成条件
@@ -73,7 +75,7 @@ flowchart LR
 
 引入一个明确的执行会话抽象：准备工作区、文件读写／搜索、执行登记检查、收集结果、停止与清理。保留 `local` 后端用于已信任仓库，新增 `docker` 后端；配置指定后端，预检失败即停止，不自动退回宿主。工具协议和输出报告保持一致。
 
-候选后端包括普通Docker容器和Docker Sandboxes的每任务microVM。2026-10-17的Windows原生`sbx v0.48.0`探针在内部socket上失败，WSL KVM前提也失败；按操作者选择改验Ubuntu内Docker Engine后，2026-10-18的普通容器行为探针已通过，见[真实验证记录](VALIDATION-09.md)。下一增量以普通容器为首个后端，实现文件与检查的统一执行会话及产物导入；磁盘／流式输出限额和生产工具适配仍待完成。Sandboxes不是已可用后端，继续验证需要可用KVM worker或上游系统修复。
+候选后端包括普通Docker容器和Docker Sandboxes的每任务microVM。2026-10-17的Windows原生`sbx v0.48.0`探针在内部socket上失败，WSL KVM前提也失败；按操作者选择改验Ubuntu内Docker Engine后，2026-10-18的普通容器行为探针已通过，见[真实验证记录](VALIDATION-09.md)。现已接入普通容器的文件与检查统一会话、停止后产物导入及流式输出限额，实际协议与剩余限制见 [SANDBOX](SANDBOX.md)。Sandboxes不是已可用后端，继续验证需要可用KVM worker或上游系统修复。
 
 实现不假设所有语言都能在 Linux 构建。Windows 原生工程及其他特殊环境需要单独适配，尚不承诺“任意仓库无配置可运行”。Docker Desktop 的 WSL2 模式及其隔离边界见[官方说明](https://docs.docker.com/desktop/features/wsl/)。下面的容器限制是候选配置；microVM 后端需要按其实际权限模型单独验收，不能把非 root／只读根等要求直接宣称为 Sandboxes 默认行为。
 

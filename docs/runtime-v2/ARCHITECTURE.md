@@ -1,6 +1,6 @@
 # 当前能力、实现结构与演进边界
 
-截至 2026-10-17，RepoPilot 是面向可信本机仓库的 Issue 驱动研发运行时。当前交付终点是人工批准后的 GitHub 草稿 PR；尚未覆盖原愿景中的自动合并和软件发布。本文描述实际代码，未来方向不视作已有能力。
+截至 2026-10-18，RepoPilot 是面向可信本机仓库的 Issue 驱动研发运行时，支持默认本机和可选 Docker 执行后端。当前交付终点是人工批准后的 GitHub 草稿 PR；尚未覆盖原愿景中的自动合并和软件发布。本文描述实际代码，未来方向不视作已有能力。
 
 ## 原始需求对应到哪里
 
@@ -10,7 +10,7 @@
 | 验证问题、确认需求 | 实现 Agent 读取需求和仓库、运行检查；结构化报告可说明阻塞和待确认问题 | 没有独立需求澄清阶段，也没有自动与 Issue 作者往返讨论 |
 | 开独立工作区 | 固定基线提交，每次运行独立 Git worktree，核对原仓库与远端身份 | 本机 Git；不自动为各语言安装环境或依赖 |
 | 写代码、测试 | 通用 UTF-8 文件工具、精确替换与写入、命名检查；限制编辑与调用次数 | 工具不依赖 Python AST；Python、JavaScript 小样例已验证，不代表所有语言生态都已验证 |
-| 审核与返工循环 | 宿主独立重跑全部登记检查；只读审核 Agent；有限次返工并重新提交、检查和审核 | 审核绑定提交，检查失败可否决模型批准；仍需要人判断需求和测试是否充分 |
+| 审核与返工循环 | 编排层独立重跑全部登记检查；只读审核 Agent；有限次返工并重新提交、检查和审核 | Docker 模式使用新容器复核，默认模式仍在本机；审核绑定提交，检查失败可否决模型批准；仍需要人判断需求和测试是否充分 |
 | 中断后继续 | SQLite 状态、阶段检查点、显式恢复、重试留档、累计费用账本 | 阶段内部中断需要操作者核查；不逐条恢复模型会话，不提供跨机器恢复 |
 | 人工审批 | CLI 批准或拒绝，绑定完整 SHA 及需求、验证、审核摘要 | 审批后版本变化失效；没有用户身份、RBAC 或审批网页 |
 | PR 交付 | 批准后推送 feature 分支、创建草稿 PR；重复发布核对远端结果 | 真实 PR #2 已创建；审核通过本身不会自动推送 |
@@ -28,7 +28,7 @@
 | Multi-agent | 实现与审核两个角色，提示、工具权限、输出协议不同；默认使用同一可配置模型，顺序执行 | 角色独立不等于判断独立；没有多模型委员会或自由协商网络。多 Issue worker 并发属于任务调度 |
 | Memory／上下文 | 当前上下文清理、宿主进度与状态持久化；可选跨运行文件事实书签，带提交来源、依赖指纹和人工生命周期 | 尚无任务经验归纳、长期语义检索、向量库或真实模型收益结论；检查点与文件事实分别管理 |
 | 评测 | Fake／Mock 验证状态与边界；真实模型与 GitHub 开发复测；两个公开开发题可独立评分候选补丁，保留失败和费用证据 | 两题仅验证评分机制，尚无新版留出修复题集、重复模型实验和统计成功率。旧诊断题集不能直接当新版修复成绩 |
-| 安全与可靠性 | 路径／链接约束、登记 argv、子进程环境清理、用量预留、版本绑定、锁与显式恢复 | Docker／OS 沙箱、身份鉴权、不可篡改审计、完整提示注入防御；仓库检查代码仍以当前用户权限执行 |
+| 安全与可靠性 | 路径／链接约束、登记 argv、用量预留、版本绑定、锁与显式恢复；可选按阶段 Docker 隔离、禁网、资源与输出限额、停止后校验导入 | 工作卷磁盘配额、硬杀自动回收、更强虚拟机隔离、身份鉴权、不可篡改审计、完整提示注入防御；默认 local 检查仍有本机权限 |
 
 “专项”已有较清楚的落点：**围绕可恢复、可审核、受预算约束的 Issue 到 PR 交付 harness**。评测、Memory、安全都有关联，但当前不能把三者均描述为深入完成的专项。下一步若要形成可比较的效果证据，应优先建立独立修复评测及失败分类，再按失败证据选择加强哪一层。
 
@@ -42,6 +42,8 @@ flowchart TD
     EXEC --> PHASE[phases：准备、实现、提交、验证、审核、返工]
     PHASE --> AGENT[agent：角色内模型与工具循环]
     AGENT --> TOOLS[repository：文件工具和登记检查]
+    PHASE --> SANDBOX[sandbox：可选容器会话]
+    TOOLS --> SANDBOX
     PHASE --> WS[workspace：Git 工作区与提交校验]
     PHASE --> MEM[memory_context：固定事实快照与阶段复核]
     EXEC --> STORE[store / budget：状态与累计账本]
@@ -59,6 +61,8 @@ flowchart TD
 | [run_state.py](../../repopilot/runtime/run_state.py) | 终态集合、规范哈希、批准摘要、从持久化状态定位工作区；避免发布层依赖整套执行流程 |
 | [agent.py](../../repopilot/runtime/agent.py) | DeepSeek 接线、结构化报告、上下文与进度中间件、角色内循环、独立检查入口 |
 | [repository.py](../../repopilot/runtime/repository.py)、[workspace.py](../../repopilot/runtime/workspace.py) | 文件访问、受控命令、编辑限额；Git 基线、差异、提交、干净状态核对 |
+| [sandbox.py](../../repopilot/runtime/sandbox.py)、[sandbox_process.py](../../repopilot/runtime/sandbox_process.py) | 阶段会话、Docker 生命周期、文件协议与登记检查；有界 CLI 传输，失败不回退宿主 |
+| [file_access.py](../../repopilot/runtime/file_access.py)、[sandbox_worker.py](../../repopilot/runtime/sandbox_worker.py)、[sandbox_archive.py](../../repopilot/runtime/sandbox_archive.py) | 无模型依赖的共用文件规则；容器固定操作协议；完整校验后导入普通文件 |
 | [store.py](../../repopilot/runtime/store.py)、[budget.py](../../repopilot/runtime/budget.py) | SQLite 状态与乐观并发、进程锁；模型费用预留、结算、共享累计上限 |
 | [github.py](../../repopilot/runtime/github.py)、[watcher.py](../../repopilot/runtime/watcher.py) | GitHub API 与 Git 发布；轮询准入、去重、worker 调度、停止与残留核查 |
 | [config.py](../../repopilot/runtime/config.py) | 任务／检查／模型／限额协议、环境与执行 profile 校验 |
@@ -90,4 +94,4 @@ flowchart TD
 
 后续可按验收收益依次处理：独立修复题集与失败统计；监听健康判断和服务部署；多候选基线变化与冲突协调；接入 CI 与合并策略。长期 Memory 或更强隔离应由真实失败及部署需求驱动，而不是同时扩展所有方向。当前范围的展示方法见 [DEMO](DEMO.md)，本次结构调整验证见 [VALIDATION-06](VALIDATION-06.md)。
 
-上述方向的分阶段候选方案、Memory使用位置、沙箱边界、评测协议及合并发布门见[后续设计](NEXT.md)。[普通容器前置探针](VALIDATION-09.md)已于2026-10-18通过，尚未接入本页所述运行时；不能将探针通过等同于生产隔离后端完成。
+上述方向的分阶段候选方案、Memory使用位置、沙箱边界、评测协议及合并发布门见[后续设计](NEXT.md)。[Docker 后端](SANDBOX.md)已接入运行时，Python／Node 真实容器与确定性模型流程验证见 [VALIDATION-11](VALIDATION-11.md)；尚未在该后端验证真实模型交付效果。

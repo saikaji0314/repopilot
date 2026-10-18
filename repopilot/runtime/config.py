@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from dotenv import dotenv_values
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -31,12 +31,40 @@ class Check(Contract):
         return value
 
 
+class ExecutionConfig(Contract):
+    """可信任务配置选择执行后端；容器必须使用已准备的不可变镜像。"""
+
+    backend: Literal["local", "docker"] = "local"
+    image: str = Field(default="", max_length=240)
+    wsl_distribution: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_.-]{1,80}$")
+    memory_mb: int = Field(default=256, ge=64, le=4096)
+    cpus: int = Field(default=1, ge=1, le=8)
+    pids: int = Field(default=64, ge=16, le=256)
+    max_output_bytes: int = Field(default=1_000_000, ge=8000, le=4_000_000)
+    max_snapshot_bytes: int = Field(default=20_000_000, ge=1000, le=100_000_000)
+
+    @model_validator(mode="after")
+    def docker_requires_image(self):
+        if self.backend == 'docker' and not self.image:
+            raise ValueError('docker backend requires an immutable preinstalled image')
+        return self
+
+    @field_validator("image")
+    @classmethod
+    def immutable_image(cls, value):
+        import re
+        if value and not re.fullmatch(r"(?:[A-Za-z0-9][A-Za-z0-9_./:-]*@)?sha256:[0-9a-f]{64}", value):
+            raise ValueError("container image must be a repository@sha256 digest or immutable image ID")
+        return value
+
+
 class Task(Contract):
     schema_version: str = "2.0"
     id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,79}$")
     request: str = Field(min_length=1, max_length=8000)
     repository: Path
     checks: dict[str, Check] = Field(default_factory=dict, max_length=10)
+    execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
 
     @field_validator("schema_version")
     @classmethod

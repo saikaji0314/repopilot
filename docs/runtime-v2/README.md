@@ -6,9 +6,9 @@
 
 ## 任务与工具
 
-任务契约 `schema_version: '2.0'` 包含 `id`、`request`、`repository` 和 `checks`。检查由可信操作者登记为参数数组，模型只能按名称选择；`{python}` 为当前解释器。核心工具支持通用 UTF-8 文本，不按语言白名单过滤：`list_files`、`read_file`、`search_text`、`run_registered_check`，实现阶段另有 `write_file`、`replace_in_file`。同一编辑版本内同名检查最多执行一次；发生编辑或新一轮返工后可以再次执行。独立验证额外执行全部登记检查。
+任务契约 `schema_version: '2.0'` 包含 `id`、`request`、`repository`、`checks` 和可选的 `execution`。检查由可信操作者登记为参数数组，模型只能按名称选择；`{python}` 在默认本机后端为当前解释器，在 Docker 后端为镜像的 `python3`。核心工具支持通用 UTF-8 文本，不按语言白名单过滤：`list_files`、`read_file`、`search_text`、`run_registered_check`，实现阶段另有 `write_file`、`replace_in_file`。同一编辑版本内同名检查最多执行一次；发生编辑或新一轮返工后可以再次执行。独立验证额外执行全部登记检查。
 
-编辑只在 Git worktree 开启；精确替换拒绝不存在或多处匹配。单文件写入上限 100,000 字符，读取上限 256 KB，每次最多 200 行／8,000 字符，搜索扫描最多 2,000 文件并返回 20 处匹配。路径拒绝绝对路径、上溯、盘符、敏感目录与链接。检查命令不经 shell，但有本机当前用户权限；仅接入可信仓库。
+编辑只在 Git worktree 开启；精确替换拒绝不存在或多处匹配。单文件写入上限 100,000 字符，读取上限 256 KB，每次最多 200 行／8,000 字符，搜索扫描最多 2,000 文件并返回 20 处匹配。路径拒绝绝对路径、上溯、盘符、敏感目录与链接。检查命令不经 shell。默认本机后端有当前用户权限；可选 [Docker 后端](SANDBOX.md)统一承载文件工具及各阶段检查，仅接入可信仓库。
 
 `ImplementationReport` 的结论是 `implemented / blocked / needs_clarification`；implemented 必须包含检查证据且工作区有变更，无变更只会降为 blocked，不把 blocked 强制升级。文件证据和检查证据分开记录。`ReviewReport` 是 `approved / changes_requested / unable_to_review`；要求返工必须有具体文件、行号与建议，approved 不得包含 blocker／major finding。
 
@@ -54,7 +54,7 @@ GitHub 仅接收标准 `https://github.com/OWNER/REPO/issues/N`；Issue 必须�
 
 预算在每次模型请求前由 SQLite 原子预留。每次运行估算上限 2 元；累计账本默认 200 元，不按日期清零、不自动放大。缺失用量或中断保留预留。估算输入按字节加余量，单价输入 3／输出 12 元每百万 tokens，不折扣缓存；不是供应商实付或账户级限额。
 
-本地原始证据见 `runs/<id>/`；状态与审批在 `jobs.sqlite3`，费用在 `budget.sqlite3`。状态库是本机可信数据，不具备防恶意管理员篡改的签名。JSON 产物原子替换，但非跨文件事务，恢复以 SQLite 为准。输出截断前先写临时文件，未设置磁盘配额。密钥替换不是通用脱敏器，不提交原始日志。
+本地原始证据见 `runs/<id>/`；状态与审批在 `jobs.sqlite3`，费用在 `budget.sqlite3`。状态库是本机可信数据，不具备防恶意管理员篡改的签名。JSON 产物原子替换，但非跨文件事务，恢复以 SQLite 为准。本机后端输出先写临时文件，未设置磁盘配额；Docker 后端有流式输出限额，但工作卷仍无磁盘配额。密钥替换不是通用脱敏器，不提交原始日志。
 
 ## 验证与来源
 
