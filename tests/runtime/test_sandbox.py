@@ -155,6 +155,35 @@ def docker_config():
                            wsl_distribution=os.environ.get('REPOPILOT_TEST_WSL'))
 
 
+def test_real_docker_scoped_search_matches_local_and_keeps_guards(tmp_path):
+    from repopilot.execution.files import Repository
+
+    task, _, _ = setup(tmp_path)
+    (task.repository / 'src' / 'nested').mkdir(parents=True)
+    (task.repository / 'docs').mkdir()
+    (task.repository / 'src' / 'main.ts').write_text('needle\n', encoding='utf-8')
+    (task.repository / 'src' / 'nested' / 'other.ts').write_text('needle\n', encoding='utf-8')
+    (task.repository / 'src' / 'upper.TS').write_text('needle\n', encoding='utf-8')
+    (task.repository / 'docs' / 'notes.md').write_text('needle\n' * 25, encoding='utf-8')
+    task = task.model_copy(update={'execution': docker_config()})
+    host = Repository(task.repository)
+    with repository_session(task, task.repository, writable=False, deadline=lambda: 90) as session:
+        for path, pattern in [('.', '*'), ('src', '*.ts'), ('src/main.ts', '*')]:
+            assert session.search('needle', path, pattern) == host.search('needle', path, pattern)
+            assert session.listing(path, pattern) == host.listing(path, pattern)
+        tools = {t.name: t for t in repository.build_tools(task, lambda: 60,
+                 repository=session, checker=session.run_check)}
+        assert tools['search_text'].invoke({'query': 'needle', 'path': 'src', 'file_glob': '*.ts'})['scanned_files'] == 2
+        assert tools['list_files'].invoke({'path': 'src', 'file_glob': '*.ts'})['files'] == [
+            'src/main.ts', 'src/nested/other.ts']
+        for path in ['../outside', '.env', '.local', '/etc', 'C:\\outside']:
+            with pytest.raises(ValueError, match='path_denied'):
+                session.search('needle', path)
+        with pytest.raises(ValueError, match='invalid_file_glob'):
+            session.search('needle', file_glob='**/*.ts')
+    assert (task.repository / 'src' / 'main.ts').read_text(encoding='utf-8') == 'needle\n'
+
+
 @pytest.mark.parametrize('language', ['python', 'javascript'])
 def test_real_docker_tools_verify_and_checkpoint_resume(tmp_path, language, monkeypatch):
     monkeypatch.setenv('DS_API_KEY', 'synthetic-host-key')

@@ -1,6 +1,5 @@
 """对显式受信本地仓库做有界的 UTF-8 访问与命名检查。"""
 
-import itertools
 import os
 from pathlib import Path
 import signal
@@ -98,12 +97,12 @@ def build_tools(task: Task, remaining_seconds, workspace=None, edits=None, *, re
             return {"ok": False, "error": "repository_io_error"}
 
     @tool
-    def list_files() -> dict:
-        """列出仓库前 200 个可访问文件；敏感文件、链接和运行数据被过滤。"""
-        def action():
-            files = list(itertools.islice(repo.files(), 201))
-            return {"files": files[:200], "truncated": len(files) > 200}
-        return observe(action)
+    def list_files(path: str = ".", file_glob: str = "*") -> dict:
+        """递归列出 path 目录或单文件，最多200项。file_glob匹配文件名（如 *.ts），不含目录。
+
+        默认全仓；路径始终相对仓库根。截断时缩小path或file_glob；敏感文件和链接不可访问。
+        """
+        return observe(lambda: repo.listing(path, file_glob))
 
     @tool
     def read_file(path: str, start_line: int = 1, end_line: int = 120) -> dict:
@@ -111,9 +110,13 @@ def build_tools(task: Task, remaining_seconds, workspace=None, edits=None, *, re
         return observe(lambda: repo.read(path, start_line, end_line))
 
     @tool
-    def search_text(query: str) -> dict:
-        """按区分大小写的字面子串搜索普通文本，最多返回 20 处匹配。"""
-        return observe(lambda: repo.search(query))
+    def search_text(query: str, path: str = ".", file_glob: str = "*") -> dict:
+        """区分大小写的字面搜索，最多20处。path选择目录或单文件，file_glob匹配文件名（如 *.py）。
+
+        默认全仓。优先用已知目录、文件类型缩小范围；结果路径相对仓库根。
+        截断时依据truncation_reason缩小path、file_glob或query；complete=false时零匹配不代表不存在。
+        """
+        return observe(lambda: repo.search(query, path, file_glob))
 
     @tool
     def run_registered_check(name: str) -> dict:

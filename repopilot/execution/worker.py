@@ -18,7 +18,7 @@ def serve():
             if not target.is_dir():
                 raise ValueError('check_cwd_not_directory')
             result = str(target)
-        elif action in {'read', 'text', 'search', 'write', 'replace'}:
+        elif action in {'read', 'text', 'listing', 'search', 'write', 'replace'}:
             result = getattr(repository, action)(*arguments)
         else:
             raise ValueError('unknown_file_action')

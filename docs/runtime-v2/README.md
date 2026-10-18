@@ -8,7 +8,7 @@
 
 任务契约 `schema_version: '2.0'` 包含 `id`、`request`、`repository`、`checks` 和可选的 `execution`。检查由可信操作者登记为参数数组，模型只能按名称选择；`{python}` 在默认本机后端为当前解释器，在 Docker 后端为镜像的 `python3`。核心工具支持通用 UTF-8 文本，不按语言白名单过滤：`list_files`、`read_file`、`search_text`、`run_registered_check`，实现阶段另有 `write_file`、`replace_in_file`。同一编辑版本内同名检查最多执行一次；发生编辑或新一轮返工后可以再次执行。独立验证额外执行全部登记检查。
 
-编辑只在 Git worktree 开启；精确替换拒绝不存在或多处匹配。单文件写入上限 100,000 字符，读取上限 256 KB，每次最多 200 行／8,000 字符，搜索扫描最多 2,000 文件并返回 20 处匹配。路径拒绝绝对路径、上溯、盘符、敏感目录与链接。检查命令不经 shell。默认本机后端有当前用户权限；可选 [Docker 后端](SANDBOX.md)统一承载文件工具及各阶段检查，仅接入可信仓库。
+编辑只在 Git worktree 开启；精确替换拒绝不存在或多处匹配。单文件写入上限 100,000 字符，读取上限 256 KB，每次最多 200 行／8,000 字符。搜索与文件列表支持 `path / file_glob`，先选目录和文件名再读取；搜索最多读取 2,000 个候选文件、返回 20 处匹配，两种工具的文件名筛选上限为 20,000。覆盖数量、跳过文件与停止原因见[搜索协议](SEARCH.md)。路径拒绝绝对路径、上溯、盘符、敏感目录与链接。检查命令不经 shell。默认本机后端有当前用户权限；可选 [Docker 后端](SANDBOX.md)统一承载文件工具及各阶段检查，仅接入可信仓库。
 
 `ImplementationReport` 的结论是 `implemented / blocked / needs_clarification`；implemented 必须包含检查证据且工作区有变更，无变更只会降为 blocked，不把 blocked 强制升级。文件证据和检查证据分开记录。`ReviewReport` 是 `approved / changes_requested / unable_to_review`；要求返工必须有具体文件、行号与建议，approved 不得包含 blocker／major finding。
 

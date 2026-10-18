@@ -82,8 +82,11 @@ class DockerSession:
     def read(self, path, start_line, end_line):
         return self.rpc('read', path, start_line, end_line)
 
-    def search(self, query):
-        return self.rpc('search', query)
+    def listing(self, path=".", file_glob="*"):
+        return self.rpc('listing', path, file_glob)
+
+    def search(self, query, path=".", file_glob="*"):
+        return self.rpc('search', query, path, file_glob)
 
     def write(self, path, content):
         if not self.writable:
