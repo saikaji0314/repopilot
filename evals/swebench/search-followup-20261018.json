@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0",
+  "purpose": "targeted development follow-up, not held-out or a full Lite score",
+  "baseline_results": "results-20261018.json",
+  "first_round_revision": "664f843",
+  "instances": ["sympy__sympy-20212", "sympy__sympy-19254"],
+  "selection": "Previously exhausted model calls after repeated searches, and previously exhausted context; chosen before follow-up attempts.",
+  "model": "deepseek-flash",
+  "provider": "deepseek",
+  "thinking": "enabled",
+  "reasoning_effort": "low",
+  "input_cny_per_million": 3,
+  "output_cny_per_million": 12,
+  "profile": {
+    "memory_enabled": false,
+    "max_model_calls": 24,
+    "max_tool_calls": 40,
+    "max_edits": 12,
+    "max_rework": 1,
+    "max_output_tokens": 4096,
+    "max_context_bytes": 90000,
+    "run_timeout_seconds": 600,
+    "request_timeout_seconds": 90,
+    "max_run_cost_cny": 2
+  },
+  "first_round_estimated_cap_cny": 4,
+  "total_estimated_cap_cny": 8,
+  "stop_rules": [
+    "One first-round attempt per selected instance, same task, source commit, solver image, checks and grading as the original cohort.",
+    "Grade every frozen candidate, including partial and empty results; never overwrite the baseline.",
+    "Inspect first-round evidence before making at most one additional harness revision. Freeze that change before paid verification.",
+    "At most one verification attempt per selected instance after that single revision; stop even if issues remain.",
+    "Use the existing cumulative 200 CNY ledger. No hidden retries, replacement cases, pushing, approval or PR publication.",
+    "Compare scoped-search usage, file reads, duplicate queries, first edit position, limits, workflow completion and official grading separately.",
+    "This is a historical development comparison with stochastic model responses, not causal proof or a leaderboard score."
+  ]
+}
