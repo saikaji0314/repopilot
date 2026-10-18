@@ -106,6 +106,7 @@ GitHub 接入另需 `GITHUB_TOKEN` 或 `GH_TOKEN`；权限按目标仓库配置�
 - [真实交付](docs/runtime-v2/VALIDATION-05.md)：公开个人仓库的小规模开发复测，不能据此计算通用成功率。
 - [容器接入](docs/runtime-v2/VALIDATION-11.md)：Python／Node 真实容器与确定性模型流程；尚无容器后端真实模型交付结论。
 - [独立修复评分](evals/repair/README.md)：两个公开开发夹具验证评分机制，尚无隐藏留出题集成绩。
+- [SWE-bench 接入](evals/swebench/README.md)：冻结单题输入并导出标准补丁，已通过官方参考补丁与未修复基线的真实容器预检；尚无 RepoPilot 模型解题成绩。
 - [仓库记忆](docs/runtime-v2/MEMORY.md)：可追溯文件事实，尚无真实模型收益对照结论。
 
 默认本机检查拥有当前用户权限。可选 Docker 后端有网络、资源、输出和产物边界，但没有工作卷磁盘配额、硬杀后自动回收或 microVM 级隔离；宿主 Git 和 Docker 控制面仍需信任。模型审核不能替代人工判断。运行数据默认放在被忽略的 `.local/runtime/`，不要提交密钥、原始会话或业务运行数据。

@@ -60,6 +60,8 @@ GitHub 仅接收标准 `https://github.com/OWNER/REPO/issues/N`；Issue 必须�
 
 历史增量：[调查](VALIDATION-01.md)、[工作区](VALIDATION-02.md)、[审核返工](VALIDATION-03.md)。持久化与审批的历史实现见[增量 4](VALIDATION-04.md)，真实交付与常驻监听见[增量 5](VALIDATION-05.md)，展示步骤见[演示](DEMO.md)，区分确定性模拟、真实本地 Git／检查、真实模型和真实 GitHub 写入，不能互相代替。
 
+[SWE-bench 接入协议](../../evals/swebench/README.md)提供单题输入边界与官方补丁导出；[增量13](VALIDATION-13.md)记录实际评分环境预检，尚非模型修复效果评测。
+
 - [LangChain Agent](https://docs.langchain.com/oss/python/langchain/agents)
 - [LangGraph 暂停与副作用](https://docs.langchain.com/oss/python/langgraph/interrupts)
 - [DeepSeek 工具调用](https://api-docs.deepseek.com/guides/tool_calls/)
