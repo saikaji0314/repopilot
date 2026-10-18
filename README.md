@@ -12,7 +12,7 @@ RepoPilot 面向由工单驱动的仓库研发：手动接收或自动监听已�
 
 可选[仓库事实记忆](docs/runtime-v2/MEMORY.md)记录带提交与文件指纹的源码书签，供实现、审核和返工定位；新运行用 `--memory` 开启，默认关闭。自动候选需要人工确认，尚无真实模型收益结论。
 
-[Docker Sandboxes 接入探针](docs/runtime-v2/VALIDATION-09.md)中，原生 Windows 后端在镜像准备阶段失败；WSL2＋Ubuntu 安装成功，但 KVM 前提失败。尚未提供产品隔离执行能力。
+[隔离执行前置验证](docs/runtime-v2/VALIDATION-09.md)中，Docker Sandboxes 的 Windows 原生与 WSL KVM 路线失败；改用 Ubuntu 内普通 Docker Engine 后，Python／Node执行、权限、网络、资源及生命周期探针通过。正式运行时尚未接入该后端。
 
 ## 安装与配置
 

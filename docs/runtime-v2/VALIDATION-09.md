@@ -1,6 +1,6 @@
-# 增量9：Docker Sandboxes 本机接入探针
+# 增量9：隔离执行前置验证
 
-验证日期：2026-10-17。结论：原生 Windows 沙箱创建失败；继续安装 WSL2＋Ubuntu 后，Linux 路线又在 KVM 前提上失败。执行隔离尚未验收，没有把失败后的检查转到宿主执行。
+验证日期：2026-10-17 至 2026-10-18。结论：Docker Sandboxes 的原生 Windows 路线与 WSL KVM 前提分别失败；操作者选择在 Ubuntu 内改验普通 Docker Engine，17项行为探针通过。产品执行后端尚未接入，原运行时仍在宿主执行。各路线不自动互相降级。
 
 ## 验证条件
 
@@ -81,7 +81,7 @@ ls: cannot access '/dev/kvm': No such file or directory
 
 [Docker Linux 安装要求](https://docs.docker.com/ai/sandboxes/install/)明确依赖 KVM，因此在此前提失败后没有继续安装 Linux `docker-sbx`、重新登录或创建 VM。没有卸载 Windows 更新或关闭安全功能。
 
-## 已验证与尚未验证
+## Docker Sandboxes 路线结果
 
 | 项目 | 结果 |
 | --- | --- |
@@ -91,14 +91,59 @@ ls: cannot access '/dev/kvm': No such file or directory
 | 官方 shell 镜像准备与沙箱创建 | 失败，内部 socket 错误 |
 | WSL2 与 Ubuntu 24.04 安装启动 | 通过 |
 | WSL2 内 KVM／嵌套虚拟化前提 | 失败，无 svm 与 /dev/kvm |
-| Python／JavaScript 命令、退出码、输出 | 未验证，前提失败 |
-| 文件传输、编辑、差异导出 | 未验证 |
-| 宿主／跨任务文件不可访问 | 未验证 |
-| 出网拒绝、CPU／内存限制 | 未验证；仅登记配置不能当证据 |
-| 超时后子进程终止、停止／恢复／移除 | 未验证 |
+| Sandboxes 内命令、文件、网络及资源限制 | 未验证，创建前提失败 |
+
+## 普通 Docker 容器路线
+
+操作者明确选择在已安装 Ubuntu 内改验 Docker Engine。这条路线共享 WSL 的 Linux 内核，不需要在 WSL 内运行 KVM 虚拟机，不能称为每任务 microVM。
+
+### 环境及准备
+
+- Ubuntu 24.04.5，Docker Engine／CLI 29.9.1，containerd 2.4.2，runc 1.5.2。
+- 使用[Docker 官方 Ubuntu apt 源](https://docs.docker.com/engine/install/ubuntu/)，最小安装 `docker-ce docker-ce-cli containerd.io`，没有安装 Desktop、buildx 或 Compose。核心包匹配签名索引的 SHA256。
+- WSL NAT 模式无法使用宿主 localhost 代理，连接官方源时重置；切换微软支持的 `networkingMode=mirrored` 后恢复。镜像拉取仍需为受信 daemon 配置网络；本机只保存经校验无认证字段的回环代理，配置权限0600。该代理属于依赖准备，不进入候选容器。
+- 两个官方镜像在拉取后固定 RepoDigest 再创建容器。本次 Python 为 `python@sha256:34386ef0cb081344d7ec1c103ba398e6e9f64e9ab3a1509accc92a4e24a07258`，Node 为 `node@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392`。重新拉取可变tag可能得到不同digest，应保留各次报告，不能假设版本相同。
+
+### 配置与操作协议
+
+[可重复探针](../../scripts/probe_container_execution.py)只使用独立夹具及专用资源，不调用模型或GitHub，不接触真实仓库代码。控制脚本在 Linux／WSL worker 内运行，需要root准备文件所有权和操作Docker；这不是给模型开放root工具。
+
+每个候选容器使用独立命名卷、UID/GID65532、只读根文件系统、`cap-drop ALL`、`no-new-privileges`、Docker默认seccomp、`network none`，不挂载宿主目录或Docker socket。限制为1 CPU、128 MiB且无额外swap、32 PID、128个打开文件，`/tmp`为16 MiB tmpfs。卷初始化是单独的可信短任务，仅增加CHOWN能力；工作卷显式`volume-nocopy`，避免镜像目录元数据覆盖准备好的所有者。
+
+候选代码在容器内执行和编辑；超时后停止整个容器并核对PID为0，停止后才导出已知文件。再启动时应保留卷内容、旧子进程消失。结束时仅清理本次唯一名称的容器和卷，不执行全局prune。
+
+### 真实结果
+
+2026-10-18的最终脚本返回0，`report.passed=true`。报告包含17项行为检查、3项版本／镜像记录及4项资源清理记录，共24项；它们不是24项独立安全证明。
+
+| 行为 | 实际观察 |
+| --- | --- |
+| 宿主路径及环境边界 | 虚构宿主诱饵不可见，`/mnt/c`不可见，测试环境变量不继承；没有尝试读取真实凭证 |
+| 跨任务工作区 | Python卷写入标记，Node卷看不到该标记 |
+| Python／Node进程协议 | 成功命令通过；显式退出7时原样返回，stdout/stderr分别收集 |
+| 编辑与验证 | Python缺陷夹具先失败，容器内修改后检查通过；JavaScript断言通过 |
+| 外网探针 | 到1.1.1.1:443的TCP连接被拒绝；没有据此声称所有协议和网络攻击均已验证 |
+| 根文件系统及权限 | root写根文件系统也被只读挂载拒绝；候选UID65532，CapEff为0、NoNewPrivs为1、Seccomp为2 |
+| cgroup配置 | memory.max=134217728，cpu.max=100000 100000，pids.max=32；未做CPU负载吞吐测试 |
+| 进程上限 | 尝试创建64个子进程，在达到上限前收到资源不足，并回收已创建进程 |
+| OOM | 256 MiB分配触发退出137，memory.events中的oom_kill增加1 |
+| 超时与恢复 | 带子进程的命令超时后停止整个容器，Running=false、Pid=0；重启后检查仍通过且旧sleep子进程不存在 |
+| 导出与清理 | 停止后导出文件符合预期并生成补丁；两容器和两工作卷清理成功，标签资源清单为空 |
+
+前期失败全部保留：未配置daemon代理时镜像拉取超时；空卷copy-up导致写权限失败；旧版`docker top -eo args`因没有PID列而失败。最后改为`-eo pid,args`后通过；没有通过放宽候选容器权限修复这些失败。本机保存逐次report、命令退出码、输出尾部与candidate.patch，原始数据不提交。
+
+### 复跑
+
+在专用Linux worker上安装上述Docker Engine及Python3，先启动Engine。以下命令需要Docker控制权限，并会拉取公开镜像；`--output`必须是不存在的新目录：
+
+```bash
+sudo python3 scripts/probe_container_execution.py --output /var/tmp/repopilot-probe-new-run
+```
+
+探针自身输出有界，日志只截取尾部；没有实现可承受任意候选程序的生产流式输出限额。还未完成：通用恶意归档／链接产物导入、工作卷磁盘配额、进程被硬杀后的回收、沙箱逃逸抵抗、正式工具后端、真实模型或多Issue隔离交付验证。
 
 ## 对产品接入的影响
 
-此时不新增声称可用的 `sbx` 执行后端；现有 RepoPilot 仍以宿主权限执行登记检查。继续 Sandboxes 需要可用的 KVM Linux worker 或系统上游修复；本机已装的 Ubuntu 本身还不足以满足前提。另一个候选是在现有 Ubuntu 内验证 Docker Engine 普通容器，此路线不需要在 WSL 内再运行 KVM 虚拟机，但隔离边界不同，尚未安装或验证。两条路线均须通过真实执行与边界探针；不能把普通容器称为每任务 microVM，也不能在沙箱失败时自动降级为宿主执行。
+不新增声称可用的 `sbx` 执行后端；继续 Sandboxes 需要可用的KVM worker或上游系统修复。普通Docker容器的有限前置探针现已通过，下一增量可据此实现执行会话接口，但不能自动把现有CLI标为已支持容器，也不在沙箱失败时退回宿主执行。
 
-产品接口目标仍是：控制面保留模型／GitHub 凭证、预算、状态和审批，每个任务拥有独立执行会话。文件工具、实现自测与编排层独立验证都应进入该环境，导出结果须在停止仓库代码后校验。当前仅完成前置可行性探针的一部分，尚未实现产品隔离执行。
+产品接口目标仍是：控制面保留模型／GitHub凭证、预算、状态和审批，每个任务拥有独立执行会话。文件工具、实现自测与编排层独立验证都应进入该环境，导出结果须在停止仓库代码后校验。当前已完成普通容器前置可行性探针，尚未实现产品隔离执行。

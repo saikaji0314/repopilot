@@ -193,7 +193,8 @@ class Probe:
         (self.output / "candidate.patch").write_text(patch)
         self.ok("start", python)
         result = self.execute(python, "python", check)
-        processes = self.ok("top", python, "-eo", "args")
+        # Docker top 要求 ps 输出包含 PID 列，否则会在解析前失败。
+        processes = self.ok("top", python, "-eo", "pid,args")
         self.require("restart_retains_files_not_old_child", result.returncode == 0 and "sleep 120" not in processes)
 
     def cleanup(self) -> None:
@@ -211,13 +212,15 @@ def main() -> int:
     args = parser.parse_args()
     if sys.platform != "linux":
         parser.error("请在专用 Linux／WSL Docker worker 中运行，不在 Windows 宿主裸跑夹具")
+    if os.geteuid() != 0:
+        parser.error("当前探针需要 root 控制进程准备卷和文件所有权；候选容器使用 UID 65532")
     args.output.mkdir(parents=True, exist_ok=False)
     probe = Probe(args.output)
     os.environ["REPOPILOT_PROBE_SECRET"] = uuid.uuid4().hex
     error = None
     try:
         probe.run()
-    except Exception as exc:
+    except (Exception, KeyboardInterrupt) as exc:
         error = f"{type(exc).__name__}: {exc}"
         print(error, file=sys.stderr, flush=True)
     finally:

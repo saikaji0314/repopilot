@@ -73,7 +73,7 @@ flowchart LR
 
 引入一个明确的执行会话抽象：准备工作区、文件读写／搜索、执行登记检查、收集结果、停止与清理。保留 `local` 后端用于已信任仓库，新增 `docker` 后端；配置指定后端，预检失败即停止，不自动退回宿主。工具协议和输出报告保持一致。
 
-候选后端包括普通 Docker 容器和 Docker Sandboxes 的每任务 microVM。2026-10-17 的 Windows 原生 `sbx v0.48.0` 探针在内部 socket 上失败；继续安装 WSL2＋Ubuntu 后，KVM 前提也失败，见[真实验证记录](VALIDATION-09.md)。因此暂不把 Sandboxes 接入标为完成，也不因诊断健康就跳过实际执行验证。继续 Sandboxes 需要可用 KVM worker 或上游系统修复；普通 Docker 容器可另在现有 Ubuntu 内验证，均须先通过关键依赖探针再实现产品适配。
+候选后端包括普通Docker容器和Docker Sandboxes的每任务microVM。2026-10-17的Windows原生`sbx v0.48.0`探针在内部socket上失败，WSL KVM前提也失败；按操作者选择改验Ubuntu内Docker Engine后，2026-10-18的普通容器行为探针已通过，见[真实验证记录](VALIDATION-09.md)。下一增量以普通容器为首个后端，实现文件与检查的统一执行会话及产物导入；磁盘／流式输出限额和生产工具适配仍待完成。Sandboxes不是已可用后端，继续验证需要可用KVM worker或上游系统修复。
 
 实现不假设所有语言都能在 Linux 构建。Windows 原生工程及其他特殊环境需要单独适配，尚不承诺“任意仓库无配置可运行”。Docker Desktop 的 WSL2 模式及其隔离边界见[官方说明](https://docs.docker.com/desktop/features/wsl/)。下面的容器限制是候选配置；microVM 后端需要按其实际权限模型单独验收，不能把非 root／只读根等要求直接宣称为 Sandboxes 默认行为。
 
