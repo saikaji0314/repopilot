@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "purpose": "development cohort; not held-out or full Lite results",
+  "dataset_name": "SWE-bench/SWE-bench_Lite",
+  "dataset_revision": "b0dde1093fe417d83b7184254edf8199c1f0dff5",
+  "harness_revision": "02e7a74ffd0b707aab73d203fe87bdc7c76afc8e",
+  "selection": "sympy__sympy-20590 smoke plus first four other sympy/sympy version 1.7 IDs sorted by SHA256('RepoPilot-dev-20261018:' + instance_id); six eligible instances total",
+  "model": "deepseek-flash",
+  "estimated_batch_cap_cny": 10,
+  "attempts_per_instance": 1,
+  "profile": {
+    "memory_enabled": false,
+    "max_model_calls": 24,
+    "max_tool_calls": 40,
+    "max_edits": 12,
+    "max_rework": 1,
+    "max_output_tokens": 4096,
+    "max_context_bytes": 90000,
+    "run_timeout_seconds": 600,
+    "request_timeout_seconds": 90,
+    "max_run_cost_cny": 2
+  },
+  "cases": [
+    {"instance_id": "sympy__sympy-20590", "public_tests": ["sympy/core/tests/test_symbol.py"]},
+    {"instance_id": "sympy__sympy-20049", "public_tests": ["sympy/physics/vector/tests/test_point.py"]},
+    {"instance_id": "sympy__sympy-20212", "public_tests": ["sympy/core/tests/test_power.py"]},
+    {"instance_id": "sympy__sympy-19487", "public_tests": ["sympy/functions/elementary/tests/test_complexes.py"]},
+    {"instance_id": "sympy__sympy-19254", "public_tests": ["sympy/polys/tests/test_factortools.py"]}
+  ],
+  "stop_rules": [
+    "No automatic model retries or replacement cases; all environment and scoring failures retained.",
+    "Freeze code and configuration before model attempts; optimize only after completing cohort.",
+    "Use existing cumulative budget ledger, fresh output directories and official run IDs.",
+    "Report workflow completion separately from official resolution; score partial candidates as partial."
+  ]
+}
