@@ -12,8 +12,25 @@ class SandboxError(WorkspaceError):
     pass
 
 
+def failure_category(stderr):
+    """只输出固定分类；Docker错误可能包含源码、路径和认证信息。"""
+    text = stderr.lower()
+    for marker, category in (
+        (b'no such container', 'container_missing'),
+        (b'is not running', 'container_not_running'),
+        (b'is restarting', 'container_restarting'),
+        (b'oci runtime exec failed', 'runtime_exec_error'),
+        (b'permission denied', 'permission_denied'),
+        (b'traceback (most recent call last)', 'worker_exception'),
+    ):
+        if marker in text:
+            return category
+    return 'unclassified'
+
+
 class DockerTransport:
     def __init__(self, distribution=None):
+        self.last_failure = None
         if os.name == "nt":
             if not distribution:
                 raise SandboxError("docker_on_windows_requires_wsl_distribution")
@@ -24,6 +41,7 @@ class DockerTransport:
             self.prefix = ["docker"]
 
     def run(self, *args, data=b"", timeout=30, cap=1_000_000, allow_failure=False):
+        self.last_failure = None
         keep = {"PATH", "SYSTEMROOT", "WINDIR", "HOME", "USERPROFILE", "LOCALAPPDATA", "LANG", "LC_ALL"}
         env = {k: v for k, v in os.environ.items() if k.upper() in keep}
         process = subprocess.Popen([*self.prefix, *args], stdin=subprocess.PIPE,
@@ -71,6 +89,11 @@ class DockerTransport:
                 return bytes(buffers[0]) + b"\n" + bytes(buffers[1]), process.returncode
             if process.returncode:
                 # stderr可能含来源数据，错误只传播固定代码；原始Docker认证不进入模型事件。
+                self.last_failure = {
+                    'operation': args[0], 'returncode': process.returncode,
+                    'category': failure_category(bytes(buffers[1])),
+                    'stderr_bytes': len(buffers[1]), 'stdout_bytes': len(buffers[0]),
+                }
                 raise SandboxError(f"docker_{args[0]}_failed")
             return bytes(buffers[0])
         finally:

@@ -1,0 +1,214 @@
+{
+  "cases": [
+    {
+      "active_seconds": 80.35899999999674,
+      "condition": "refined-off",
+      "context_compactions": 0,
+      "estimated_cost_cny": 0.326589,
+      "first_edit_tool_position": null,
+      "instance_id": "sympy__sympy-19254",
+      "max_input_bytes": 52090,
+      "memory": false,
+      "memory_initial_hits": 0,
+      "memory_stage_hits": [],
+      "model_calls": 8,
+      "official_resolved": false,
+      "official_status": "empty_patch",
+      "patch_bytes": 0,
+      "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "revision": "6d37ab875b9fe497a47194cd178ec97e6e200392",
+      "run_id": "bench-sympy__sympy-19254-9b406c6e96b9",
+      "source_unchanged": true,
+      "status": "not_evaluated",
+      "stop_reason": "docker_exec_failed",
+      "tokens": {
+        "input_tokens": 70939,
+        "output_tokens": 9481
+      },
+      "tool_calls": 15,
+      "tool_counts": {
+        "list_files": 2,
+        "read_file": 4,
+        "run_registered_check": 1,
+        "search_text": 8
+      },
+      "uncertain_calls": 0,
+      "variant": "refined",
+      "wall_seconds": 106.078,
+      "workflow_status": "workspace_error"
+    },
+    {
+      "active_seconds": 103.28099999998813,
+      "condition": "refined-on",
+      "context_compactions": 1,
+      "estimated_cost_cny": 1.280799,
+      "first_edit_tool_position": 45,
+      "instance_id": "sympy__sympy-20212",
+      "max_input_bytes": 79378,
+      "memory": true,
+      "memory_initial_hits": 2,
+      "memory_stage_hits": [
+        {
+          "hits": 2,
+          "omitted": 0,
+          "phase": "implement"
+        }
+      ],
+      "model_calls": 36,
+      "official_resolved": true,
+      "official_status": "resolved",
+      "patch_bytes": 1065,
+      "patch_sha256": "b52fb85cace5f1d397adce9e1d22a15fb38aa10c95c49d2ee123d708b3b2a7b2",
+      "revision": "6d37ab875b9fe497a47194cd178ec97e6e200392",
+      "run_id": "bench-sympy__sympy-20212-bb14b44cc691",
+      "source_unchanged": true,
+      "status": "not_evaluated",
+      "stop_reason": "max_model_calls",
+      "tokens": {
+        "input_tokens": 393693,
+        "output_tokens": 8310
+      },
+      "tool_calls": 53,
+      "tool_counts": {
+        "list_files": 1,
+        "read_file": 25,
+        "replace_in_file": 4,
+        "run_registered_check": 2,
+        "search_text": 21
+      },
+      "uncertain_calls": 0,
+      "variant": "refined",
+      "wall_seconds": 123.016,
+      "workflow_status": "limit_reached"
+    },
+    {
+      "active_seconds": 62.73500000000058,
+      "condition": "refined-on",
+      "context_compactions": 0,
+      "estimated_cost_cny": 0.2289,
+      "first_edit_tool_position": null,
+      "instance_id": "sympy__sympy-19254",
+      "max_input_bytes": 35742,
+      "memory": true,
+      "memory_initial_hits": 2,
+      "memory_stage_hits": [
+        {
+          "hits": 2,
+          "omitted": 0,
+          "phase": "implement"
+        }
+      ],
+      "model_calls": 6,
+      "official_resolved": false,
+      "official_status": "empty_patch",
+      "patch_bytes": 0,
+      "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "revision": "6d37ab875b9fe497a47194cd178ec97e6e200392",
+      "run_id": "bench-sympy__sympy-19254-018766f0ca7c",
+      "source_unchanged": true,
+      "status": "not_evaluated",
+      "stop_reason": "docker_exec_failed",
+      "tokens": {
+        "input_tokens": 42692,
+        "output_tokens": 8402
+      },
+      "tool_calls": 13,
+      "tool_counts": {
+        "read_file": 8,
+        "search_text": 5
+      },
+      "uncertain_calls": 0,
+      "variant": "refined",
+      "wall_seconds": 80.328,
+      "workflow_status": "workspace_error"
+    },
+    {
+      "active_seconds": 98.53100000000268,
+      "condition": "refined-off",
+      "context_compactions": 1,
+      "estimated_cost_cny": 1.222924,
+      "first_edit_tool_position": null,
+      "instance_id": "sympy__sympy-20212",
+      "max_input_bytes": 81511,
+      "memory": false,
+      "memory_initial_hits": 0,
+      "memory_stage_hits": [],
+      "model_calls": 36,
+      "official_resolved": false,
+      "official_status": "empty_patch",
+      "patch_bytes": 0,
+      "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "revision": "6d37ab875b9fe497a47194cd178ec97e6e200392",
+      "run_id": "bench-sympy__sympy-20212-c756ff7ab1f5",
+      "source_unchanged": true,
+      "status": "not_evaluated",
+      "stop_reason": "max_model_calls",
+      "tokens": {
+        "input_tokens": 378073,
+        "output_tokens": 7392
+      },
+      "tool_calls": 44,
+      "tool_counts": {
+        "list_files": 1,
+        "read_file": 26,
+        "run_registered_check": 2,
+        "search_text": 15
+      },
+      "uncertain_calls": 0,
+      "variant": "refined",
+      "wall_seconds": 116.781,
+      "workflow_status": "limit_reached"
+    }
+  ],
+  "estimated_cost_cny": 3.059212,
+  "memory_comparisons": [
+    {
+      "comparison_note": "Single paired development attempt; not statistical evidence",
+      "estimated_cost_delta_cny_on_minus_off": 0.057875,
+      "input_token_delta_on_minus_off": 15620,
+      "instance_id": "sympy__sympy-20212",
+      "model_call_delta_on_minus_off": 0,
+      "off_resolved": false,
+      "off_workflow": "limit_reached",
+      "on_resolved": true,
+      "on_workflow": "limit_reached",
+      "output_token_delta_on_minus_off": 918,
+      "provided_facts": 2,
+      "tool_call_delta_on_minus_off": 9,
+      "valid_for_component_comparison": true
+    },
+    {
+      "comparison_note": "Backend error prevents a valid memory benefit comparison",
+      "estimated_cost_delta_cny_on_minus_off": -0.097689,
+      "input_token_delta_on_minus_off": -28247,
+      "instance_id": "sympy__sympy-19254",
+      "model_call_delta_on_minus_off": -2,
+      "off_resolved": false,
+      "off_workflow": "workspace_error",
+      "on_resolved": false,
+      "on_workflow": "workspace_error",
+      "output_token_delta_on_minus_off": -1079,
+      "provided_facts": 2,
+      "tool_call_delta_on_minus_off": -2,
+      "valid_for_component_comparison": false
+    }
+  ],
+  "profile": {
+    "max_context_bytes": 90000,
+    "max_edits": 12,
+    "max_model_calls": 36,
+    "max_output_tokens": 8192,
+    "max_rework": 1,
+    "max_run_cost_cny": 2,
+    "max_tool_calls": 60,
+    "memory_enabled": false,
+    "request_timeout_seconds": 90,
+    "run_timeout_seconds": 600
+  },
+  "protocol_sha256": "6cffc8c5c4297f1e162c9a78fc88bebd648cce667d1662ecb19301917bce9e38",
+  "schema_version": "1.0",
+  "scope": "four separately frozen refinement attempts on two known development cases; no best-of score",
+  "scoring_complete": true,
+  "seed_manifest_sha256": "8cebe751f6c6aa739b1f199503963f2a9a814b1eba4057480d34465ee6c373f3",
+  "uncertain_calls": 0
+}

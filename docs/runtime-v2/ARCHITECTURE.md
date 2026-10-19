@@ -27,7 +27,7 @@
 | LangChain／LangGraph | `create_agent` 承载单个角色内部的模型与工具循环；Pydantic 校验报告；DeepSeek 适配 | 外层业务流程是自定义 Python 状态机与 SQLite，未采用 LangGraph StateGraph／checkpointer |
 | Multi-agent | 实现与审核两个角色，提示、工具权限、输出协议不同；默认使用同一可配置模型，顺序执行 | 角色独立不等于判断独立；没有多模型委员会或自由协商网络。多 Issue worker 并发属于任务调度 |
 | Memory／上下文 | 当前上下文清理、宿主进度与状态持久化；可选跨运行文件事实书签，带提交来源、依赖指纹和人工生命周期 | 尚无任务经验归纳、长期语义检索、向量库或真实模型收益结论；检查点与文件事实分别管理 |
-| 评测 | Fake／Mock 验证状态与边界；真实模型与 GitHub 开发复测；两个公开开发题可独立评分候选补丁，保留失败和费用证据 | 两题仅验证评分机制，尚无新版留出修复题集、重复模型实验和统计成功率。旧诊断题集不能直接当新版修复成绩 |
+| 评测 | Fake／Mock协议验证、真实GitHub交付、官方SWE-bench评分及冻结的上下文／记忆开关开发对照，见[增量22](VALIDATION-22.md) | 尚无独立留出集和统计成功率；小样本组件收益不稳定，执行故障另列，不将命中或正确补丁当完整交付 |
 | 安全与可靠性 | 路径／链接约束、登记 argv、用量预留、版本绑定、锁与显式恢复；可选按阶段 Docker 隔离、禁网、资源与输出限额、停止后校验导入 | 工作卷磁盘配额、硬杀自动回收、更强虚拟机隔离、身份鉴权、不可篡改审计、完整提示注入防御；默认 local 检查仍有本机权限 |
 
 “专项”已有较清楚的落点：**围绕可恢复、可审核、受预算约束的 Issue 到 PR 交付 harness**。评测、Memory、安全都有关联，但当前不能把三者均描述为深入完成的专项。下一步若要形成可比较的效果证据，应优先建立独立修复评测及失败分类，再按失败证据选择加强哪一层。
@@ -60,6 +60,7 @@ flowchart TD
 | [orchestration/phases.py](../../repopilot/orchestration/phases.py) | `PhaseRunner` 每个阶段一个方法；实现／审核载荷与结果转换分开，检查点由执行会话控制，固定基线仍在副作用前落盘 |
 | [orchestration/state.py](../../repopilot/orchestration/state.py) | 终态集合、规范哈希、批准摘要、从持久化状态定位工作区；避免发布层依赖整套执行流程 |
 | [agents/loop.py](../../repopilot/agents/loop.py) | 角色内循环、上下文与进度中间件、用量控制、独立检查入口 |
+| [agents/context.py](../../repopilot/agents/context.py) | 阶段内源码观察工作集、有界请求及会话更新；与跨运行仓库记忆分开，见[上下文](CONTEXT.md) |
 | [agents/models.py](../../repopilot/agents/models.py)、[reports.py](../../repopilot/agents/reports.py)、[prompts.py](../../repopilot/agents/prompts.py)、[trace.py](../../repopilot/agents/trace.py) | 分别管理供应商适配、报告契约、固定角色提示与脱敏日志；修改提示与整理代码分别验证 |
 | [execution/repository.py](../../repopilot/execution/repository.py)、[execution/workspace.py](../../repopilot/execution/workspace.py) | 文件访问、受控命令、编辑限额；Git 基线、差异、提交、干净状态核对 |
 | [execution/sandbox.py](../../repopilot/execution/sandbox.py)、[execution/transport.py](../../repopilot/execution/transport.py) | 阶段会话、Docker 生命周期、文件协议与登记检查；有界 CLI 传输，失败不回退宿主 |

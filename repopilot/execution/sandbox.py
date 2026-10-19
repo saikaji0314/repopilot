@@ -66,9 +66,17 @@ class DockerSession:
 
     def rpc(self, action, *arguments):
         with self.lock:
-            result = json.loads(self.transport.run('exec', '-i', self.name, 'python3', '-I', '-S',
-                '-c', self.worker, data=json.dumps({'action': action, 'arguments': arguments}).encode(),
-                timeout=min(30, self.deadline())))
+            try:
+                raw = self.transport.run('exec', '-i', self.name, 'python3', '-I', '-S',
+                    '-c', self.worker, data=json.dumps({'action': action, 'arguments': arguments}).encode(),
+                    timeout=min(30, self.deadline()))
+            except SandboxError:
+                info = getattr(self.transport, 'last_failure', None) or {}
+                self.emit('sandbox_transport_error', action=action,
+                          **{key: info.get(key) for key in
+                             ('operation', 'returncode', 'category', 'stderr_bytes', 'stdout_bytes')})
+                raise
+            result = json.loads(raw)
             if not result.get('ok'):
                 raise ValueError(result.get('error', 'file_operation_failed'))
             return result['result']
