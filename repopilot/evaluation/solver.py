@@ -7,13 +7,14 @@ import tempfile
 
 from repopilot.core.config import PROJECT_ROOT, RuntimeSettings, load_profile, load_settings, load_task
 from repopilot.evaluation.swebench import digest, encoded, export_prediction, load_case, write_json
+from repopilot.evaluation.memory_seed import validate_seed, prepare_seed, seed_snapshot
 from repopilot.execution.workspace import WorkspaceError, head_commit, run_git, source_snapshot
 from repopilot.orchestration import workflow
 from repopilot.orchestration.state import attach, canonical_hash
 from repopilot.storage.jobs import JobStore, job_lock
 
 
-def validate_inputs(case_directory, task, settings, runtime_root, output):
+def validate_inputs(case_directory, task, settings, runtime_root, output, *, memory_seed=None):
     manifest, record = load_case(case_directory)
     repository = task.repository.resolve(strict=True)
     if task.request != record['problem_statement']:
@@ -24,13 +25,17 @@ def validate_inputs(case_directory, task, settings, runtime_root, output):
         raise ValueError('benchmark_source_must_be_clean')
     if task.execution.backend != 'docker' or not task.checks:
         raise ValueError('benchmark_requires_docker_and_public_checks')
-    if settings.memory_enabled:
+    if settings.memory_enabled and memory_seed is None:
         raise ValueError('benchmark_memory_must_be_disabled')
+    if memory_seed is not None and not settings.memory_enabled:
+        raise ValueError('benchmark_memory_seed_requires_enabled')
     for directory in (case_directory, runtime_root, output):
         path = Path(directory).resolve()
         if path.is_relative_to(repository) or repository.is_relative_to(path):
             raise ValueError('benchmark_control_and_repository_must_be_separate')
-    return manifest, record['base_commit']
+    seed = (validate_seed(memory_seed, record['instance_id'], repository, record['base_commit'])
+            if memory_seed is not None else None)
+    return manifest, record['base_commit'], seed
 
 
 def frozen_diff(repository, base_commit):
@@ -54,6 +59,9 @@ def capture_candidate(case_directory, runtime_root, run_id, output, binding):
                 canonical_hash(state['settings']) != binding['settings_sha256'] or
                 digest(encoded(manifest)) != binding['case_manifest_sha256']):
             raise ValueError('benchmark_run_binding_mismatch')
+        if (binding.get('memory_snapshot_sha256') is not None and
+                canonical_hash(state.get('memory_snapshot')) != binding['memory_snapshot_sha256']):
+            raise ValueError('benchmark_memory_snapshot_changed')
         if state['status'] in {'ready', 'running', 'paused', 'recovery_required'}:
             raise ValueError('benchmark_run_not_finished')
         workspace = attach(state, store.root)
@@ -77,14 +85,24 @@ def capture_candidate(case_directory, runtime_root, run_id, output, binding):
                 'patch_bytes': len(patch), 'predictions': str(output / 'prediction' / 'predictions.jsonl')}
 
 
-def solve(case_directory, task, settings, runtime_root, output, *, label, model=None):
-    manifest, base_commit = validate_inputs(case_directory, task, settings, runtime_root, output)
+def solve(case_directory, task, settings, runtime_root, output, *, label, model=None, memory_seed=None):
+    manifest, base_commit, seed = validate_inputs(case_directory, task, settings, runtime_root, output,
+                                                memory_seed=memory_seed)
     if not label.strip() or '\n' in label or '\r' in label:
         raise ValueError('benchmark_label_required')
     output = Path(output).resolve()
     output.mkdir(parents=True, exist_ok=False)
+    memory_binding = prepare_seed(seed, task.repository, runtime_root) if seed is not None else None
+    frozen_memory = (seed_snapshot(memory_binding, task.repository, runtime_root, task.request)
+                     if memory_binding is not None else None)
     state = workflow.create_job(task, settings, runtime_root, workspace=True, review=True,
                                 require_approval=True, base_commit=base_commit)
+    if frozen_memory is not None:
+        state['memory_snapshot'] = frozen_memory
+        JobStore(runtime_root).save(state)
+        directory = Path(runtime_root) / 'runs' / state['run_id']
+        directory.mkdir(parents=True, exist_ok=True)
+        write_json(directory / 'memory-snapshot.json', frozen_memory)
     try:
         code_revision = head_commit(PROJECT_ROOT)
         code_dirty = bool(run_git(PROJECT_ROOT, 'status', '--porcelain=v1', '--untracked-files=all').stdout.strip())
@@ -93,7 +111,9 @@ def solve(case_directory, task, settings, runtime_root, output, *, label, model=
     binding = {'task_sha256': canonical_hash(state['task']), 'base_commit': state['base_commit'],
                'case_manifest_sha256': digest(encoded(manifest)), 'label': label,
                'model': settings.model, 'settings_sha256': canonical_hash(state['settings']),
-               'repopilot_revision': code_revision, 'repopilot_dirty': code_dirty}
+               'repopilot_revision': code_revision, 'repopilot_dirty': code_dirty,
+               'repository_memory': memory_binding,
+               'memory_snapshot_sha256': canonical_hash(frozen_memory) if frozen_memory is not None else None}
     # 模型调用前留下运行身份；崩溃时仍可从现有JobStore定位现场与预算。
     write_json(output / 'attempt.json', {**binding, 'run_id': state['run_id'], 'status': 'started'})
     summary = workflow.resume(state['run_id'], settings, runtime_root, model=model)
@@ -112,11 +132,13 @@ def main(argv=None):
     parser.add_argument('--label', required=True)
     parser.add_argument('--runtime-root', type=Path, default=PROJECT_ROOT / '.local/runtime')
     parser.add_argument('--profile', type=Path)
+    parser.add_argument('--memory-seed', type=Path, help='显式冻结的基线源码书签清单，需同时在profile开启memory')
     args = parser.parse_args(argv)
     settings = load_settings()
     if args.profile:
         settings = RuntimeSettings.model_validate({**settings.model_dump(), **load_profile(args.profile)})
-    result = solve(args.case, load_task(args.task), settings, args.runtime_root, args.output, label=args.label)
+    result = solve(args.case, load_task(args.task), settings, args.runtime_root, args.output, label=args.label,
+                   memory_seed=args.memory_seed)
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
 

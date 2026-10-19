@@ -106,3 +106,68 @@ def test_failed_run_keeps_partial_patch_and_does_not_claim_success(inputs, monke
     assert b'+value = 2' in (output / 'candidate.patch').read_bytes()
     provenance = json.loads((output / 'prediction/provenance.json').read_text())
     assert provenance['run']['partial'] is True
+
+
+def source_seed(inputs):
+    case, task, _, _, output = inputs
+    path = output.parent / 'memory-seed.json'
+    data = {'schema_version': '1.0', 'kind': 'operator_prepared_source_bookmarks',
+            'provenance': 'base source only', 'cases': [{'instance_id': 'example__repo-1',
+            'base_commit': head_commit(task.repository), 'entries': [{'path': 'app.py',
+            'start_line': 1, 'end_line': 1, 'content_sha256': swebench.digest(b'value = 1')}]}]}
+    path.write_text(json.dumps(data), encoding='utf-8')
+    return path, data
+
+
+def test_declared_source_memory_is_frozen_and_bound_without_exposing_answers(inputs, monkeypatch):
+    from repopilot.storage.jobs import JobStore
+    from repopilot.memory.store import MemoryStore
+    case, task, settings, runtime, output = inputs
+    seed, _ = source_seed(inputs)
+    monkeypatch.setattr(phases, 'repository_session', simulated_docker)
+    model = FakeModel(responses=[turn('write_file', {'path': 'app.py', 'content': 'value = 2\n'}),
+                                 implement_done(), review_approved()])
+    result = solver.solve(case, task, settings.model_copy(update={'memory_enabled': True}), runtime,
+                          output, label='declared-memory', model=model, memory_seed=seed)
+    state = JobStore(runtime).get(result['run_id'])
+    provenance = json.loads((output / 'attempt.json').read_text())
+    assert result['workflow_status'] == 'awaiting_approval'
+    assert len(state['memory_snapshot']['entries']) == 1
+    assert state['memory_snapshot']['entries'][0]['content'] == 'value = 1'
+    assert provenance['repository_memory']['manifest_sha256'] == swebench.digest(seed.read_bytes())
+    assert provenance['repository_memory']['active_ids'] == [state['memory_snapshot']['entries'][0]['id']]
+    active = MemoryStore(runtime).records(task.repository, status='active')
+    assert all(r['source_run'] is None for r in active)
+    trace = (runtime / 'runs' / result['run_id'] / 'events.jsonl').read_text(encoding='utf-8')
+    assert 'secret acceptance' not in trace and 'not provided to the model' not in trace
+    review_memory = json.loads((runtime / 'runs' / result['run_id'] / 'memory-review.json').read_text())
+    assert not review_memory['entries'] and review_memory['omitted'][0]['reason'] == 'source_changed'
+
+
+@pytest.mark.parametrize('change', ['hash', 'base', 'answer', 'tests', 'duplicate'])
+def test_bad_memory_seed_rejected_before_model_execution(inputs, change):
+    case, task, settings, runtime, output = inputs
+    seed, data = source_seed(inputs)
+    entry = data['cases'][0]['entries'][0]
+    if change == 'hash': entry['content_sha256'] = '0' * 64
+    elif change == 'base': data['cases'][0]['base_commit'] = '0' * 40
+    elif change == 'answer': entry['content'] = 'gold fix must not be accepted'
+    elif change == 'tests': entry['path'] = 'tests/test_acceptance.py'
+    else: data['cases'][0]['entries'].append(entry.copy())
+    seed.write_text(json.dumps(data), encoding='utf-8')
+    with pytest.raises(ValueError, match='benchmark_memory'):
+        solver.solve(case, task, settings.model_copy(update={'memory_enabled': True}), runtime,
+                     output, label='invalid', model=object(), memory_seed=seed)
+    assert not runtime.exists() and not output.exists()
+
+
+def test_unfrozen_existing_memory_is_rejected(inputs):
+    from repopilot.memory.store import MemoryStore
+    case, task, settings, runtime, output = inputs
+    seed, _ = source_seed(inputs)
+    store = MemoryStore(runtime)
+    store.remember(task.repository, 'app.py', 1, 1, source_run='earlier-attempt')
+    with pytest.raises(ValueError, match='unfrozen_active_facts'):
+        solver.solve(case, task, settings.model_copy(update={'memory_enabled': True}), runtime,
+                     output, label='invalid', model=object(), memory_seed=seed)
+    assert store.records(task.repository)[0]['source_run'] == 'earlier-attempt'

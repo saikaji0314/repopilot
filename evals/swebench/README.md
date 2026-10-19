@@ -56,7 +56,7 @@ swebench eval case-01/scoring-record.jsonl -p reference-01/predictions.jsonl \
 .\.venv\Scripts\python.exe -m repopilot.evaluation.solver .local/swebench/case-01 --task .local/swebench/task.yaml --profile .local/swebench/profile.yaml --output .local/swebench/attempt-01 --label MODEL-EXPERIMENT
 ```
 
-任务需求必须与冻结题目完全一致，仓库 HEAD 必须为原始 base_commit 且无未跟踪／忽略文件；必须登记公开检查、使用 Docker 并关闭仓库记忆。控制记录、运行目录和输出不得与源码目录互相包含。任务和检查仍由可信操作者提供；入口不自动判断检查是否偷用了答案，也不验证一个任意镜像没有内置答案。
+任务需求必须与冻结题目完全一致，仓库 HEAD 必须为原始 base_commit 且无未跟踪／忽略文件；必须登记公开检查、使用 Docker，默认关闭仓库记忆。控制记录、运行目录和输出不得与源码目录互相包含。任务和检查仍由可信操作者提供；入口不自动判断检查是否偷用了答案，也不验证一个任意镜像没有内置答案。
 
 推荐从固定提交做浅克隆，构建只保留依赖、移除原始checkout及其Git历史的解题镜像；不要直接把包含完整历史与评分材料的官方镜像当成已经清洁的解题环境。[SymPy单题镜像示例](../../examples/runtime/docker/SwebenchSympy.Dockerfile)分开使用文件服务Python3.10与项目依赖Python3.9；其他题目需要各自预检，不能沿用一套解释器假设。
 
@@ -75,3 +75,11 @@ API 推理可能收费；本地评分也需要下载与算力。“离线评测�
 上游来源：[评分器源码与许可](https://github.com/SWE-bench/SWE-bench)、[Lite 数据集](https://huggingface.co/datasets/SWE-bench/SWE-bench_Lite)。下载的数据、答案、日志与第三方 checkout 留在本地，不随本仓库分发。实际验证见 [增量13](../../docs/runtime-v2/VALIDATION-13.md)。
 
 首轮完整开发子集见[冻结的5题协议](development-20261018.json)、[脱敏结果](results-20261018.json)与[增量15](../../docs/runtime-v2/VALIDATION-15.md)：2/5官方验收通过，1/5同时完成本地复核与审核，估算费用2.703557元。与同一工具调用序列的生命周期对照一起，验证了超限产物保存修复；不据此宣称生产级可靠性或组件带来修复率提升。
+
+## 显式仓库记忆对照
+
+默认入口继续拒绝开启记忆但未声明来源的基准运行。记忆实验需要在 profile 开启 `memory_enabled`，另传 `--memory-seed`，例如[冻结的源码书签清单](memory-seeds-20261019.json)：只允许路径、行范围、基线提交与内容摘要，片段由当前基线源码重新提取，不接受自由文本或补丁。测试文件不作为种子；多余 active 事实、内容摘要或来源不符时在模型调用前拒绝。
+
+入口在实现前冻结实际检索快照，将种子清单、active ID、快照摘要绑定到 `attempt.json` 和候选来源记录。源码变化后，原有记忆的新鲜度与审核过滤仍生效；未经确认的候选不会进入下一实验输入。默认不开启记忆，也不自动确认前一题产生的候选。
+
+[2026-10-19 协议](context-memory-20261019.json)使用两道已知失败开发题进行上下文与记忆对照，并回归其余三题。此处是人工准备的已有源码导航书签，不是从成功任务自动学习的长期经验。单次配对可以报告调用与费用差异，不能推断普遍收益；未命中、过期过滤或负收益也须报告。
