@@ -8,6 +8,9 @@ import pytest
 from repopilot.agents.context import compact_messages, message_bytes, remember_observation
 from tests.runtime.test_agent import ScriptedModel, message, setup
 from repopilot.agents.loop import investigate
+from repopilot.agents.loop import RunControl
+from repopilot.storage.budget import Budget
+from repopilot.agents.trace import Trace
 
 
 def history(count=10):
@@ -89,3 +92,26 @@ def test_uncompressible_task_remains_over_limit():
     messages = [HumanMessage(content='x'*100000)]
     view, event = compact_messages(messages,{'phase':'implement'},[],20000)
     assert view is messages and event is None and message_bytes(view)>20000
+
+
+def test_safe_headroom_is_not_compressed_just_to_reduce_input():
+    messages = history(5)
+    assert 50000 < message_bytes(messages) < 65000
+    view, event = compact_messages(messages, {'phase': 'implement'}, [], 80000)
+    assert view is messages and event is None
+
+
+def test_context_checkpoint_keeps_new_responses_and_allows_later_compaction(tmp_path):
+    _, settings, output = setup(tmp_path)
+    output.mkdir()
+    control = RunControl(settings, Budget(output/'budget.sqlite3', 200), Trace(output, 'synthetic'), 'case')
+    messages = history()
+    view, event = compact_messages(messages, {'phase': 'implement'}, [], 30000)
+    response = AIMessage(content='', tool_calls=[{'id':'new','name':'read_file','args':{'path':'app.py'}}])
+    receipt = ToolMessage(content='new source',tool_call_id='new')
+    control.pending_context = (view, len(messages))
+    update = control.after_model({'messages': [*messages, response, receipt]}, None)
+    assert update['messages'][1:] == [*view, response, receipt]
+    assert control.pending_context is None
+    again, event = compact_messages(update['messages'][1:], {'phase':'implement'}, [], 20000)
+    assert event and again[0] is messages[0] and again[-1] is receipt

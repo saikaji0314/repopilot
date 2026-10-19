@@ -11,8 +11,9 @@ from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.context_editing import ContextEditingMiddleware, ClearToolUsesEdit
 from langchain.agents.structured_output import StructuredOutputValidationError, ToolStrategy
 from langchain_core.callbacks import BaseCallbackHandler
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import SystemMessage, RemoveMessage
 from langchain_core.utils.function_calling import convert_to_openai_tool
+from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langsmith import tracing_context
 from pydantic import ValidationError
 
@@ -51,6 +52,19 @@ class RunControl(AgentMiddleware):
         self.halt_reason = None
         self.phase = "implement"
         self.progress = {"phase": self.phase, "reads": [], "edited_files": []}
+        self.pending_context = None
+
+    def after_model(self, state, runtime):
+        """保存已发送的压缩视图及本次响应，后续工具结果继续追加到同一会话。"""
+        pending, self.pending_context = self.pending_context, None
+        if pending is None:
+            return None
+        view, previous_count = pending
+        # 保留框架生成的全部响应消息，包括结构化报告的 tool 回执。
+        responses = state["messages"][previous_count:]
+        if not responses:
+            return None
+        return {"messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES), *view, *responses]}
 
     def remaining(self) -> float:
         if self.halt_reason:
@@ -85,8 +99,10 @@ class RunControl(AgentMiddleware):
                       for m in request.messages)
         view, compacted = compact_messages(request.messages, self.progress, self.checks,
                                           max(0, settings.max_context_bytes - overhead))
+        self.pending_context = None
         if compacted:
             self.trace.event("context_compacted", phase=self.phase, **compacted)
+            self.pending_context = (view, len(request.state["messages"]))
             request = request.override(messages=view)
         messages = system + request.messages
         payload = {"messages": [msg.model_dump(mode="json") for msg in messages], "tools": schemas}

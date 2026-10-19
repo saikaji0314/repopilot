@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0",
+  "purpose": "Separate preregistered refinement after the first nine attempts; retain all earlier results. Same profile, task and source bookmarks.",
+  "model": "deepseek-flash",
+  "provider": "deepseek",
+  "thinking": "enabled",
+  "reasoning_effort": "low",
+  "input_cny_per_million": 3,
+  "output_cny_per_million": 12,
+  "target_instances": [
+    "sympy__sympy-20212",
+    "sympy__sympy-19254"
+  ],
+  "regression_instances": [],
+  "profile": {
+    "max_model_calls": 36,
+    "max_tool_calls": 60,
+    "max_edits": 12,
+    "max_rework": 1,
+    "max_output_tokens": 8192,
+    "max_context_bytes": 90000,
+    "run_timeout_seconds": 600,
+    "request_timeout_seconds": 90,
+    "max_run_cost_cny": 2,
+    "memory_enabled": false
+  },
+  "schedule": [
+    {
+      "variant": "refined",
+      "instance_id": "sympy__sympy-19254",
+      "memory": false
+    },
+    {
+      "variant": "refined",
+      "instance_id": "sympy__sympy-20212",
+      "memory": true
+    },
+    {
+      "variant": "refined",
+      "instance_id": "sympy__sympy-19254",
+      "memory": true
+    },
+    {
+      "variant": "refined",
+      "instance_id": "sympy__sympy-20212",
+      "memory": false
+    }
+  ],
+  "maximum_attempts": 4,
+  "total_estimated_cap_cny": 8,
+  "cumulative_cap_cny": 200,
+  "memory_seeds": "memory-seeds-20261019.json",
+  "baseline_policy": "Original first-phase fresh baseline remains fixed; do not replace it with selected retries.",
+  "intervention": "Move compaction trigger from 65% to 90% of message budget, and persist sent view plus subsequent response with LangGraph message reducer. Preserve retained reasoning and complete tool pairs. No case-specific solution, tool or model changes.",
+  "memory_policy": "Explicit opt-in solver seed manifest; no active facts outside frozen base-source bookmarks. One fresh attempt per on/off cell; no previous candidate activation or automatic confirmation. Default benchmark memory rejection remains.",
+  "scoring": "Official frozen scorer and existing instance/image/source/checks; include all failed, partial, empty and environment attempts. Report resolved, workflow completion, source reads/searches, first edit, context compactions, tokens/cost, memory provided and omitted.",
+  "stop_rules": [
+    "Exactly four additional cells, one each; no additional model tuning or hidden retries.",
+    "The first-phase nine attempts remain in public evidence; report this separate cohort and its own memory comparison.",
+    "Current phase budget at most 8 CNY plus recorded prior 9.479556 CNY, combined below original 18 CNY estimate cap. Retain unknown charges.",
+    "Use original 200 CNY cumulative ledger; no approval, pushing, PR publication, gold fixes or hidden tests in agent context.",
+    "Record failures even if results regress; do not report the best result across cohorts as a success rate."
+  ],
+  "maximum_combined_attempts": 13,
+  "prior_estimated_cost_cny": 9.479556,
+  "combined_estimated_cap_cny": 18
+}

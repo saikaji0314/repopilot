@@ -46,13 +46,17 @@ def compact_messages(messages, progress, checks, message_budget):
     """丢弃完整的旧工具轮次，保留任务、工作集和最近完整轮次。
 
     保留下来的 assistant（含供应商 reasoning 字段）和工具配对原样保留。
-    只改变下一次请求的视图，不改图状态、费用、原始事件或本地候选。
+    返回合法请求视图；调用者在本次响应后将其保存到会话，避免每轮重新压缩。
     """
     before = message_bytes(messages)
-    if before <= message_budget * 0.65 or not messages or not isinstance(messages[0], HumanMessage):
+    if before <= message_budget * 0.9 or not messages or not isinstance(messages[0], HumanMessage):
         return messages, None
+    tail = messages[1:]
+    if (tail and isinstance(tail[0], HumanMessage) and
+            tail[0].additional_kwargs.get("repopilot_working_set") is True):
+        tail = tail[1:]
     groups = []
-    for message in messages[1:]:
+    for message in tail:
         if isinstance(message, AIMessage):
             groups.append([message])
         elif isinstance(message, ToolMessage) and groups:
@@ -70,7 +74,7 @@ def compact_messages(messages, progress, checks, message_budget):
         "recent_read_locations": progress.get("reads", [])[-12:],
         "observations": progress.get("observations", []),
         "edited_files": progress.get("edited_files", [])[-20:], "checks": checks[-5:],
-    }, ensure_ascii=False))
+    }, ensure_ascii=False), additional_kwargs={"repopilot_working_set": True})
     for keep in range(min(3, len(groups) - 1), 0, -1):
         candidate = [messages[0], summary, *[m for group in groups[-keep:] for m in group]]
         after = message_bytes(candidate)
