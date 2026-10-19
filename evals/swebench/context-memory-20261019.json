@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.0",
+  "purpose": "Development follow-up with fresh baseline, bounded context view, and repository-file-memory ablation. Not held-out or full Lite.",
+  "model": "deepseek-flash",
+  "provider": "deepseek",
+  "thinking": "enabled",
+  "reasoning_effort": "low",
+  "input_cny_per_million": 3,
+  "output_cny_per_million": 12,
+  "target_instances": [
+    "sympy__sympy-20212",
+    "sympy__sympy-19254"
+  ],
+  "regression_instances": [
+    "sympy__sympy-20049",
+    "sympy__sympy-20590",
+    "sympy__sympy-19487"
+  ],
+  "profile": {
+    "max_model_calls": 36,
+    "max_tool_calls": 60,
+    "max_edits": 12,
+    "max_rework": 1,
+    "max_output_tokens": 8192,
+    "max_context_bytes": 90000,
+    "run_timeout_seconds": 600,
+    "request_timeout_seconds": 90,
+    "max_run_cost_cny": 2,
+    "memory_enabled": false
+  },
+  "schedule": [
+    {
+      "variant": "baseline",
+      "instance_id": "sympy__sympy-20212",
+      "memory": false
+    },
+    {
+      "variant": "baseline",
+      "instance_id": "sympy__sympy-19254",
+      "memory": false
+    },
+    {
+      "variant": "compact",
+      "instance_id": "sympy__sympy-20212",
+      "memory": false
+    },
+    {
+      "variant": "compact",
+      "instance_id": "sympy__sympy-19254",
+      "memory": true
+    },
+    {
+      "variant": "compact",
+      "instance_id": "sympy__sympy-20212",
+      "memory": true
+    },
+    {
+      "variant": "compact",
+      "instance_id": "sympy__sympy-19254",
+      "memory": false
+    },
+    {
+      "variant": "regression",
+      "instance_id": "sympy__sympy-20049",
+      "memory": false
+    },
+    {
+      "variant": "regression",
+      "instance_id": "sympy__sympy-20590",
+      "memory": false
+    },
+    {
+      "variant": "regression",
+      "instance_id": "sympy__sympy-19487",
+      "memory": false
+    }
+  ],
+  "maximum_attempts": 9,
+  "total_estimated_cap_cny": 18,
+  "cumulative_cap_cny": 200,
+  "memory_seeds": "memory-seeds-20261019.json",
+  "baseline_policy": "Current runtime f5d3909 before any code changes. Shared new profile for baseline and intervention; historical 24-call/4096-output scores remain separate.",
+  "intervention": "Bound complete old tool-turn histories using a source-grounded working set; preserve task, tool pairing, recent reasoning, edit/check receipts and independent review. No gold fix or case-specific prompts.",
+  "memory_policy": "Explicit opt-in solver seed manifest; no active facts outside frozen base-source bookmarks. One fresh attempt per on/off cell; no previous candidate activation or automatic confirmation. Default benchmark memory rejection remains.",
+  "scoring": "Official frozen scorer and existing instance/image/source/checks; include all failed, partial, empty and environment attempts. Report resolved, workflow completion, source reads/searches, first edit, context compactions, tokens/cost, memory provided and omitted.",
+  "stop_rules": [
+    "No hidden model retries, no replacement cases, no best-of aggregation, no reset of old ledger.",
+    "Stop a cell at its declared limits, and stop the batch before the next full 2 CNY reserve would exceed 18 CNY. Unknown charges count.",
+    "Do not push, approve, publish PRs or modify original source repositories.",
+    "Do not expand tuning based on test answers; additional work requires a separately frozen experiment.",
+    "If infrastructure or credentials fail, keep failures, complete offline implementation and mark real evaluation incomplete."
+  ]
+}

@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "kind": "operator_prepared_source_bookmarks",
+  "provenance": "Existing base source only, selected by public issue symbols before new attempts. Not learned from solved tasks; not gold patches, tests or research formulas.",
+  "cases": [
+    {
+      "instance_id": "sympy__sympy-20212",
+      "base_commit": "a106f4782a9dbe7f8fd16030f15401d977e03ae9",
+      "entries": [
+        {
+          "path": "sympy/core/power.py",
+          "start_line": 182,
+          "end_line": 200,
+          "content_sha256": "7d64d019fd0293558641252b0637755dd674674324a54b87dcbae07ba5f91b7d"
+        },
+        {
+          "path": "sympy/core/numbers.py",
+          "start_line": 2584,
+          "end_line": 2602,
+          "content_sha256": "17df4a25786b62da90228d3760d038a0e145aa3dccee1d873ec86049af4db4f3"
+        }
+      ]
+    },
+    {
+      "instance_id": "sympy__sympy-19254",
+      "base_commit": "e0ef1da13e2ab2a77866c05246f73c871ca9388c",
+      "entries": [
+        {
+          "path": "sympy/polys/factortools.py",
+          "start_line": 126,
+          "end_line": 132,
+          "content_sha256": "169ed06b3dff7d8e2827f7f28f56469d8552f4959dc4cc21e885b88b7bf404a8"
+        },
+        {
+          "path": "sympy/polys/factortools.py",
+          "start_line": 135,
+          "end_line": 141,
+          "content_sha256": "0d1a946eb096ae611e92cbdff6011d5a0a2c7aef6a676b7f58044773dbb9c529"
+        }
+      ]
+    }
+  ]
+}

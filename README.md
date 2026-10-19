@@ -78,13 +78,13 @@ git -C $demo -c user.name=RepoPilot -c user.email=demo@example.test commit -m "d
 | 配置模型、限额或恢复任务 | [模型](docs/runtime-v2/MODELS.md) · [运行协议](docs/runtime-v2/README.md) |
 | 启用隔离执行或仓库记忆 | [Docker](docs/runtime-v2/SANDBOX.md) · [Memory](docs/runtime-v2/MEMORY.md) |
 | 理解实现与技术取舍 | [架构与代码导航](docs/runtime-v2/ARCHITECTURE.md) · [设计](docs/runtime-v2/DESIGN.md) |
-| 查看评测与安装候选 | [SWE-bench 结果](docs/runtime-v2/VALIDATION-15.md) · [失败复测](docs/runtime-v2/VALIDATION-18.md) · [0.1.0rc1](docs/runtime-v2/RELEASE-0.1.0rc1.md) |
+| 查看评测与安装候选 | [评测方法与结果](evals/swebench/README.md) · [0.1.0rc1](docs/runtime-v2/RELEASE-0.1.0rc1.md) |
 
 ## 当前边界
 
 当前为实验性候选，适合可信仓库中的明确小任务。GitHub 有真实交付；GitLab、Qwen／兼容接口与 Claude 仅完成离线适配验证。Docker 已验证真实容器机制，尚无该后端真实模型交付结论；不提供 microVM 级隔离。
 
-固定 5 题 SymPy 开发子集有 2 题通过官方验收、1 题完成复核审核；两道失败题后续两轮均未解决。这不是完整 SWE-bench Lite 或通用修复率。记忆也尚无真实模型收益对照。详见上述评测与协议文档。
+评测协议、逐题结果和记忆收益对照见评测文档；开发样本不代表通用修复率。
 
 ## 许可证
 
