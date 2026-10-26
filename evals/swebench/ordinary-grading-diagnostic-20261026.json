@@ -1,0 +1,14 @@
+{
+  "schema_version": "1.0",
+  "date": "2026-10-26",
+  "parent_protocol": "ordinary-20261026.json",
+  "kind": "post-cohort scoring adapter diagnostic, not new solver attempts",
+  "trigger": "The full 4992 candidate adds tests/static/config.toml. Official eval git checkout of test paths fails on the new path, and its test patch then fails because the file already exists and a test hunk conflicts. Candidate tests run successfully but the expected official JSON test name is absent and graded as a failure.",
+  "schedule": ["pallets__flask-4045", "pallets__flask-4992", "pallets__flask-5063"],
+  "transformation": "For every frozen candidate, remove complete git diff blocks whose path starts with tests/. Preserve all other blocks byte-for-byte. Reject unrecognized/renamed path headers. Do not modify the original candidate, its tests, workflow state, approvals, source patch, official test patch or official scoring image.",
+  "validation": "Record original and diagnostic patch hashes, kept/excluded paths and non-test diff digest equality. Run the same official scorer once per diagnostic prediction using a separate label and run ID. Verify official test patch application and expected test execution from logs, not only the scorer resolved boolean.",
+  "reporting": "Keep original full-patch scores and normalized diagnostic scores side by side for all three cases. A diagnostic resolved result does not turn an unfinished workflow into a completed delivery. Missing official tests or test patch errors invalidate interpretation of an original score as a code regression.",
+  "model_calls": 0,
+  "additional_model_budget_cny": 0,
+  "limits": ["Protocol was added after observing the cohort and is not a preregistered repair-effectiveness comparison", "Diagnostic scores are separate from the original fixed-protocol cohort", "No hidden tests, reference changes or scoring findings are sent back to the solver", "No agent retries or candidate repair"]
+}
