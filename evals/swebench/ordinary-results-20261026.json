@@ -1,0 +1,872 @@
+{
+  "attempts": 3,
+  "budget_after": {
+    "accounted_cny": 37.28323,
+    "calls": 1142,
+    "cap_cny": 200.0,
+    "uncertain_calls": 1
+  },
+  "budget_before": {
+    "accounted_cny": 34.7334,
+    "calls": 1060,
+    "cap_cny": 200.0,
+    "uncertain_calls": 1
+  },
+  "cases": [
+    {
+      "active_seconds": 108.0,
+      "anticipated_difficulty": "low",
+      "budget_observations": {
+        "context_limit_hit": false,
+        "estimated_cost_headroom_cny": 1.339139,
+        "interpretation": "Review exceeded the prior range; inadequate closeout space in this attempt. More budget fixing the actual defects is untested.",
+        "model_calls_at_cap": true,
+        "remaining_model_calls_after_initial_implementation": 12,
+        "remaining_model_calls_at_stop": 0,
+        "tool_calls_at_cap": true
+      },
+      "candidate_public_checks": [
+        {
+          "exit_code": 0,
+          "name": "import-workspace",
+          "result_tail": [
+            "workspace import and empty upstream mount verified"
+          ],
+          "timed_out": false,
+          "truncated": false
+        },
+        {
+          "exit_code": 0,
+          "name": "public-tests",
+          "result_tail": [
+            ".................................................                        [100%]",
+            "49 passed in 0.14s"
+          ],
+          "timed_out": false,
+          "truncated": false
+        }
+      ],
+      "changed_files": [
+        "CHANGES.rst",
+        "src/flask/blueprints.py",
+        "tests/test_blueprints.py"
+      ],
+      "complete_and_resolved": false,
+      "context_compactions": 0,
+      "diagnostic_complete_and_resolved": false,
+      "environment": {
+        "base_commit": "d8c37f43724cd9fb0870f77877b7c4c7e38a19e0",
+        "dependency_adjustment": {
+          "package": "Werkzeug",
+          "reason": "Original Flask 2.0 test client uses as_tuple removed by newer Werkzeug; full original public tests failed in the original upstream image. Official scorer image and hidden controls are unchanged.",
+          "version": "2.0.3",
+          "wheel_sha256": "1421ebfc7648a39a5c58c601b154165d05cf47a3cd0ccb70857cbdacf6c8f2b8"
+        },
+        "dockerfile_sha256": "ef075d53dc2abeebc2dc7bb0e88fb5c05142901e509d1b8a90fb1762456cf6d4",
+        "instance_id": "pallets__flask-4045",
+        "scorer_digests": [
+          "swebench/sweb.eval.x86_64.pallets_1776_flask-4045@sha256:1425b0801ddf4b2607e552e56516cce3d389bab0a3ce06f58e6fa6a7835c703c"
+        ],
+        "scorer_image": "sha256:1425b0801ddf4b2607e552e56516cce3d389bab0a3ce06f58e6fa6a7835c703c",
+        "service_python": "Python 3.10.12",
+        "solver_image": "sha256:c694326219ca89eed72b5f5b7126ecbcf321dfe435a01402b36ab83d780674ec"
+      },
+      "error_type": null,
+      "estimated_cost_cny": 0.660861,
+      "first_edit_tool_position": 15,
+      "independent_checks": [
+        {
+          "exit_code": 0,
+          "name": "import-workspace",
+          "timed_out": false,
+          "truncated": null
+        },
+        {
+          "exit_code": 0,
+          "name": "public-tests",
+          "timed_out": false,
+          "truncated": null
+        }
+      ],
+      "initial_expected_model_calls": {
+        "implementation": [
+          6,
+          12
+        ],
+        "one_rework_allowance": [
+          0,
+          6
+        ],
+        "review": [
+          3,
+          6
+        ]
+      },
+      "instance_id": "pallets__flask-4045",
+      "max_input_bytes": 48852,
+      "model_calls": 24,
+      "normalization": {
+        "excluded_paths": [
+          "tests/test_blueprints.py"
+        ],
+        "included_paths": [
+          "CHANGES.rst",
+          "src/flask/blueprints.py"
+        ],
+        "instance_id": "pallets__flask-4045",
+        "non_test_blocks_preserved_byte_for_byte": true,
+        "normalized_sha256": "26d055cf4bc39797319aa219fbda661ce62ac3b61a2edeaac9dce06af218090d",
+        "original_sha256": "2533e877984c3bc3f82b137d7f967dcdb8deb8f90a01c24678e2dbb5e229bd55",
+        "patch_bytes": 1486
+      },
+      "official": {
+        "agent": {
+          "infra_failure": false,
+          "missing_expected_test_results": [],
+          "resolved": false,
+          "test_patch_application_errors": 0,
+          "tests": {
+            "FAIL_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "FAIL_TO_PASS": {
+              "failure": 1,
+              "success": 1
+            },
+            "PASS_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "PASS_TO_PASS": {
+              "failure": 0,
+              "success": 50
+            }
+          }
+        },
+        "baseline": {
+          "infra_failure": false,
+          "missing_expected_test_results": [],
+          "resolved": false,
+          "test_patch_application_errors": 0,
+          "tests": {
+            "FAIL_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "FAIL_TO_PASS": {
+              "failure": 2,
+              "success": 0
+            },
+            "PASS_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "PASS_TO_PASS": {
+              "failure": 0,
+              "success": 50
+            }
+          }
+        },
+        "normalized": {
+          "infra_failure": false,
+          "missing_expected_test_results": [],
+          "resolved": false,
+          "test_patch_application_errors": 0,
+          "tests": {
+            "FAIL_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "FAIL_TO_PASS": {
+              "failure": 1,
+              "success": 1
+            },
+            "PASS_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "PASS_TO_PASS": {
+              "failure": 0,
+              "success": 50
+            }
+          }
+        },
+        "reference": {
+          "infra_failure": false,
+          "missing_expected_test_results": [],
+          "resolved": true,
+          "test_patch_application_errors": 0,
+          "tests": {
+            "FAIL_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "FAIL_TO_PASS": {
+              "failure": 0,
+              "success": 2
+            },
+            "PASS_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "PASS_TO_PASS": {
+              "failure": 0,
+              "success": 50
+            }
+          }
+        }
+      },
+      "patch_bytes": 2698,
+      "patch_sha256": "2533e877984c3bc3f82b137d7f967dcdb8deb8f90a01c24678e2dbb5e229bd55",
+      "phase_usage": {
+        "implement": {
+          "estimated_cost_cny": 0.330189,
+          "input_tokens": 94507,
+          "model_calls": 12,
+          "output_tokens": 3889,
+          "tool_calls": 22
+        },
+        "review": {
+          "estimated_cost_cny": 0.322581,
+          "input_tokens": 90915,
+          "model_calls": 11,
+          "output_tokens": 4153,
+          "tool_calls": 16
+        },
+        "rework": {
+          "estimated_cost_cny": 0.008091,
+          "input_tokens": 2177,
+          "model_calls": 1,
+          "output_tokens": 130,
+          "tool_calls": 2
+        }
+      },
+      "profile": {
+        "max_model_calls": 24,
+        "max_tool_calls": 40,
+        "run_timeout_seconds": 600
+      },
+      "public_baseline": {
+        "checks": [
+          {
+            "exit_code": 0,
+            "name": "import-workspace",
+            "result_tail": [
+              "workspace import and empty upstream mount verified",
+              ""
+            ]
+          },
+          {
+            "exit_code": 0,
+            "name": "public-tests",
+            "result_tail": [
+              ".................................................                        [100%]",
+              "49 passed in 0.14s",
+              ""
+            ]
+          }
+        ],
+        "ready": true
+      },
+      "repeated_tool_calls": 0,
+      "review_findings": [
+        {
+          "attempt": 0,
+          "findings_count": 1,
+          "verdict": "changes_requested"
+        }
+      ],
+      "review_rounds": 1,
+      "review_verdict": "changes_requested",
+      "reworks": 1,
+      "run_id": "ordinary-pallets__flask-4045-4bebfea4c863",
+      "source_unchanged": true,
+      "stop_phase": "rework",
+      "stop_reason": "max_model_calls",
+      "tokens": {
+        "input_tokens": 187599,
+        "output_tokens": 8172
+      },
+      "tool_calls": 40,
+      "uncertain_calls": 0,
+      "wall_seconds": 108.875,
+      "workflow_status": "limit_reached"
+    },
+    {
+      "active_seconds": 83.328,
+      "anticipated_difficulty": "low-to-medium",
+      "budget_observations": {
+        "context_limit_hit": false,
+        "estimated_cost_headroom_cny": 1.509827,
+        "interpretation": "Implementation and review fit the prior ranges in this attempt; no evidence to tighten general limits.",
+        "model_calls_at_cap": false,
+        "remaining_model_calls_after_initial_implementation": 19,
+        "remaining_model_calls_at_stop": 14,
+        "tool_calls_at_cap": false
+      },
+      "candidate_public_checks": [
+        {
+          "exit_code": 0,
+          "name": "import-workspace",
+          "result_tail": [
+            "workspace import and empty upstream mount verified"
+          ],
+          "timed_out": false,
+          "truncated": false
+        },
+        {
+          "exit_code": 0,
+          "name": "public-tests",
+          "result_tail": [
+            "...................                                                      [100%]",
+            "19 passed in 0.03s"
+          ],
+          "timed_out": false,
+          "truncated": false
+        }
+      ],
+      "changed_files": [
+        "CHANGES.rst",
+        "docs/config.rst",
+        "src/flask/config.py",
+        "tests/static/config.toml",
+        "tests/test_config.py"
+      ],
+      "complete_and_resolved": false,
+      "context_compactions": 0,
+      "diagnostic_complete_and_resolved": true,
+      "environment": {
+        "base_commit": "4c288bc97ea371817199908d0d9b12de9dae327e",
+        "dockerfile_sha256": "b91a8ceb1e8951090271b414cb28cb2acc9e6f3cb140f2e9a2070d7dfdd4a4b5",
+        "instance_id": "pallets__flask-4992",
+        "scorer_digests": [
+          "swebench/sweb.eval.x86_64.pallets_1776_flask-4992@sha256:bb1460876a7bc667f71b46aac744dd6f6d7f5f66e79902461cf76c6f8c4f7150"
+        ],
+        "scorer_image": "sha256:bb1460876a7bc667f71b46aac744dd6f6d7f5f66e79902461cf76c6f8c4f7150",
+        "service_python": "Python 3.10.12",
+        "solver_image": "sha256:e01825610c70aebcd3beab400601d56b77bdf89b536dff15da8ac128cd184aab"
+      },
+      "error_type": null,
+      "estimated_cost_cny": 0.490173,
+      "first_edit_tool_position": 13,
+      "independent_checks": [
+        {
+          "exit_code": 0,
+          "name": "import-workspace",
+          "timed_out": false,
+          "truncated": null
+        },
+        {
+          "exit_code": 0,
+          "name": "public-tests",
+          "timed_out": false,
+          "truncated": null
+        }
+      ],
+      "initial_expected_model_calls": {
+        "implementation": [
+          8,
+          16
+        ],
+        "one_rework_allowance": [
+          0,
+          8
+        ],
+        "review": [
+          4,
+          8
+        ]
+      },
+      "instance_id": "pallets__flask-4992",
+      "max_input_bytes": 52259,
+      "model_calls": 18,
+      "normalization": {
+        "excluded_paths": [
+          "tests/static/config.toml",
+          "tests/test_config.py"
+        ],
+        "included_paths": [
+          "CHANGES.rst",
+          "docs/config.rst",
+          "src/flask/config.py"
+        ],
+        "instance_id": "pallets__flask-4992",
+        "non_test_blocks_preserved_byte_for_byte": true,
+        "normalized_sha256": "1590d025a9484d7e5e6745cd04edbc671fb1fc6a82ba37d17428f5f9818985ca",
+        "original_sha256": "6fca4b1dfb7f3df49c2dc7f9f7e004c6c6e4a0f56cb3278131b608f3e5de5f4a",
+        "patch_bytes": 2528
+      },
+      "official": {
+        "agent": {
+          "infra_failure": false,
+          "missing_expected_test_results": [
+            "tests/test_config.py::test_config_from_file_json"
+          ],
+          "resolved": false,
+          "test_patch_application_errors": 3,
+          "tests": {
+            "FAIL_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "FAIL_TO_PASS": {
+              "failure": 0,
+              "success": 1
+            },
+            "PASS_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "PASS_TO_PASS": {
+              "failure": 1,
+              "success": 17
+            }
+          }
+        },
+        "baseline": {
+          "infra_failure": false,
+          "missing_expected_test_results": [],
+          "resolved": false,
+          "test_patch_application_errors": 0,
+          "tests": {
+            "FAIL_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "FAIL_TO_PASS": {
+              "failure": 1,
+              "success": 0
+            },
+            "PASS_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "PASS_TO_PASS": {
+              "failure": 0,
+              "success": 18
+            }
+          }
+        },
+        "normalized": {
+          "infra_failure": false,
+          "missing_expected_test_results": [],
+          "resolved": true,
+          "test_patch_application_errors": 0,
+          "tests": {
+            "FAIL_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "FAIL_TO_PASS": {
+              "failure": 0,
+              "success": 1
+            },
+            "PASS_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "PASS_TO_PASS": {
+              "failure": 0,
+              "success": 18
+            }
+          }
+        },
+        "reference": {
+          "infra_failure": false,
+          "missing_expected_test_results": [],
+          "resolved": true,
+          "test_patch_application_errors": 0,
+          "tests": {
+            "FAIL_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "FAIL_TO_PASS": {
+              "failure": 0,
+              "success": 1
+            },
+            "PASS_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "PASS_TO_PASS": {
+              "failure": 0,
+              "success": 18
+            }
+          }
+        }
+      },
+      "patch_bytes": 3427,
+      "patch_sha256": "6fca4b1dfb7f3df49c2dc7f9f7e004c6c6e4a0f56cb3278131b608f3e5de5f4a",
+      "phase_usage": {
+        "implement": {
+          "estimated_cost_cny": 0.350157,
+          "input_tokens": 96707,
+          "model_calls": 13,
+          "output_tokens": 5003,
+          "tool_calls": 24
+        },
+        "review": {
+          "estimated_cost_cny": 0.140016,
+          "input_tokens": 33364,
+          "model_calls": 5,
+          "output_tokens": 3327,
+          "tool_calls": 8
+        }
+      },
+      "profile": {
+        "max_model_calls": 32,
+        "max_tool_calls": 55,
+        "run_timeout_seconds": 720
+      },
+      "public_baseline": {
+        "checks": [
+          {
+            "exit_code": 0,
+            "name": "import-workspace",
+            "result_tail": [
+              "workspace import and empty upstream mount verified",
+              ""
+            ]
+          },
+          {
+            "exit_code": 0,
+            "name": "public-tests",
+            "result_tail": [
+              "..................                                                       [100%]",
+              "18 passed in 0.03s",
+              ""
+            ]
+          }
+        ],
+        "ready": true
+      },
+      "repeated_tool_calls": 0,
+      "review_findings": [
+        {
+          "attempt": 0,
+          "findings_count": 0,
+          "verdict": "approved"
+        }
+      ],
+      "review_rounds": 1,
+      "review_verdict": "approved",
+      "reworks": 0,
+      "run_id": "ordinary-pallets__flask-4992-be8667478e71",
+      "source_unchanged": true,
+      "stop_phase": "approval",
+      "stop_reason": "awaiting_approval",
+      "tokens": {
+        "input_tokens": 130071,
+        "output_tokens": 8330
+      },
+      "tool_calls": 32,
+      "uncertain_calls": 0,
+      "wall_seconds": 84.188,
+      "workflow_status": "awaiting_approval"
+    },
+    {
+      "active_seconds": 204.031,
+      "anticipated_difficulty": "medium",
+      "budget_observations": {
+        "context_limit_hit": false,
+        "estimated_cost_headroom_cny": 0.601204,
+        "interpretation": "Implementation exceeded the prior range; no rework room. Semantic omissions remain, so more budget alone is not a demonstrated remedy.",
+        "model_calls_at_cap": true,
+        "remaining_model_calls_after_initial_implementation": 9,
+        "remaining_model_calls_at_stop": 0,
+        "tool_calls_at_cap": false
+      },
+      "candidate_public_checks": [
+        {
+          "exit_code": 0,
+          "name": "import-workspace",
+          "result_tail": [
+            "workspace import and empty upstream mount verified"
+          ],
+          "timed_out": false,
+          "truncated": false
+        },
+        {
+          "exit_code": 0,
+          "name": "public-tests",
+          "result_tail": [
+            "........................................................                 [100%]",
+            "56 passed, 1 deselected in 0.11s"
+          ],
+          "timed_out": false,
+          "truncated": false
+        }
+      ],
+      "changed_files": [
+        "CHANGES.rst",
+        "src/flask/cli.py",
+        "tests/test_cli.py"
+      ],
+      "complete_and_resolved": false,
+      "context_compactions": 1,
+      "diagnostic_complete_and_resolved": false,
+      "environment": {
+        "base_commit": "182ce3dd15dfa3537391c3efaf9c3ff407d134d4",
+        "dockerfile_sha256": "4bd4110f49f319b6817908169df7149505046792d561e4a17b211ef51ea42ee6",
+        "instance_id": "pallets__flask-5063",
+        "public_test_adjustment": {
+          "deselected": [
+            "tests/test_cli.py::test_load_dotenv"
+          ],
+          "reason": "This unchanged original test requires a tracked fake .env fixture; the runtime intentionally excludes .env files from snapshots. The initial full public baseline is preserved separately (54 pass, 1 fail). Other CLI tests and all official scoring controls remain unchanged."
+        },
+        "scorer_digests": [
+          "swebench/sweb.eval.x86_64.pallets_1776_flask-5063@sha256:05369549db34553599f6f96d65ee9c75173c02d9285d283422f6b6e49f0b8df2"
+        ],
+        "scorer_image": "sha256:05369549db34553599f6f96d65ee9c75173c02d9285d283422f6b6e49f0b8df2",
+        "service_python": "Python 3.10.12",
+        "solver_image": "sha256:ab683a4454cf3f18ad42aa9f6dca5d44901d9f865ec4e853eaf9700f0b13f55b"
+      },
+      "error_type": null,
+      "estimated_cost_cny": 1.398796,
+      "first_edit_tool_position": 23,
+      "independent_checks": [
+        {
+          "exit_code": 0,
+          "name": "import-workspace",
+          "timed_out": false,
+          "truncated": null
+        },
+        {
+          "exit_code": 0,
+          "name": "public-tests",
+          "timed_out": false,
+          "truncated": null
+        }
+      ],
+      "initial_expected_model_calls": {
+        "implementation": [
+          10,
+          20
+        ],
+        "one_rework_allowance": [
+          0,
+          10
+        ],
+        "review": [
+          5,
+          10
+        ]
+      },
+      "instance_id": "pallets__flask-5063",
+      "max_input_bytes": 79879,
+      "model_calls": 40,
+      "normalization": {
+        "excluded_paths": [
+          "tests/test_cli.py"
+        ],
+        "included_paths": [
+          "CHANGES.rst",
+          "src/flask/cli.py"
+        ],
+        "instance_id": "pallets__flask-5063",
+        "non_test_blocks_preserved_byte_for_byte": true,
+        "normalized_sha256": "f8162f25c92a3e41728c36738c8334a67174d8c9645e4277329de013cff8b56f",
+        "original_sha256": "77b9850cd6c37181eec64919cb0c0a697e1d8cd6542971b7949b7cafb9cf0cda",
+        "patch_bytes": 2537
+      },
+      "official": {
+        "agent": {
+          "infra_failure": false,
+          "missing_expected_test_results": [],
+          "resolved": false,
+          "test_patch_application_errors": 0,
+          "tests": {
+            "FAIL_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "FAIL_TO_PASS": {
+              "failure": 2,
+              "success": 0
+            },
+            "PASS_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "PASS_TO_PASS": {
+              "failure": 0,
+              "success": 54
+            }
+          }
+        },
+        "baseline": {
+          "infra_failure": false,
+          "missing_expected_test_results": [],
+          "resolved": false,
+          "test_patch_application_errors": 0,
+          "tests": {
+            "FAIL_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "FAIL_TO_PASS": {
+              "failure": 2,
+              "success": 0
+            },
+            "PASS_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "PASS_TO_PASS": {
+              "failure": 0,
+              "success": 54
+            }
+          }
+        },
+        "normalized": {
+          "infra_failure": false,
+          "missing_expected_test_results": [],
+          "resolved": false,
+          "test_patch_application_errors": 0,
+          "tests": {
+            "FAIL_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "FAIL_TO_PASS": {
+              "failure": 2,
+              "success": 0
+            },
+            "PASS_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "PASS_TO_PASS": {
+              "failure": 0,
+              "success": 54
+            }
+          }
+        },
+        "reference": {
+          "infra_failure": false,
+          "missing_expected_test_results": [],
+          "resolved": true,
+          "test_patch_application_errors": 0,
+          "tests": {
+            "FAIL_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "FAIL_TO_PASS": {
+              "failure": 0,
+              "success": 2
+            },
+            "PASS_TO_FAIL": {
+              "failure": 0,
+              "success": 0
+            },
+            "PASS_TO_PASS": {
+              "failure": 0,
+              "success": 54
+            }
+          }
+        }
+      },
+      "patch_bytes": 4444,
+      "patch_sha256": "77b9850cd6c37181eec64919cb0c0a697e1d8cd6542971b7949b7cafb9cf0cda",
+      "phase_usage": {
+        "implement": {
+          "estimated_cost_cny": 1.066935,
+          "input_tokens": 304741,
+          "model_calls": 31,
+          "output_tokens": 12726,
+          "tool_calls": 46
+        },
+        "review": {
+          "estimated_cost_cny": 0.33186,
+          "input_tokens": 84312,
+          "model_calls": 9,
+          "output_tokens": 6577,
+          "tool_calls": 15
+        }
+      },
+      "profile": {
+        "max_model_calls": 40,
+        "max_tool_calls": 70,
+        "run_timeout_seconds": 900
+      },
+      "public_baseline": {
+        "checks": [
+          {
+            "exit_code": 0,
+            "name": "import-workspace",
+            "result_tail": [
+              "workspace import and empty upstream mount verified",
+              ""
+            ]
+          },
+          {
+            "exit_code": 0,
+            "name": "public-tests",
+            "result_tail": [
+              "......................................................                   [100%]",
+              "54 passed, 1 deselected in 0.10s",
+              ""
+            ]
+          }
+        ],
+        "ready": true
+      },
+      "repeated_tool_calls": 4,
+      "review_findings": [
+        {
+          "attempt": 0,
+          "findings_count": 1,
+          "verdict": "changes_requested"
+        }
+      ],
+      "review_rounds": 1,
+      "review_verdict": "changes_requested",
+      "reworks": 1,
+      "run_id": "ordinary-pallets__flask-5063-974e9a27fb6c",
+      "source_unchanged": true,
+      "stop_phase": "rework",
+      "stop_reason": "max_model_calls",
+      "tokens": {
+        "input_tokens": 389053,
+        "output_tokens": 19303
+      },
+      "tool_calls": 61,
+      "uncertain_calls": 0,
+      "wall_seconds": 204.859,
+      "workflow_status": "limit_reached"
+    }
+  ],
+  "complete_and_resolved": 0,
+  "dataset_revision": "b0dde1093fe417d83b7184254edf8199c1f0dff5",
+  "date": "2026-10-26",
+  "estimated_cost_cny": 2.54983,
+  "grading_diagnostic_complete_and_resolved": 1,
+  "grading_diagnostic_protocol": "ordinary-grading-diagnostic-20261026.json",
+  "grading_diagnostic_resolved": 1,
+  "harness_revision": "02e7a74ffd0b707aab73d203fe87bdc7c76afc8e",
+  "interpretation": "Original full-patch cohort and post-cohort scoring diagnostic are separate. Normalized scores are not new agent attempts or repaired candidates. Original 4992 result cannot be interpreted as a functional regression because official tests failed to apply.",
+  "limits": [
+    "Single repository, three selected development cases, one attempt per case",
+    "Profiles differ by anticipated work; outcomes are not a controlled comparison of difficulty or Harness components",
+    "Official acceptance and complete delivery are separate",
+    "No claim of unpublished tasks, training-data cleanliness, production reliability or superiority over the earlier SymPy cohort",
+    "No approvals, pushes, PR creation, merge or deployment"
+  ],
+  "model": {
+    "model": "deepseek-flash",
+    "provider": "deepseek",
+    "reasoning_effort": "low",
+    "thinking": "enabled"
+  },
+  "official_resolved": 0,
+  "original_predictions_with_test_patch_errors": 1,
+  "protocol": "ordinary-20261026.json",
+  "protocol_sha256": "526389eef49bc1a4b2a5eb09b8fe877da82ea83d20e76c37f78bcbe3423a4aed",
+  "runtime_revision": "2795da0c9eebcd16e20d5517862ac905adb692f6",
+  "schema_version": "1.0",
+  "workflow_awaiting_approval": 1
+}
