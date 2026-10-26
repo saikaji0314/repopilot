@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.0",
+  "purpose": "Diagnose ordinary application-library tasks and the match between anticipated difficulty and execution limits; not a benchmark-wide success estimate.",
+  "date": "2026-10-26",
+  "dataset_name": "SWE-bench/SWE-bench_Lite",
+  "dataset_revision": "b0dde1093fe417d83b7184254edf8199c1f0dff5",
+  "harness_revision": "02e7a74ffd0b707aab73d203fe87bdc7c76afc8e",
+  "runtime_base_revision": "230b891",
+  "selection": "All three Flask entries in the locally frozen 300-instance dataset. No mathematical tasks; no selection using model outcomes or reference patch size. These are new development cases for RepoPilot, not a held-out effectiveness study.",
+  "model": "deepseek-flash",
+  "provider": "deepseek",
+  "thinking": "enabled",
+  "reasoning_effort": "low",
+  "memory_enabled": false,
+  "input_cny_per_million": 3,
+  "output_cny_per_million": 12,
+  "pricing_note": "Conservative local estimates inherited from the runtime, not a claim about current provider billing rates.",
+  "maximum_agent_attempts": 3,
+  "total_estimated_cap_cny": 6,
+  "retry_policy": "One attempt per case. No implicit retries, extra attempts, raised limits or runtime/prompt changes during the cohort. Environment and scoring failures remain visible.",
+  "environment_policy": "Preflight original public tests and official reference/empty controls before model calls. Agent sees only original issue and base checkout, not scoring records, reference patch, hints or hidden tests. Remove original checkout and Git history from solver images; use immutable image IDs.",
+  "budget_policy": "Use the existing cumulative budget.sqlite3; no reset or new allowance. Per-phase estimates below are advisory assessment ranges, not an implemented hard phase reservation. All phases share the per-case enforced limits.",
+  "shared_profile": {
+    "memory_enabled": false,
+    "thinking": "enabled",
+    "reasoning_effort": "low",
+    "max_output_tokens": 8192,
+    "max_context_bytes": 90000,
+    "max_edits": 12,
+    "max_rework": 1,
+    "request_timeout_seconds": 120,
+    "max_run_cost_cny": 2
+  },
+  "cases": [
+    {
+      "instance_id": "pallets__flask-4045",
+      "category": "input validation",
+      "anticipated_difficulty": "low",
+      "rationale": "A concrete invalid blueprint name and a narrow constructor contract; domain knowledge is modest. Compatibility with nested blueprint registration still requires regression checking.",
+      "expected_model_calls": {"implementation": [6, 12], "review": [3, 6], "one_rework_allowance": [0, 6]},
+      "profile": {"max_model_calls": 24, "max_tool_calls": 40, "run_timeout_seconds": 600},
+      "public_tests": ["tests/test_blueprints.py"],
+      "acceptance_risks": ["Rejecting legitimate nesting instead of a dot in a local blueprint name", "Adding a check at only one registration path"]
+    },
+    {
+      "instance_id": "pallets__flask-4992",
+      "category": "configuration API compatibility",
+      "anticipated_difficulty": "low-to-medium",
+      "rationale": "A local file-loading API enhancement with text/binary compatibility, caller tests and documentation. The issue's mode= example is a suggestion rather than a complete finalized API contract; official API expectations may be stricter than the prose.",
+      "expected_model_calls": {"implementation": [8, 16], "review": [4, 8], "one_rework_allowance": [0, 8]},
+      "profile": {"max_model_calls": 32, "max_tool_calls": 55, "run_timeout_seconds": 720},
+      "public_tests": ["tests/test_config.py"],
+      "acceptance_risks": ["Breaking default text loading or existing positional arguments", "Missing file and silent behavior", "Official tests may require a particular API not fully specified in the issue"]
+    },
+    {
+      "instance_id": "pallets__flask-5063",
+      "category": "CLI output and routing context",
+      "anticipated_difficulty": "medium",
+      "rationale": "Changes visible CLI table behavior using routing host/subdomain configuration; needs handling of defaults, sorting, empty maps, and regression expectations. Greater behavioral surface than the other two cases, without specialized mathematics.",
+      "expected_model_calls": {"implementation": [10, 20], "review": [5, 10], "one_rework_allowance": [0, 10]},
+      "profile": {"max_model_calls": 40, "max_tool_calls": 70, "run_timeout_seconds": 900},
+      "public_tests": ["tests/test_cli.py"],
+      "acceptance_risks": ["Host matching and subdomain matching are distinct", "Breaking existing routes output and sorting", "Issue examples do not fully specify compatibility expectations"]
+    }
+  ],
+  "outcomes": ["official resolved", "fixed-commit independent checks and review complete", "workflow stop phase/reason", "model/tool calls by phase", "tokens and estimated cost by phase", "time and context pressure", "first edit position and repeated tool calls", "review/rework observations", "pre-run difficulty versus observed work; no causal claim from one attempt"],
+  "limits": ["Single repository, three selected development cases, one attempt per case", "Profiles differ by anticipated work; outcomes are not a controlled comparison of difficulty or Harness components", "Official acceptance and complete delivery are separate", "No claim of unpublished tasks, training-data cleanliness, production reliability or superiority over the earlier SymPy cohort", "No approvals, pushes, PR creation, merge or deployment"]
+}
