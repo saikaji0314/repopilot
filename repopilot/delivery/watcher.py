@@ -213,8 +213,8 @@ def watch(config, root, *, once=False):
                                     busy.add(run_id)
                                     slots -= 1
                                     emit("comment_job_dispatched", run_id=run_id)
-                            next_comment_poll = time.monotonic() + config.poll_seconds
-                            comment_polled = True
+                                next_comment_poll = time.monotonic() + config.poll_seconds
+                                comment_polled = True
                         if (once and polled and (not config.poll_comments or comment_polled)
                                 and not futures and not comment_futures):
                             return {"status": "error" if failed_poll else "completed", "queue": queue.list()}
