@@ -180,8 +180,8 @@ class GitHub(Forge):
         permissions = value.get("permissions") or {}
         allowed = any(bool(permissions.get(name)) for name in ("admin", "maintain", "push", "triage"))
         return {"status": "supported" if allowed else "unknown",
-                "evidence": "GET /repos/{repository} permissions" if allowed else
-                            "GET /repos/{repository} does not prove issues write"}
+                "evidence": f"GET /repos/{repository} permissions" if allowed else
+                            f"GET /repos/{repository} does not prove issues write"}
 
     @staticmethod
     def _comment(value):

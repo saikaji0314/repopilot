@@ -33,6 +33,7 @@ def approval_digest(state):
         evidence["task_brief"] = state["task_brief"]
     if state.get("plan"):
         evidence["plan"] = state["plan"]
+        evidence["plan_progress"] = state.get("plan_progress")
     if (state.get("knowledge_snapshot") or {}).get("entries"):
         evidence["knowledge_snapshot"] = state["knowledge_snapshot"]
     return canonical_hash(evidence)

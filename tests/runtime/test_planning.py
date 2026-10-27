@@ -394,6 +394,25 @@ def test_comment_reply_requires_registered_owner_and_ignores_quote_or_bot(tmp_pa
     assert repeat["already_answered"] is True and repeat["requirements_revision"] == 1
 
 
+def test_deleted_batch_comment_is_not_replaced_by_a_copied_marker(tmp_path, monkeypatch):
+    from repopilot.collaboration.requests import HumanRequest
+    result, root = waiting_plan_question(tmp_path, monkeypatch)
+    forge = FakeCommentForge()
+    human.post_issue(result["run_id"], root, forge=forge)
+    request = HumanRequest.model_validate(
+        next(item for item in JobStore(root).get(result["run_id"])["human_requests"]
+             if item["status"] == "pending"))
+    marker_text = comments.marker(request)
+    forge.comments.pop(0)  # 模拟真正的批次评论被删除
+    forge.comments.append({"id": 999, "url": "https://github.com/owner/repo/issues/1#issuecomment-999",
+                           "body": f"复制标记 {marker_text}", "author": "stranger", "author_type": "User",
+                           "created_at": "2026-10-27T00:00:30Z", "system": False})
+    forge.add_owner_comment("批次评论已删除，这句话不能被当成答复")
+    synced = human.sync_issue(result["run_id"], root, forge=forge)
+    assert synced["synced"] is False
+    assert JobStore(root).get(result["run_id"])["requirements_revision"] == 0
+
+
 def test_comment_channel_refuses_without_owner_or_capability(tmp_path, monkeypatch):
     result, root = waiting_plan_question(tmp_path, monkeypatch)
     monkeypatch.delenv("REPOPILOT_OWNER", raising=False)

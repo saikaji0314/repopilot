@@ -80,15 +80,21 @@ def _echo(text, request):
     return not value or value in candidates
 
 
-def select_reply(comments, request, *, owner):
+def select_reply(comments, request, *, owner, batch_id=None):
     """按评论顺序找到批次评论之后的第一条有效负责人答复。
 
-    返回 (答复, 之后未被采用的有效答复列表)。批次评论不存在时返回 (None, [])，
-    调用方必须把它当成“没有可采纳答复”，不能从别处推断答案。
+    返回 (答复, 之后未被采用的有效答复列表)。优先按发送时保存的评论ID定位批次，
+    避免别人复制标记后改变“批次之后”的边界；没有保存ID的旧运行才退回标记查找。
+    批次评论不存在时返回 (None, [])，调用方必须把它当成“没有可采纳答复”，
+    不能从别处推断答案。
     """
-    marker_text = marker(request)
-    position = next((index for index, item in enumerate(comments)
-                     if marker_text in str(item.get("body") or "")), None)
+    if batch_id is not None:
+        position = next((index for index, item in enumerate(comments)
+                         if item.get("id") == batch_id), None)
+    else:
+        marker_text = marker(request)
+        position = next((index for index, item in enumerate(comments)
+                         if marker_text in str(item.get("body") or "")), None)
     if position is None:
         return None, []
     accepted, later = None, []
@@ -105,6 +111,11 @@ def select_reply(comments, request, *, owner):
             continue
         text = reply_text(body)
         if _echo(text, request):
+            continue
+        try:
+            checked_body(text)
+        except KnowledgeFault:
+            later.append(comment_source(item, reason="invalid_content"))
             continue
         if len(text) > 8000:
             later.append(comment_source(item, reason="too_long"))

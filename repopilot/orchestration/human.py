@@ -276,7 +276,8 @@ def sync_issue(run_id, root, *, forge=None):
                 store.save(state)
                 raise StateError("issue_comments_unavailable")
             values = client.issue_comments(repository, number)
-            reply, later = comments.select_reply(values, request, owner=owner)
+            reply, later = comments.select_reply(values, request, owner=owner,
+                                                 batch_id=delivery.get("comment_id"))
             if reply is None:
                 # 没有批次评论或没有负责人答复都不算同意；只记录本次只读核对。
                 _delivery(state, request, last_checked_at=timestamp(),

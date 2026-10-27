@@ -6,7 +6,10 @@ from . import planner
 
 
 def marker(state, subtask):
-    return f"<!-- repopilot-subtask:{state['run_id']}:{subtask['id']} -->"
+    """父Issue、计划版本和子任务ID共同确定标记；同一计划重试不会生成新标记。"""
+    issue = state.get("issue") or {}
+    parent = f"{issue.get('repository')}#{issue.get('number')}" if issue.get("url") else state["run_id"]
+    return f"<!-- repopilot-subtask:{parent}:{state['plan']['hash'][:12]}:{subtask['id']} -->"
 
 
 def existing(state, subtask_id):

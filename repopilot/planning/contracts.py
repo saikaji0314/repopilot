@@ -8,13 +8,14 @@ from pydantic import Field, field_validator, model_validator
 
 from repopilot.agents.reports import Decision
 from repopilot.core.config import Contract
+from repopilot.storage.jobs import StateError
 
 MAX_SUBTASKS = 8
 MAX_LIST_ITEMS = 12
 MAX_ITEM_CHARS = 1000
 
 
-class PlanFault(RuntimeError):
+class PlanFault(StateError):
     """计划不满足可执行条件；不能被当成普通模型报告继续执行。"""
 
 
