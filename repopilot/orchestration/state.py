@@ -24,5 +24,9 @@ def attach(state, root):
 
 
 def approval_digest(state):
-    return canonical_hash({k: state.get(k) for k in
-        ("task", "issue", "reviewed_commit", "review_report", "verified", "base_commit")})
+    evidence = {k: state.get(k) for k in
+        ("task", "issue", "reviewed_commit", "review_report", "verified", "base_commit")}
+    # 无人工补充的历史运行保留原摘要算法；新答复必须进入批准依据。
+    if state.get("human_answers"):
+        evidence["human_answers"] = state["human_answers"]
+    return canonical_hash(evidence)

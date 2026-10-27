@@ -2,12 +2,14 @@
 
 截至 2026-10-18，RepoPilot 是面向可信本机仓库的 Issue 驱动研发运行时，支持默认本机和可选 Docker 执行后端。当前交付终点是人工批准后的 GitHub 草稿 PR；尚未覆盖原愿景中的自动合并和软件发布。本文描述实际代码，未来方向不视作已有能力。
 
+2026-10-27新增：工作区任务可以本地等待需求补充，使用CLI记录版本绑定的答复后恢复；批准和现场恢复进入同一请求记录。详见[人工协作](HUMAN.md)。平台评论往返、需求规划和单任务多Agent协作仍未接入，不能从本地等待能力推断已具备。
+
 ## 原始需求对应到哪里
 
 | 原始流程 | 已有实现 | 验证与边界 |
 | --- | --- | --- |
 | 以 Issue 触发 | 手动 URL 接入；按登记仓库、标签和创建时间轮询；队列去重 | 真实 Issue #1 手动接入，#3 自动接入；使用轮询，没有 webhook |
-| 验证问题、确认需求 | 实现 Agent 读取需求和仓库、运行检查；结构化报告可说明阻塞和待确认问题 | 没有独立需求澄清阶段，也没有自动与 Issue 作者往返讨论 |
+| 验证问题、确认需求 | 实现／审核可提出问题，工作区任务保存现场等待CLI答复，恢复时传递业务补充并更新证据 | 没有独立开发前规划阶段，也没有自动与Issue作者往返讨论；只验证本地机制 |
 | 开独立工作区 | 固定基线提交，每次运行独立 Git worktree，核对原仓库与远端身份 | 本机 Git；不自动为各语言安装环境或依赖 |
 | 写代码、测试 | 通用 UTF-8 文件工具、精确替换与写入、命名检查；限制编辑与调用次数 | 工具不依赖 Python AST；Python、JavaScript 小样例已验证，不代表所有语言生态都已验证 |
 | 审核与返工循环 | 编排层独立重跑全部登记检查；只读审核 Agent；有限次返工并重新提交、检查和审核 | Docker 模式使用新容器复核，默认模式仍在本机；审核绑定提交，检查失败可否决模型批准；仍需要人判断需求和测试是否充分 |
@@ -66,6 +68,7 @@ flowchart TD
 | [execution/sandbox.py](../../repopilot/execution/sandbox.py)、[execution/transport.py](../../repopilot/execution/transport.py) | 阶段会话、Docker 生命周期、文件协议与登记检查；有界 CLI 传输，失败不回退宿主 |
 | [execution/files.py](../../repopilot/execution/files.py)、[execution/worker.py](../../repopilot/execution/worker.py)、[execution/archive.py](../../repopilot/execution/archive.py) | 无模型依赖的共用文件规则；容器固定操作协议；完整校验后导入普通文件 |
 | [storage/jobs.py](../../repopilot/storage/jobs.py)、[storage/budget.py](../../repopilot/storage/budget.py) | SQLite 状态与乐观并发、进程锁；模型费用预留、结算、共享累计上限 |
+| [collaboration/requests.py](../../repopilot/collaboration/requests.py)、[orchestration/human.py](../../repopilot/orchestration/human.py) | 人工请求协议、去重与版本绑定，答复后保留用量恢复，复用审批和现场核对 |
 | [delivery/forge.py](../../repopilot/delivery/forge.py)、[delivery/github.py](../../repopilot/delivery/github.py)、[delivery/gitlab.py](../../repopilot/delivery/gitlab.py) | 平台识别、凭证路由与唯一的发布流程；GitHub／GitLab 各自的 REST 与 Git 差异，见[平台接入](FORGES.md) |
 | [delivery/watcher.py](../../repopilot/delivery/watcher.py) | 轮询准入、按仓库来源选择平台、有界进程调度与停止 |
 | [delivery/queue.py](../../repopilot/delivery/queue.py) | SQLite 去重、领取、任务绑定、心跳与残留任务确认；不启动进程或调用模型 |

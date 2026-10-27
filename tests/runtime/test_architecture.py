@@ -19,7 +19,7 @@ class RejectLegacy(MetaPathFinder):
 
 sys.meta_path.insert(0, RejectLegacy())
 import repopilot
-for name in ('agents', 'core', 'delivery', 'execution', 'memory', 'orchestration', 'presentation', 'storage'):
+for name in ('agents', 'collaboration', 'core', 'delivery', 'execution', 'memory', 'orchestration', 'presentation', 'storage'):
     package = importlib.import_module('repopilot.' + name)
     for module in pkgutil.walk_packages(package.__path__, package.__name__ + '.'):
         importlib.import_module(module.name)

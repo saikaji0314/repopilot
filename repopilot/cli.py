@@ -14,10 +14,11 @@ from repopilot.delivery.forge import ForgeError, open_forge, publish as forge_pu
 from repopilot.storage.jobs import JobStore, StateError
 
 COMMANDS = {'run', 'issue', 'resume', 'retry', 'status', 'jobs', 'report', 'approve', 'reject',
-            'recover', 'publish', 'watch', 'memory'}
-SUCCESS_STATUSES = {'ok', 'completed', 'paused', 'awaiting_approval', 'approved', 'published', 'rejected'}
+            'recover', 'publish', 'watch', 'memory', 'human'}
+SUCCESS_STATUSES = {'ok', 'completed', 'paused', 'needs_input', 'awaiting_approval', 'approved', 'published', 'rejected'}
 STATUS_FIELDS = ('run_id', 'status', 'phase', 'in_flight', 'stop_reason', 'reviewed_commit',
-                 'report', 'review_report', 'verified', 'issue', 'approval', 'pull_request')
+                 'report', 'review_report', 'verified', 'issue', 'approval', 'pull_request',
+                 'human_requests', 'requirements_revision')
 
 
 def _watch_options(parser):
@@ -62,6 +63,10 @@ def build_parser():
                              help='持久化运行目录（默认：%(default)s）')
         if name == 'memory':
             from repopilot.memory.cli import configure
+            configure(command)
+            continue
+        if name == 'human':
+            from repopilot.collaboration.cli import configure
             configure(command)
             continue
         if name == 'watch':
@@ -149,6 +154,9 @@ def _watch(args):
 
 def execute_command(args):
     """分派应用操作；凭证只在需要模型或仓库平台的命令里加载。"""
+    if args.command == 'human':
+        from repopilot.collaboration.cli import execute
+        return execute(args)
     if args.command == 'memory':
         from repopilot.memory.cli import execute
         return execute(args)

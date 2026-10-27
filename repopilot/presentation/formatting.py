@@ -155,7 +155,9 @@ def next_action(state: dict) -> str:
     if status == "review_inconclusive":
         return '<p class="note">审核无法判断，需要人工核对独立复核结果与候选改动。</p>'
     if status == "needs_input":
-        return '<p class="note">实现方声明需要澄清，需要补充需求后再继续。</p>'
+        return (f'<p class="note">等待需求补充。用 <code>repopilot human list {safe_run}</code> '
+                '查看请求，再用 <code>repopilot human answer</code> 指定请求ID、版本与答复；'
+                '记录答复后显式 resume，答复不会批准或推送代码。</p>')
     if status in {"failed", "workspace_error", "phase_error", "limit_reached"}:
         return '<p class="note">运行未完成，需要查看失败原因后决定 retry 或调整配置。</p>'
     return ""

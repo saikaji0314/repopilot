@@ -63,6 +63,23 @@ def implementation(report, root):
     return "\n".join(parts)
 
 
+def human_requests(state, root):
+    requests = state.get("human_requests") or []
+    if not requests:
+        return ""
+    kinds = {"clarification": "需求澄清", "approval": "交付批准", "recovery": "现场恢复"}
+    statuses = {"pending": "等待答复", "answered": "已答复", "superseded": "版本已替代"}
+    rows = []
+    for item in requests:
+        reply = item.get("reply") or {}
+        rows.append([escape(str(item.get("id", ""))),
+            escape(kinds.get(item.get("kind"), str(item.get("kind")))),
+            escape(statuses.get(item.get("status"), str(item.get("status")))),
+            escape(redact("\n".join(item.get("questions") or []), root)),
+            escape(redact(str(reply.get("text") or ""), root))])
+    return '<h2>人工请求</h2>' + table(["请求", "类型", "状态", "问题", "答复"], rows)
+
+
 def candidate(changes, root):
     parts = []
     changed = changes.get("files") or []

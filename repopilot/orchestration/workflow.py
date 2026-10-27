@@ -8,20 +8,25 @@ from repopilot.agents.trace import Trace
 from repopilot.storage.budget import Budget
 from repopilot.core.config import RuntimeSettings, Task, execution_options
 from repopilot.orchestration.session import execute_run
+from repopilot.orchestration import human
+from repopilot.collaboration.requests import resolve_request
 from repopilot.orchestration.state import TERMINAL, approval_digest, attach, canonical_hash
 from repopilot.storage.jobs import JobStore, StateError, job_lock, timestamp
 from repopilot.execution.workspace import head_commit, source_snapshot
 
 
 def start(task, settings, output_root, *, model=None, workspace=True, review=True,
-          require_approval=True, stop_after=None, issue=None, retry_of=None, retry_reason=None, base_commit=None):
+          require_approval=True, stop_after=None, issue=None, retry_of=None, retry_reason=None,
+          base_commit=None, human_answers=None):
     state = create_job(task, settings, output_root, workspace=workspace, review=review,
-        require_approval=require_approval, issue=issue, retry_of=retry_of, retry_reason=retry_reason, base_commit=base_commit)
+        require_approval=require_approval, issue=issue, retry_of=retry_of, retry_reason=retry_reason,
+        base_commit=base_commit, human_answers=human_answers)
     return resume(state["run_id"], settings, output_root, model=model, stop_after=stop_after)
 
 
 def create_job(task, settings, output_root, *, workspace=True, review=True,
-               require_approval=True, issue=None, retry_of=None, retry_reason=None, base_commit=None):
+               require_approval=True, issue=None, retry_of=None, retry_reason=None,
+               base_commit=None, human_answers=None):
     """先持久化任务身份，允许调度器在执行模型之前记录队列对应关系。"""
     store = JobStore(output_root)
     state = store.create({
@@ -35,6 +40,8 @@ def create_job(task, settings, output_root, *, workspace=True, review=True,
         "reviewed_commit": None, "reworks": 0, "rework_pending": False,
         "control": {}, "edits": {}, "active_seconds": 0, "issue": issue,
         "approval": None, "created_at": timestamp(), "retry_of": retry_of, "retry_reason": retry_reason,
+        "human_requests": [], "human_answers": list(human_answers or []),
+        "requirements_revision": len(human_answers or []),
     }, issue_key=None if issue is None else f"{issue['repository']}#{issue['number']}", retry_of=retry_of)
     if issue and canonical_hash(issue) != canonical_hash(state["issue"]):
         raise StateError("issue_changed_since_intake")
@@ -63,7 +70,8 @@ def retry(run_id, settings, root, *, reason, overrides=None, model=None, stop_af
         return start(Task.model_validate(state["task"]), frozen, root, model=model,
             workspace=state["workspace_enabled"], review=state["review_enabled"],
             require_approval=state["require_approval"], issue=state["issue"], stop_after=stop_after,
-            retry_of=run_id, retry_reason=reason, base_commit=base_commit)
+            retry_of=run_id, retry_reason=reason, base_commit=base_commit,
+            human_answers=state.get("human_answers"))
 
 
 def resume(run_id, settings, output_root, *, model=None, stop_after=None):
@@ -76,6 +84,7 @@ def resume(run_id, settings, output_root, *, model=None, stop_after=None):
         if state["in_flight"]:
             state["status"] = "recovery_required"
             state["stop_reason"] = "interrupted_phase_requires_explicit_recovery"
+            human.recovery_request(state, store.root)
             store.save(state)
             return snapshot(store, state, settings)
         if state["status"] in TERMINAL or state["status"] in {"awaiting_approval", "approved"}:
@@ -89,6 +98,8 @@ def drive(store, state, settings, *, model=None, stop_after=None):
 
 
 def decide(run_id, root, *, commit, approved, reason):
+    if not reason.strip():
+        raise StateError("reason_required")
     store = JobStore(root)
     with job_lock(store.root, run_id):
         state = store.get(run_id)
@@ -97,6 +108,8 @@ def decide(run_id, root, *, commit, approved, reason):
         if commit != state["reviewed_commit"] or approval_digest(state) != state["approval_digest"]:
             raise StateError("stale_approval")
         attach(state, store.root).assert_clean(commit)
+        request = human.approval_request(state, store.root)
+        resolve_request(state, request, action="approve" if approved else "reject", text=reason)
         state["approval"] = {"commit": commit, "digest": state["approval_digest"], "approved": approved,
                              "reason": reason, "at": timestamp()}
         state["status"], state["stop_reason"] = ("approved", "human_approved") if approved else ("rejected", "human_rejected")
@@ -106,6 +119,8 @@ def decide(run_id, root, *, commit, approved, reason):
 
 def recover(run_id, root, *, commit, reason):
     """中途断开的阶段不自动重放；操作者核对现场后才允许从当前文件继续。"""
+    if not reason.strip():
+        raise StateError("reason_required")
     store = JobStore(root)
     with job_lock(store.root, run_id):
         state = store.get(run_id)
@@ -124,6 +139,8 @@ def recover(run_id, root, *, commit, reason):
         workspace = attach(state, store.root)
         if workspace is None or head_commit(workspace.repository()) != commit:
             raise StateError("recovery_commit_mismatch")
+        request = human.recovery_request(state, store.root)
+        resolve_request(state, request, action="recover", text=reason)
         state["recovery"] = {"commit": commit, "reason": reason, "phase": state["phase"], "at": timestamp()}
         state["in_flight"] = None
         state["status"], state["stop_reason"] = "paused", "operator_recovery"
@@ -153,6 +170,8 @@ def snapshot(store, state, settings):
             ("model_calls", "tool_calls", "input_tokens", "output_tokens")},
         "checks": state["control"].get("checks", []), "cost": budget.snapshot(state["run_id"]), "budget": budget.snapshot(),
         "report_status": None if report is None else report["status"], "edits": state["edits"],
+        "human_requests": state.get("human_requests", []),
+        "requirements_revision": state.get("requirements_revision", 0),
         "output_directory": str(directory), "issue": state["issue"], "approval": state["approval"],
         "changes": None if changes is None else {k: changes[k] for k in
             ("changed_files", "additions", "deletions", "base_commit", "head_commit", "worktree")},

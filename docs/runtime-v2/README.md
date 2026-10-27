@@ -19,6 +19,7 @@
 | 状态 | 含义与后续 |
 | --- | --- |
 | `paused` | 完整阶段后停止，`resume` 从下一阶段继续 |
+| `needs_input` | 工作区任务等待需求补充；`human list/answer`记录有效答复后，再显式`resume`；等待不调用模型 |
 | `awaiting_approval` | 审核及独立检查通过，等待人工核对具体提交 |
 | `approved` / `rejected` | 已记录人工决定；approved 可显式 publish |
 | `recovery_required` | 检查点有未完成阶段，必须先核对现场并 recover |
@@ -33,6 +34,8 @@ SQLite 每次动作开始前写入 in_flight，每个完整阶段后写入下一
 `--stop-after prepare|implement|anchor|verify|review|rework` 适合演示跨进程续跑。阶段内部中断不声称 exactly-once：模型请求可能已计费、检查可能已有副作用、编辑可能只完成一部分。`recover --commit SHA --reason ...` 表示操作者接纳当前现场；之后重新执行该阶段，模型收到核对说明，之前完整模型对话不会重建。未知模型费用继续占预算。已开始的返工不会因恢复重复增加轮数。
 
 同一运行用操作系统文件锁串行化；SQLite 乐观版本检查拒绝过期写入。两个不同运行的工作区互相独立，但首版不承诺同一仓库多任务并发交付协调，也不做自动清理。需要工作区、Git 对象和本地 SQLite 一同保留，不支持跨机器恢复。
+
+本地需求补充、固定提交批准和现场恢复共用可追溯请求记录，但授权含义不同。业务答复绑定等待时的版本，不授予推送权限；具体命令、重复答复和历史运行兼容见[人工协作](HUMAN.md)。Issue评论往返及多Agent拆分协作仍待后续接入。
 
 ## 审核、人工审批与发布
 

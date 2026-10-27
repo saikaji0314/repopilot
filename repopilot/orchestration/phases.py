@@ -11,6 +11,7 @@ from repopilot.agents.reports import ImplementationReport, ReviewReport
 from repopilot.memory import context as memory_context
 from repopilot.core.config import RuntimeSettings, Task
 from repopilot.orchestration.state import approval_digest, attach
+from repopilot.orchestration import human
 from repopilot.storage.jobs import StateError
 from repopilot.execution.sandbox import repository_session
 from repopilot.execution.workspace import EditBudget, Workspace, WorkspaceError, head_commit, source_snapshot
@@ -66,6 +67,8 @@ class PhaseRunner:
 
     def _implementation_payload(self, phase):
         payload = {"request": self.task.request, "available_checks": list(self.task.checks)}
+        if self.state.get("human_answers"):
+            payload["human_answers"] = self.state["human_answers"]
         if phase == "rework":
             if self.state["rework_pending"]:
                 self.state["reworks"] += 1
@@ -97,6 +100,10 @@ class PhaseRunner:
         report = engine.consistent_status(report, self.workspace.changes() if self.workspace else {})
         self.state["report"] = report.model_dump(mode="json")
         self.trace.save("report.json", self.state["report"])
+        if report.status == "needs_clarification" and self.workspace is not None:
+            human.wait_for_clarification(self.state, self.store_root,
+                                         summary=report.summary, questions=report.questions)
+            return
         if report.status == "implemented" and self.workspace is not None and self.state["review_enabled"]:
             self.state["phase"] = "anchor"
             return
@@ -129,6 +136,8 @@ class PhaseRunner:
             "verified_checks": self.state["verified"], "diff": diff["diff"], "diff_truncated": diff["truncated"]}
         if self.state["history"]:
             payload["previous_findings"] = self.state["history"][-1]["findings"]
+        if self.state.get("human_answers"):
+            payload["human_answers"] = self.state["human_answers"]
         self._attach_memory(payload, 'review')
         return payload
 
@@ -151,7 +160,11 @@ class PhaseRunner:
             "verdict": report.verdict, "summary": report.summary, "findings": engine.findings_brief(report.findings)})
         self.trace.save("review-history.json", self.state["history"])
         self.trace.event("review_finished", verdict=report.verdict, commit=self.state["reviewed_commit"])
-        self._review_outcome(report.verdict)
+        if report.verdict == "unable_to_review" and report.questions:
+            human.wait_for_clarification(self.state, self.store_root,
+                                         summary=report.summary, questions=report.questions)
+        else:
+            self._review_outcome(report.verdict)
         if report.verdict == 'approved':
             memory_context.collect_candidates(self.state, self.settings, self.store_root, self.workspace.repository(), self.trace)
 
@@ -159,7 +172,7 @@ class PhaseRunner:
         if verdict == "unable_to_review":
             self.state["status"], self.state["stop_reason"] = "review_inconclusive", "review_unable_to_review"
         elif verdict == "changes_requested":
-            if len(self.state["history"]) > self.settings.max_rework:
+            if self.state["reworks"] >= self.settings.max_rework:
                 self.state["status"], self.state["stop_reason"] = "rework_limit_reached", "max_rework"
             else:
                 self.state["phase"], self.state["rework_pending"] = "rework", True
@@ -168,3 +181,5 @@ class PhaseRunner:
             self.state["stop_reason"] = self.state["status"] if self.state["require_approval"] else "report"
             self.state["phase"] = "approval"
             self.state["approval_digest"] = approval_digest(self.state)
+            if self.state["require_approval"]:
+                human.approval_request(self.state, self.store_root)

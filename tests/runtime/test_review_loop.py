@@ -218,7 +218,7 @@ def test_review_can_be_turned_off(tmp_path):
     assert summary["report_status"] == "implemented"
 
 
-def test_unable_to_review_is_reported_as_inconclusive(tmp_path):
+def test_unable_to_review_with_questions_waits_for_input(tmp_path):
     task, settings, output = setup(tmp_path)
     model = FakeModel(responses=[turn("write_file", {"path": "app.py", "content": "value = 2\n"}),
                                  implement_done(),
@@ -226,8 +226,9 @@ def test_unable_to_review_is_reported_as_inconclusive(tmp_path):
                                                        "summary": "登记检查缺失，无法判断",
                                                        "findings": [], "questions": ["lint 检查指向哪个文件？"]})])
     summary = investigate(task, settings, output, model=model)
-    assert summary["status"] == "review_inconclusive", summary
-    assert summary["stop_reason"] == "review_unable_to_review"
+    assert summary["status"] == "needs_input", summary
+    assert summary["stop_reason"] == "human_clarification_required"
+    assert summary["human_requests"][0]["questions"] == ["lint 检查指向哪个文件？"]
     assert summary["review"]["verdict"] == "unable_to_review"
     assert summary["review"]["rework_attempts"] == 0
 
