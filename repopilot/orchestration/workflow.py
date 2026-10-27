@@ -9,6 +9,8 @@ from repopilot.storage.budget import Budget
 from repopilot.core.config import RuntimeSettings, Task, execution_options
 from repopilot.orchestration.session import execute_run
 from repopilot.orchestration import human
+from repopilot.orchestration import knowledge
+from repopilot.knowledge.documents import KnowledgeFault
 from repopilot.collaboration.requests import resolve_request
 from repopilot.orchestration.state import TERMINAL, approval_digest, attach, canonical_hash
 from repopilot.storage.jobs import JobStore, StateError, job_lock, timestamp
@@ -87,6 +89,17 @@ def resume(run_id, settings, output_root, *, model=None, stop_after=None):
             human.recovery_request(state, store.root)
             store.save(state)
             return snapshot(store, state, settings)
+        if state["status"] in {"ready", "paused", "needs_input", "awaiting_approval", "approved"}:
+            try:
+                if state.get("base_commit") and knowledge.sync_answers(
+                        state, store.root, (settings.api_key.get_secret_value(),)):
+                    # 文档索引和任务库之间没有跨库事务；只重放已有人工事件的派生产物。
+                    store.save(state)
+                knowledge.validate(state, store.root)
+            except KnowledgeFault as exc:
+                knowledge.pause(state, store.root, str(exc))
+                store.save(state)
+                return snapshot(store, state, settings)
         if state["status"] in TERMINAL or state["status"] in {"awaiting_approval", "approved"}:
             return snapshot(store, state, settings)
         return drive(store, state, settings, model=model, stop_after=stop_after)
@@ -108,6 +121,7 @@ def decide(run_id, root, *, commit, approved, reason):
         if commit != state["reviewed_commit"] or approval_digest(state) != state["approval_digest"]:
             raise StateError("stale_approval")
         attach(state, store.root).assert_clean(commit)
+        knowledge.validate(state, store.root)
         request = human.approval_request(state, store.root)
         resolve_request(state, request, action="approve" if approved else "reject", text=reason)
         state["approval"] = {"commit": commit, "digest": state["approval_digest"], "approved": approved,
@@ -172,6 +186,8 @@ def snapshot(store, state, settings):
         "report_status": None if report is None else report["status"], "edits": state["edits"],
         "human_requests": state.get("human_requests", []),
         "requirements_revision": state.get("requirements_revision", 0),
+        "knowledge_snapshot_id": (state.get("knowledge_snapshot") or {}).get("snapshot_id"),
+        "decision_records": state.get("decision_records", []),
         "output_directory": str(directory), "issue": state["issue"], "approval": state["approval"],
         "changes": None if changes is None else {k: changes[k] for k in
             ("changed_files", "additions", "deletions", "base_commit", "head_commit", "worktree")},

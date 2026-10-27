@@ -155,6 +155,11 @@ def next_action(state: dict) -> str:
     if status == "review_inconclusive":
         return '<p class="note">审核无法判断，需要人工核对独立复核结果与候选改动。</p>'
     if status == "needs_input":
+        if any(r.get("status") == "pending" and r.get("kind") == "context_update"
+               for r in state.get("human_requests", [])):
+            return ('<p class="note">资料依据已变化或不可用。核查并确认资料后，用 '
+                    '<code>repopilot knowledge refresh</code>指定运行、请求ID、请求版本、当前提交和理由，'
+                    '再显式 resume；刷新会重新实现、检查和审核，不会批准交付。</p>')
         return (f'<p class="note">等待需求补充。用 <code>repopilot human list {safe_run}</code> '
                 '查看请求，再用 <code>repopilot human answer</code> 指定请求ID、版本与答复；'
                 '记录答复后显式 resume，答复不会批准或推送代码。</p>')

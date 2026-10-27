@@ -33,6 +33,7 @@ repopilot resume RUN_ID --output .local/runtime
 | `clarification` | `human list`、`status`及报告 | `human answer`，然后显式`resume` |
 | `approval` | 审核及检查通过后的请求记录 | 原有`approve`或`reject`，绑定完整SHA |
 | `recovery` | 检测到未完成阶段后创建的现场核对请求 | 原有`recover`，核对当前SHA和理由后再`resume` |
+| `context_update` | 已登记项目资料失效／变化产生的请求 | [资料刷新](KNOWLEDGE.md)，确认材料并核对当前SHA后重新验证 |
 
 ```powershell
 repopilot approve RUN_ID --commit FULL_SHA --reason "已核对需求、差异与证据" --output .local/runtime

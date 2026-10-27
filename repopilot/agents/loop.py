@@ -178,7 +178,7 @@ class RunControl(AgentMiddleware):
         with self.tool_lock:
             remember_observation(self.progress, name, args, observation)
             if observation.get("ok"):
-                if name in {"read_file", "search_text", "list_files"}:
+                if name in {"read_file", "search_text", "list_files", "read_material"}:
                     entry = {"tool": name, **args}
                     if entry not in self.progress["reads"]:
                         self.progress["reads"] = (self.progress["reads"] + [entry])[-35:]

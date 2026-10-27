@@ -67,7 +67,7 @@ def human_requests(state, root):
     requests = state.get("human_requests") or []
     if not requests:
         return ""
-    kinds = {"clarification": "需求澄清", "approval": "交付批准", "recovery": "现场恢复"}
+    kinds = {"clarification": "需求澄清", "approval": "交付批准", "recovery": "现场恢复", "context_update": "资料依据更新"}
     statuses = {"pending": "等待答复", "answered": "已答复", "superseded": "版本已替代"}
     rows = []
     for item in requests:
@@ -78,6 +78,26 @@ def human_requests(state, root):
             escape(redact("\n".join(item.get("questions") or []), root)),
             escape(redact(str(reply.get("text") or ""), root))])
     return '<h2>人工请求</h2>' + table(["请求", "类型", "状态", "问题", "答复"], rows)
+
+
+def materials(state, root):
+    snapshot = state.get("knowledge_snapshot") or {}
+    entries = snapshot.get("entries") or []
+    decisions = state.get("decision_records") or []
+    if not entries and not decisions:
+        return ""
+    rows = [[escape(str(item.get(key, ""))) for key in ("id", "kind", "title", "version", "path")]
+            for item in entries]
+    parts = ['<h2>固定资料依据</h2>', table(["资料", "类型", "标题", "版本", "原文位置"], rows)]
+    history = state.get("knowledge_history") or {}
+    if len(history) > 1:
+        parts.append('<h3>资料清单历史</h3>' + table(["清单版本", "资料数"],
+            [[escape(identifier), str(len(item.get("entries", [])))] for identifier, item in history.items()]))
+    if decisions:
+        parts.append('<h3>机器决定记录</h3>' + table(["记录", "阶段", "状态", "版本"],
+            [[escape(str(item.get(key, ""))) for key in ("id", "phase", "status", "version")]
+             for item in decisions]))
+    return "\n".join(parts)
 
 
 def candidate(changes, root):

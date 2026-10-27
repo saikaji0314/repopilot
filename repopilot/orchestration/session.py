@@ -13,6 +13,8 @@ from repopilot.agents.trace import Trace
 from repopilot.storage.budget import Budget, RunLimit
 from repopilot.core.config import Task
 from repopilot.orchestration.phases import PhaseRunner
+from repopilot.orchestration import knowledge
+from repopilot.knowledge.documents import KnowledgeFault
 from repopilot.orchestration.state import attach
 from repopilot.execution.workspace import WorkspaceError, source_snapshot
 
@@ -77,6 +79,9 @@ class RunSession:
 
     def step(self):
         self.control.remaining()
+        if self.state["phase"] != "prepare":
+            knowledge.sync_answers(self.state, self.store.root, (self.runner.settings.api_key.get_secret_value(),))
+        knowledge.validate(self.state, self.store.root)
         phase = self.state["phase"]
         self.state["in_flight"] = phase
         self.checkpoint()
@@ -84,12 +89,16 @@ class RunSession:
         self.state["in_flight"] = None
         if self.runner.workspace:
             self.state["workspace_snapshot"] = source_snapshot(self.runner.workspace.repository())
+        knowledge.validate(self.state, self.store.root)
         self.checkpoint()
         return phase
 
     def fail(self, exc):
         state, phase = self.state, self.state["phase"]
-        if isinstance(exc, (ValidationError, StructuredOutputValidationError)):
+        if isinstance(exc, KnowledgeFault):
+            knowledge.pause(state, self.store.root, str(exc))
+            self.trace.event("knowledge_changed", reason=str(exc), phase=phase)
+        elif isinstance(exc, (ValidationError, StructuredOutputValidationError)):
             state["status"] = "review_inconclusive" if phase == "review" else "phase_error"
             state["stop_reason"], state["in_flight"] = f"invalid_{phase}_report", None
             if phase == "review":

@@ -13,7 +13,7 @@ from repopilot.storage.jobs import JobStore, StateError, job_lock
 def capture_context(state, root):
     workspace = attach(state, root)
     path = workspace.path if workspace and workspace.path.exists() else Path(state["task"]["repository"])
-    return {
+    context = {
         "run_id": state["run_id"],
         "task_sha256": canonical_hash(state["task"]),
         "issue_sha256": canonical_hash(state.get("issue")),
@@ -23,6 +23,9 @@ def capture_context(state, root):
         "head_commit": head_commit(path), "workspace_sha256": source_snapshot(path),
         "approval_digest": state.get("approval_digest"),
     }
+    if (state.get("knowledge_snapshot") or {}).get("entries"):
+        context["knowledge_snapshot_id"] = state["knowledge_snapshot"]["snapshot_id"]
+    return context
 
 
 def wait_for_clarification(state, root, *, summary, questions):
@@ -55,6 +58,8 @@ def answer(run_id, root, *, request_id, version, text):
     with job_lock(store.root, run_id):
         state = store.get(run_id)
         request = find_request(state, request_id)
+        if request.kind == "context_update":
+            raise StateError("use_knowledge_refresh")
         if request.kind != "clarification":
             raise StateError("use_approve_reject_or_recover")
         if version != request.version:
@@ -66,6 +71,8 @@ def answer(run_id, root, *, request_id, version, text):
         if (request.status != "pending" or state["status"] != "needs_input"
                 or state.get("in_flight") or capture_context(state, store.root) != request.context):
             raise StateError("stale_human_request")
+        from repopilot.orchestration.knowledge import validate
+        validate(state, store.root)
         request = resolve_request(state, request, action="answer", text=text)
         state["requirements_revision"] = state.get("requirements_revision", 0) + 1
         state.setdefault("human_answers", []).append({

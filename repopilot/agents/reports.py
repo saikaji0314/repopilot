@@ -25,12 +25,20 @@ class CheckEvidence(Contract):
     observation: str = Field(min_length=1)
 
 
+class Decision(Contract):
+    """简短、可核对的决定理由；不是原始推理过程或自动确认的业务规则。"""
+    summary: str = Field(min_length=1, max_length=200)
+    reason: str = Field(min_length=1, max_length=2000)
+    sources: list[str] = Field(default_factory=list, max_length=10)
+
+
 class ImplementationReport(Contract):
     status: Literal["implemented", "needs_clarification", "blocked"]
     summary: str = Field(min_length=1)
     evidence: list[FileEvidence | CheckEvidence] = Field(default_factory=list, max_length=20)
     next_steps: list[str] = Field(default_factory=list, max_length=15)
     questions: list[str] = Field(default_factory=list, max_length=10)
+    decisions: list[Decision] = Field(default_factory=list, max_length=8)
 
     @model_validator(mode="after")
     def status_matches_evidence(self):
@@ -58,6 +66,7 @@ class ReviewReport(Contract):
     summary: str = Field(min_length=1)
     findings: list[Finding] = Field(default_factory=list, max_length=20)
     questions: list[str] = Field(default_factory=list, max_length=10)
+    decisions: list[Decision] = Field(default_factory=list, max_length=8)
 
     @model_validator(mode="after")
     def verdict_matches_findings(self):

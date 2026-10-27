@@ -14,11 +14,11 @@ from repopilot.delivery.forge import ForgeError, open_forge, publish as forge_pu
 from repopilot.storage.jobs import JobStore, StateError
 
 COMMANDS = {'run', 'issue', 'resume', 'retry', 'status', 'jobs', 'report', 'approve', 'reject',
-            'recover', 'publish', 'watch', 'memory', 'human'}
+            'recover', 'publish', 'watch', 'memory', 'human', 'knowledge'}
 SUCCESS_STATUSES = {'ok', 'completed', 'paused', 'needs_input', 'awaiting_approval', 'approved', 'published', 'rejected'}
 STATUS_FIELDS = ('run_id', 'status', 'phase', 'in_flight', 'stop_reason', 'reviewed_commit',
                  'report', 'review_report', 'verified', 'issue', 'approval', 'pull_request',
-                 'human_requests', 'requirements_revision')
+                 'human_requests', 'requirements_revision', 'knowledge_snapshot', 'knowledge_history', 'decision_records')
 
 
 def _watch_options(parser):
@@ -67,6 +67,10 @@ def build_parser():
             continue
         if name == 'human':
             from repopilot.collaboration.cli import configure
+            configure(command)
+            continue
+        if name == 'knowledge':
+            from repopilot.knowledge.cli import configure
             configure(command)
             continue
         if name == 'watch':
@@ -156,6 +160,9 @@ def execute_command(args):
     """分派应用操作；凭证只在需要模型或仓库平台的命令里加载。"""
     if args.command == 'human':
         from repopilot.collaboration.cli import execute
+        return execute(args)
+    if args.command == 'knowledge':
+        from repopilot.knowledge.cli import execute
         return execute(args)
     if args.command == 'memory':
         from repopilot.memory.cli import execute

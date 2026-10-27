@@ -157,6 +157,8 @@ def publish(run_id, root, forge, *, note=None):
             raise StateError("issue_required")
         workspace = attach(state, store.root)
         workspace.prepare().assert_clean(approval["commit"])
+        from repopilot.orchestration.knowledge import validate
+        validate(state, store.root)
         issue = state["issue"]
         repository = issue["repository"]
         if remote_origin(workspace.repository()).repository.lower() != repository.lower():

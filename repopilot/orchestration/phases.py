@@ -12,6 +12,7 @@ from repopilot.memory import context as memory_context
 from repopilot.core.config import RuntimeSettings, Task
 from repopilot.orchestration.state import approval_digest, attach
 from repopilot.orchestration import human
+from repopilot.orchestration import knowledge
 from repopilot.storage.jobs import StateError
 from repopilot.execution.sandbox import repository_session
 from repopilot.execution.workspace import EditBudget, Workspace, WorkspaceError, head_commit, source_snapshot
@@ -63,6 +64,9 @@ class PhaseRunner:
                          base_commit=self.state["base_commit"])
         root = self.task.repository if self.workspace is None else self.workspace.repository()
         memory_context.freeze(self.state, self.settings, self.store_root, root, self.trace)
+        if self.workspace is not None and "knowledge_snapshot" not in self.state:
+            knowledge.sync_answers(self.state, self.store_root, (self.settings.api_key.get_secret_value(),))
+            knowledge.freeze(self.state, self.store_root, root)
         self.state["phase"] = "implement"
 
     def _implementation_payload(self, phase):
@@ -86,6 +90,12 @@ class PhaseRunner:
         view = memory_context.context(self.state, self.settings, self.store_root, root, phase, self.trace)
         if view is not None:
             payload['repository_memory'] = view
+        materials = knowledge.view(self.state, self.store_root, phase, (self.settings.api_key.get_secret_value(),))
+        if materials is not None:
+            payload['project_materials'] = materials
+
+    def _material_tools(self):
+        return knowledge.tools(self.state, self.store_root, (self.settings.api_key.get_secret_value(),))
 
     def implement(self, phase):
         root = self.task.repository if self.workspace is None else self.workspace.repository()
@@ -94,12 +104,15 @@ class PhaseRunner:
             tools = engine.build_tools(self.task, self.control.remaining, workspace=None if self.workspace is None else root,
                                        edits=None if self.workspace is None else self.edits,
                                        **({} if session is None else {"repository": session, "checker": session.run_check}))
+            tools += self._material_tools()
             report = engine.run_phase(prompt=SYSTEM_PROMPT, schema=ImplementationReport,
                 payload=self._implementation_payload(phase), tools=tools, settings=self.settings,
                 control=self.control, model=self.model, phase=phase)
         report = engine.consistent_status(report, self.workspace.changes() if self.workspace else {})
         self.state["report"] = report.model_dump(mode="json")
         self.trace.save("report.json", self.state["report"])
+        knowledge.record_decisions(self.state, self.store_root, phase, report.decisions,
+                                   (self.settings.api_key.get_secret_value(),))
         if report.status == "needs_clarification" and self.workspace is not None:
             human.wait_for_clarification(self.state, self.store_root,
                                          summary=report.summary, questions=report.questions)
@@ -149,14 +162,17 @@ class PhaseRunner:
                                 deadline=self.control.remaining, trace=self.trace) as session:
             report = engine.run_phase(prompt=REVIEW_PROMPT, schema=ReviewReport,
                 payload=payload, tools=engine.build_tools(self.task, self.control.remaining, workspace=self.workspace.path,
-                    **({} if session is None else {"repository": session, "checker": session.run_check})),
+                    **({} if session is None else {"repository": session, "checker": session.run_check})) + self._material_tools(),
                 settings=self.settings, control=self.control, model=self.model, phase="review")
         self.workspace.assert_clean(self.state["reviewed_commit"])
         if report.verdict == "approved" and not engine.verification_passed(self.task, self.state["verified"]):
             report = report.model_copy(update={"verdict": "unable_to_review", "summary": "本地复核未全部通过，拒绝模型批准。"})
         self.state["review_report"] = report.model_dump(mode="json")
         self.trace.save("review.json", self.state["review_report"])
+        knowledge.record_decisions(self.state, self.store_root, "review", report.decisions,
+                                   (self.settings.api_key.get_secret_value(),))
         self.state["history"].append({"attempt": len(self.state["history"]), "commit": self.state["reviewed_commit"],
+            "knowledge_snapshot_id": (self.state.get("knowledge_snapshot") or {}).get("snapshot_id"),
             "verdict": report.verdict, "summary": report.summary, "findings": engine.findings_brief(report.findings)})
         self.trace.save("review-history.json", self.state["history"])
         self.trace.event("review_finished", verdict=report.verdict, commit=self.state["reviewed_commit"])

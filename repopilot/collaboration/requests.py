@@ -10,7 +10,7 @@ from repopilot.storage.jobs import StateError, timestamp
 
 
 class HumanReply(Contract):
-    action: Literal["answer", "approve", "reject", "recover"]
+    action: Literal["answer", "approve", "reject", "recover", "refresh"]
     text: str = Field(min_length=1, max_length=8000)
     actor: Literal["local-operator"] = "local-operator"
     channel: Literal["cli"] = "cli"
@@ -20,7 +20,7 @@ class HumanReply(Contract):
 class HumanRequest(Contract):
     schema_version: Literal[1] = 1
     id: str
-    kind: Literal["clarification", "approval", "recovery"]
+    kind: Literal["clarification", "approval", "recovery", "context_update"]
     status: Literal["pending", "answered", "superseded"] = "pending"
     phase: str
     summary: str

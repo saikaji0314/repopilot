@@ -26,6 +26,7 @@ def render(state: dict, run_dir: Path, events: list[dict], root: Path) -> str:
         table(["时间（UTC）", "事件", "说明"], timeline_rows(events, root)),
         sections.implementation(state.get("report") or {}, root),
         sections.human_requests(state, root),
+        sections.materials(state, root),
         sections.candidate(changes, root),
         sections.checks(state.get("verified") or [], root),
         sections.reviews(state.get("history") or [], state.get("review_report") or {}, root),

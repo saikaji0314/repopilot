@@ -19,6 +19,10 @@ def remember_observation(progress, name, args, result):
         entry.update(path=args["path"], start_line=args.get("start_line", 1),
                      end_line=args.get("end_line", 120), excerpt=result.get("content", "")[:600],
                      excerpt_truncated=len(result.get("content", "")) > 600 or bool(result.get("truncated")))
+    elif name == "read_material":
+        entry.update(material_id=args["material_id"], version=args["version"], path=result.get("path"),
+                     start_line=result.get("start_line"), end_line=result.get("end_line"),
+                     excerpt=result.get("text", "")[:600], excerpt_truncated=len(result.get("text", "")) > 600)
     elif name == "search_text":
         entry.update(query=args["query"], path=args.get("path", "."),
                      matches=[{k: str(v)[:160] for k, v in item.items()} for item in result.get("matches", [])[:4]],

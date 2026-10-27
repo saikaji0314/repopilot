@@ -4,6 +4,8 @@
 
 2026-10-27新增：工作区任务可以本地等待需求补充，使用CLI记录版本绑定的答复后恢复；批准和现场恢复进入同一请求记录。详见[人工协作](HUMAN.md)。平台评论往返、需求规划和单任务多Agent协作仍未接入，不能从本地等待能力推断已具备。
 
+同日M2新增[项目资料与决定管理](KNOWLEDGE.md)：正文版本文件、SQLite增量索引、版本确认和固定清单，现有实现／审核可分段读取原文，资料变化触发人工刷新。结构化机器决定是提议，人工答复带来源导出为任务资料；尚无真实模型收益结论。
+
 ## 原始需求对应到哪里
 
 | 原始流程 | 已有实现 | 验证与边界 |
@@ -29,6 +31,7 @@
 | LangChain／LangGraph | `create_agent` 承载单个角色内部的模型与工具循环；Pydantic 校验报告；DeepSeek 适配 | 外层业务流程是自定义 Python 状态机与 SQLite，未采用 LangGraph StateGraph／checkpointer |
 | Multi-agent | 实现与审核两个角色，提示、工具权限、输出协议不同；默认使用同一可配置模型，顺序执行 | 角色独立不等于判断独立；没有多模型委员会或自由协商网络。多 Issue worker 并发属于任务调度 |
 | Memory／上下文 | 当前上下文清理、宿主进度与状态持久化；可选跨运行文件事实书签，带提交来源、依赖指纹和人工生命周期 | 尚无任务经验归纳、长期语义检索、向量库或真实模型收益结论；检查点与文件事实分别管理 |
+| 项目资料与决定 | 文档正文／历史版本在文件中，SQLite保存位置、来源、关系与FTS5词项；确认绑定版本，实现／审核共用固定清单，变更／丢失需刷新再验证 | 关键词检索不等于语义检索；决定完整性依赖报告，尚未做真实任务效果／记忆收益对照；不提供多机资料同步 |
 | 评测 | Fake／Mock协议验证、真实GitHub交付、官方SWE-bench评分及冻结的上下文／记忆开关开发对照，见[增量22](VALIDATION-22.md) | 尚无独立留出集和统计成功率；小样本组件收益不稳定，执行故障另列，不将命中或正确补丁当完整交付 |
 | 安全与可靠性 | 路径／链接约束、登记 argv、用量预留、版本绑定、锁与显式恢复；可选按阶段 Docker 隔离、禁网、资源与输出限额、停止后校验导入 | 工作卷磁盘配额、硬杀自动回收、更强虚拟机隔离、身份鉴权、不可篡改审计、完整提示注入防御；默认 local 检查仍有本机权限 |
 
@@ -69,6 +72,7 @@ flowchart TD
 | [execution/files.py](../../repopilot/execution/files.py)、[execution/worker.py](../../repopilot/execution/worker.py)、[execution/archive.py](../../repopilot/execution/archive.py) | 无模型依赖的共用文件规则；容器固定操作协议；完整校验后导入普通文件 |
 | [storage/jobs.py](../../repopilot/storage/jobs.py)、[storage/budget.py](../../repopilot/storage/budget.py) | SQLite 状态与乐观并发、进程锁；模型费用预留、结算、共享累计上限 |
 | [collaboration/requests.py](../../repopilot/collaboration/requests.py)、[orchestration/human.py](../../repopilot/orchestration/human.py) | 人工请求协议、去重与版本绑定，答复后保留用量恢复，复用审批和现场核对 |
+| [knowledge/store.py](../../repopilot/knowledge/store.py)、[retrieval.py](../../repopilot/knowledge/retrieval.py)、[orchestration/knowledge.py](../../repopilot/orchestration/knowledge.py) | 正文与增量索引、来源关联与任务范围检索、固定清单和失效／刷新；代码事实仍由memory管理 |
 | [delivery/forge.py](../../repopilot/delivery/forge.py)、[delivery/github.py](../../repopilot/delivery/github.py)、[delivery/gitlab.py](../../repopilot/delivery/gitlab.py) | 平台识别、凭证路由与唯一的发布流程；GitHub／GitLab 各自的 REST 与 Git 差异，见[平台接入](FORGES.md) |
 | [delivery/watcher.py](../../repopilot/delivery/watcher.py) | 轮询准入、按仓库来源选择平台、有界进程调度与停止 |
 | [delivery/queue.py](../../repopilot/delivery/queue.py) | SQLite 去重、领取、任务绑定、心跳与残留任务确认；不启动进程或调用模型 |
