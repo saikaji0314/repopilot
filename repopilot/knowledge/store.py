@@ -10,6 +10,7 @@ from repopilot.execution.workspace import head_commit
 from repopilot.memory.facts import repository_id
 from repopilot.storage.jobs import timestamp
 from .documents import Material, KnowledgeFault, atomic_text, checked_body, chunks, digest, terms
+from . import events
 
 
 class KnowledgeStore:
@@ -18,7 +19,8 @@ class KnowledgeStore:
         self.root.mkdir(parents=True, exist_ok=True)
         self.path = self.root / "knowledge.sqlite3"
         with closing(self.connect()) as db, db:
-            if db.execute("PRAGMA user_version").fetchone()[0] not in {0, 1}:
+            schema = db.execute("PRAGMA user_version").fetchone()[0]
+            if schema not in {0, 1, 2}:
                 raise KnowledgeFault("knowledge_schema_unsupported")
             db.execute("CREATE TABLE IF NOT EXISTS materials (repository TEXT NOT NULL, id TEXT NOT NULL, "
                        "origin TEXT NOT NULL, path TEXT NOT NULL, metadata TEXT NOT NULL, version TEXT, "
@@ -31,7 +33,7 @@ class KnowledgeStore:
                        "id TEXT NOT NULL,chunk_key TEXT NOT NULL,heading TEXT NOT NULL,start_line INTEGER NOT NULL, "
                        "end_line INTEGER NOT NULL,UNIQUE(repository,id,chunk_key))")
             db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS material_search USING fts5(terms,title)")
-            db.execute("PRAGMA user_version=1")
+            events.initialize(db, schema)
 
     def connect(self):
         db = None
@@ -137,6 +139,9 @@ class KnowledgeStore:
                     record["repository"], record["id"], record["revision"]))
                 if changed.rowcount != 1:
                     raise KnowledgeFault("knowledge_sync_conflict")
+                if record["version"] is not None:
+                    events.append(db, record, "invalidated", actor="system", source="sync",
+                        reason="source_deleted" if version is None else "source_changed", next_version=version)
                 if version is not None:
                     provenance = json.dumps({"material": json.loads(record["metadata"]),
                         "metadata_json": record["metadata"], "origin": record["origin"], "path": record["path"]})
@@ -169,7 +174,7 @@ class KnowledgeStore:
             db.execute("INSERT INTO material_search(rowid,terms,title) VALUES (?,?,?)",
                        (row.lastrowid, part["terms"], title))
 
-    def confirm(self, repository, identifier, *, version, reason):
+    def confirm(self, repository, identifier, *, version, reason, source="cli"):
         if not reason.strip():
             raise KnowledgeFault("knowledge_reason_required")
         self.sync(repository, identifiers=[identifier])
@@ -183,19 +188,30 @@ class KnowledgeStore:
                 "WHERE repository=? AND id=? AND revision=?", (confirmation, record["repository"], identifier, record["revision"]))
             if changed.rowcount != 1:
                 raise KnowledgeFault("knowledge_sync_conflict")
+            events.append(db, record, "confirmed", source=source, **json.loads(confirmation))
         return self.inspect(repository, identifier)
 
     def supersede(self, repository, identifier, *, replacement, reason):
         if identifier == replacement or not reason.strip():
             raise KnowledgeFault("knowledge_supersession_invalid")
-        self.get(repository, identifier)
+        record = self.get(repository, identifier)
         if self.inspect(repository, replacement)["status"] != "confirmed":
             raise KnowledgeFault("knowledge_replacement_unconfirmed")
         with closing(self.connect()) as db, db:
-            db.execute("UPDATE materials SET status='superseded',confirmation=?,revision=revision+1 "
-                "WHERE repository=? AND id=?", (json.dumps({"replacement": replacement, "reason": reason,
-                "actor": "local-operator", "at": timestamp()}), repository_id(repository), identifier))
+            confirmation = {"replacement": replacement, "reason": reason,
+                            "actor": "local-operator", "at": timestamp()}
+            changed = db.execute("UPDATE materials SET status='superseded',confirmation=?,revision=revision+1 "
+                "WHERE repository=? AND id=? AND revision=?", (json.dumps(confirmation),
+                record["repository"], identifier, record["revision"]))
+            if changed.rowcount != 1:
+                raise KnowledgeFault("knowledge_sync_conflict")
+            events.append(db, record, "superseded", **confirmation)
         return self.inspect(repository, identifier)
+
+    def history(self, repository, identifier, *, version=None):
+        record = self.get(repository, identifier)
+        with closing(self.connect()) as db:
+            return events.history(db, record["repository"], identifier, version)
 
     def inspect(self, repository, identifier):
         record = self.get(repository, identifier)
@@ -203,7 +219,8 @@ class KnowledgeStore:
                 "version": record["version"], "status": record["status"],
                 "confirmation": None if record["confirmation"] is None else json.loads(record["confirmation"])}
 
-    def read(self, repository, identifier, *, version, start_line=1, end_line=120, verify_only=False):
+    def read(self, repository, identifier, *, version, start_line=1, end_line=120, verify_only=False,
+             include_events=True):
         if not 1 <= start_line <= end_line or end_line - start_line >= 200:
             raise KnowledgeFault("knowledge_line_range_invalid")
         with closing(self.connect()) as db:
@@ -235,4 +252,5 @@ class KnowledgeStore:
                 "start_line": start_line, "end_line": min(end_line, len(lines)), "total_lines": len(lines),
                 "observed_commit": row["observed_commit"], "sources": metadata["sources"],
                 "relations": metadata["relations"],
+                **({"events": self.history(repository, identifier, version=version)} if include_events else {}),
                 "status": "historical" if origin["version"] != version else origin["status"]}

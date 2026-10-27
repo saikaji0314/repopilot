@@ -98,16 +98,23 @@ class GitHub(Forge):
                 return result
         raise GitHubError("issue_scan_limit_reached")
 
-    def push(self, workspace, repository, branch, commit):
-        # 密钥不进入命令参数、远程 URL 或 git config 文件。
+    def branch_head(self, workspace, repository, branch):
+        """只读核对分支，缺失时返回None；不推送也不创建PR。"""
         environment = git_auth_environment(self.host, "x-access-token", self.token)
         url = f"https://{self.host}/{repository}.git"
         result = run_git(workspace, "ls-remote", url, f"refs/heads/{branch}", extra_env=environment)
         refs = result.stdout.decode().split()
-        if refs:
-            if refs[0] != commit:
+        return refs[0] if refs else None
+
+    def push(self, workspace, repository, branch, commit):
+        # 密钥不进入命令参数、远程 URL 或 git config 文件。
+        current = self.branch_head(workspace, repository, branch)
+        if current:
+            if current != commit:
                 raise GitHubError("remote_branch_conflict")
             return
+        environment = git_auth_environment(self.host, "x-access-token", self.token)
+        url = f"https://{self.host}/{repository}.git"
         try:
             run_git(workspace, "-c", "core.hooksPath=", "push", "--no-verify", url,
                     f"{commit}:refs/heads/{branch}", extra_env=environment)

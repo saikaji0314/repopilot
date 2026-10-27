@@ -28,9 +28,14 @@ repopilot knowledge search --repository TARGET_REPO --query "旧接口 空输入
 repopilot knowledge sync --repository TARGET_REPO --output .local/runtime
 repopilot knowledge list --repository TARGET_REPO --output .local/runtime
 repopilot knowledge read --repository TARGET_REPO --id api-compat --version MATERIAL_VERSION --start-line 1 --end-line 100 --output .local/runtime
+repopilot knowledge history --repository TARGET_REPO --id api-compat --version MATERIAL_VERSION --output .local/runtime
 ```
 
 正常编辑后同步，程序检测登记文件，只解析变化的文档；仅更新受影响块，其他文档的索引行不重建。未变化的章节块尽量保留键，行号随正文更新。修改后旧确认失效，新内容退回提议，不能自动继承确认。
+
+确认、重复确认、替代及来源变化／删除导致的失效均追加为事件，与当前状态在同一事务中保存。`history`按ID查询，`--version`可限定旧版本；显式`read`也返回该版本的事件。记录保留操作者、来源、理由、时间和替代目标，当前确认变为空不会删除旧决定。角色上下文只取正文及来源，不自动携带完整操作历史。
+
+资料库升级到schema 2，旧库自动迁移：仅补录当前行仍保有的确认／替代，标记来源`legacy_migration`并保留原时间。升级前已被覆盖的确认无法恢复，不伪造历史。
 
 删除文件／段落会撤掉当前检索项，完整历史版本仍可显式读取并标记`historical`。恢复已删除文件仍需重新确认。需要用新决定替代旧决定时，先确认新资料，再执行：
 
@@ -60,9 +65,11 @@ repopilot knowledge supersede --repository TARGET_REPO --id old-policy --replace
 
 ## 资料变化后如何继续
 
-运行期间会核对当前来源与固定清单，并检查候选工作区是否修改了作为依据的文件。资料变化、删除、失去确认或候选改写规则时，保存现场并创建`context_update`人工请求；旧检查、审核结论和批准不再有效。批准前及任何远端发布操作前也检查，不能凭旧批准继续交付。
+运行期间会核对当前来源与固定清单，并检查候选工作区是否修改了作为依据的文件。资料变化、删除、失去确认或候选改写规则时，保存现场并创建`context_update`人工请求；旧检查、审核结论和批准不再有效。批准前及任何远端发布写入前也检查，不能凭旧批准继续交付。
 
 核对也检查完整正文历史的散列；即使原来源未变化，版本文件丢失或被改写也不能沿用旧依据。
+
+如果发布进程已中断，先再次执行`publish RUN_ID`：资料失效时，只读核对原分支和带运行标记的PR／MR，将观察结果及原批准保存在`publication`中，再创建资料更新请求。查询失败则保留未完成发布，等待重试，不直接清空`in_flight`。完成刷新、实现、检查与审核后仍需重新批准；相同提交可复用已有草稿，无需重复推送／创建。远端头冲突继续拒绝覆盖，详见[平台接入](FORGES.md)。
 
 先核对资料，必要时确认新内容，再显式刷新这个任务：
 
@@ -81,6 +88,7 @@ repopilot resume RUN_ID --output .local/runtime
 - `knowledge.sqlite3`存储登记、确认、关系及章节索引；`knowledge/<仓库ID>/documents/`为运行生成文档，`versions/`为内容版本。自动生成的答复文档来自原事件，应通过新答复变更业务要求，不直接改写生成文件冒充原答案。
 - FTS5使用英文词与中文重叠双字作为派生词项，支持本地关键词查找；不是向量检索或语义理解。没有引入额外数据库／embedding服务。
 - 单份正文上限256KB；资料载荷上限24KB。必需正文超出分段／载荷限制会暂停，不能截掉约束后继续。其他检索片段合计6000字节、最多5项；可按目录继续分段读取。
+- 索引块同时遵守200行边界；旧索引中的长块在检索时分页，不因合法短行多而阻塞。单行超过字节上限的可选片段仍明确列为省略，不声称提供了完整正文。
 - 备份需同时保留SQLite、版本文件及原仓库；本增量不支持跨机器同步、企业身份、不可篡改审计，数据库丢失不等于可从正文自动恢复全部确认记录。
 - 新能力对已登记资料生效，不自动遍历或上传整个仓库。已有无此快照的历史运行不自动接纳后来新增的资料，需新运行或明确的上下文处理。
 

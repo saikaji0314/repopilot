@@ -8,7 +8,7 @@ from .store import KnowledgeStore
 
 
 def configure(parser):
-    parser.add_argument("action", choices=["register", "sync", "list", "search", "read", "confirm", "supersede", "refresh"])
+    parser.add_argument("action", choices=["register", "sync", "list", "search", "read", "history", "confirm", "supersede", "refresh"])
     parser.add_argument("--repository", type=Path)
     parser.add_argument("--id")
     parser.add_argument("--path")
@@ -64,6 +64,8 @@ def execute(args):
             result = store.read(repository, args.id, version=args.version,
                                 start_line=args.start_line, end_line=args.end_line)
             result["relation_status"] = related(store, repository, args.id, result["relations"])
+        elif args.action == "history":
+            result = store.history(repository, args.id, version=args.version)
         elif args.action == "confirm":
             result = store.confirm(repository, args.id, version=args.version, reason=args.reason)
         else:

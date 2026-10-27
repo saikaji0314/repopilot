@@ -88,15 +88,22 @@ class GitLab(Forge):
                 return result
         raise GitLabError("issue_scan_limit_reached")
 
-    def push(self, workspace, repository, branch, commit):
+    def branch_head(self, workspace, repository, branch):
+        """只读核对分支，缺失时返回None。"""
         environment = git_auth_environment(self.host, "oauth2", self.token)
         url = f"https://{self.host}/{repository}.git"
         result = run_git(workspace, "ls-remote", url, f"refs/heads/{branch}", extra_env=environment)
         refs = result.stdout.decode().split()
-        if refs:
-            if refs[0] != commit:
+        return refs[0] if refs else None
+
+    def push(self, workspace, repository, branch, commit):
+        current = self.branch_head(workspace, repository, branch)
+        if current:
+            if current != commit:
                 raise GitLabError("remote_branch_conflict")
             return
+        environment = git_auth_environment(self.host, "oauth2", self.token)
+        url = f"https://{self.host}/{repository}.git"
         try:
             run_git(workspace, "-c", "core.hooksPath=", "push", "--no-verify", url,
                     f"{commit}:refs/heads/{branch}", extra_env=environment)

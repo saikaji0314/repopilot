@@ -157,8 +157,20 @@ def publish(run_id, root, forge, *, note=None):
             raise StateError("issue_required")
         workspace = attach(state, store.root)
         workspace.prepare().assert_clean(approval["commit"])
-        from repopilot.orchestration.knowledge import validate
-        validate(state, store.root)
+        from repopilot.orchestration import knowledge
+        from repopilot.knowledge.documents import KnowledgeFault
+        try:
+            knowledge.validate(state, store.root)
+        except KnowledgeFault as exc:
+            if not state.get("publication"):
+                raise
+            from .reconciliation import reconcile
+            reconcile(state, store, forge, workspace)
+            # 只有远端只读核对已经落盘，才可退出publish并接受新资料。
+            knowledge.pause(state, store.root, str(exc))
+            store.save(state)
+            return {"run_id": run_id, "status": state["status"], "stop_reason": state["stop_reason"],
+                    "publication": state["publication"], "human_requests": state["human_requests"]}
         issue = state["issue"]
         repository = issue["repository"]
         if remote_origin(workspace.repository()).repository.lower() != repository.lower():
@@ -173,7 +185,8 @@ def publish(run_id, root, forge, *, note=None):
         if remote_base != state["base_commit"]:
             raise forge.fail("remote_base_changed_rerun_required")
         if not state.get("publication"):
-            state["publication"] = {"base": base, "branch": f"feature-repopilot-{run_id}", "public_note": note}
+            state["publication"] = {"base": base, "branch": f"feature-repopilot-{run_id}", "public_note": note,
+                                    "commit": approval["commit"], "approval": dict(approval)}
             store.save(state)
         elif state["publication"]["base"] != base:
             raise forge.fail("default_branch_changed")
@@ -182,8 +195,11 @@ def publish(run_id, root, forge, *, note=None):
         state["status"], state["in_flight"] = "publishing", "publish"
         store.save(state)
         try:
-            forge.push(workspace.repository(), repository, publication["branch"], approval["commit"])
             pull = forge.find_pull_request(repository, publication["branch"], publication["base"], marker)
+            if pull is None:
+                forge.push(workspace.repository(), repository, publication["branch"], approval["commit"])
+                # 推送期间也可能有先前的请求返回远端，创建前再核对一次。
+                pull = forge.find_pull_request(repository, publication["branch"], publication["base"], marker)
             if pull is None:
                 checks = "\n".join(f"- `{item['name']}`: exit {item['exit_code']}" for item in state["verified"])
                 pull = forge.create_pull_request(

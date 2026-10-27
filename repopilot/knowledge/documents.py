@@ -69,7 +69,7 @@ def terms(text):
 
 
 def chunks(text):
-    """按标题、空行及大小划分；内容不变的块在其他段落编辑后仍保持键。"""
+    """按标题、空行、大小及200行读取上限划分，保留稳定块键。"""
     lines, result, seen = text.splitlines(), [], {}
     start, heading, buffer = 1, "", []
 
@@ -85,7 +85,8 @@ def chunks(text):
                        "terms": " ".join(terms(body))})
 
     for number, line in enumerate(lines, 1):
-        if line.startswith("#") or (not line.strip() and buffer) or sum(map(len, buffer)) > 1800:
+        if (line.startswith("#") or (not line.strip() and buffer) or len(buffer) >= 200 or
+                sum(map(len, buffer)) > 1800):
             emit()
             buffer, start = [], number
         if line.startswith("#"):

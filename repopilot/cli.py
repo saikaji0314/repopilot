@@ -18,7 +18,8 @@ COMMANDS = {'run', 'issue', 'resume', 'retry', 'status', 'jobs', 'report', 'appr
 SUCCESS_STATUSES = {'ok', 'completed', 'paused', 'needs_input', 'awaiting_approval', 'approved', 'published', 'rejected'}
 STATUS_FIELDS = ('run_id', 'status', 'phase', 'in_flight', 'stop_reason', 'reviewed_commit',
                  'report', 'review_report', 'verified', 'issue', 'approval', 'pull_request',
-                 'human_requests', 'requirements_revision', 'knowledge_snapshot', 'knowledge_history', 'decision_records')
+                 'human_requests', 'requirements_revision', 'knowledge_snapshot', 'knowledge_history', 'decision_records',
+                 'publication')
 
 
 def _watch_options(parser):

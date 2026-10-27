@@ -85,7 +85,8 @@ def sync_answers(state, root, secrets=()):
             scope=state["run_id"], sources=[f"run:{answer['run_id']}/human:{answer['request_id']}"])
         record = store.record(repository, text, material, secrets=secrets)
         if record["status"] != "confirmed":
-            record = store.confirm(repository, identifier, version=record["version"], reason="derived_from_local_answer")
+            record = store.confirm(repository, identifier, version=record["version"], reason="derived_from_local_answer",
+                                   source=material.sources[0])
         done[key] = identifier
         changed = True
         # 只有此次明确人工答复派生的资料可增补，其他新确认资料需显式刷新。
@@ -113,7 +114,7 @@ def view(state, root, phase, secrets=()):
             if entry["id"] in answer_ids:
                 required.append({"id": entry["id"], "version": entry["version"], "provided_in": "human_answers"})
                 continue
-            body = store.read(repository, entry["id"], version=entry["version"], end_line=200)
+            body = store.read(repository, entry["id"], version=entry["version"], end_line=200, include_events=False)
             if body["total_lines"] > 200:
                 raise KnowledgeFault("knowledge_required_context_too_large")
             required.append(body)
@@ -141,7 +142,7 @@ def tools(state, root, secrets=()):
             return {"ok": False, "error": "knowledge_reference_not_in_snapshot"}
         try:
             result = KnowledgeStore(root).read(state["task"]["repository"], material_id, version=version,
-                                              start_line=start_line, end_line=end_line)
+                                              start_line=start_line, end_line=end_line, include_events=False)
             checked_body(json.dumps(result, ensure_ascii=False), secrets)
             return {"ok": True, **result}
         except KnowledgeFault as exc:

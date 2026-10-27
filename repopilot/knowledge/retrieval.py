@@ -60,17 +60,19 @@ def search(store, repository, query, *, scope="repository", proposed=False, limi
             (expression, repository_id(repository), proposed, scope)).fetchall()
     entries, omitted = [], []
     for row in rows:
-        try:
-            entry = store.read(repository, row["id"], version=row["version"],
-                               start_line=row["start_line"], end_line=row["end_line"])
-        except KnowledgeFault as exc:
-            if str(exc) != "knowledge_excerpt_too_large":
-                raise
-            omitted.append({"id": row["id"], "reason": str(exc)})
-            continue
-        entry.update(path=row["path"], heading=row["heading"], kind=json.loads(row["metadata"])["kind"])
-        if len(entries) < limit and len(json.dumps(entries + [entry], ensure_ascii=False).encode()) <= max_bytes:
-            entries.append(entry)
+        # 兼容旧索引中的长块，不要求修改正文或重建全库才能恢复检索。
+        for start in range(row["start_line"], row["end_line"] + 1, 200):
+            try:
+                entry = store.read(repository, row["id"], version=row["version"],
+                                   start_line=start, end_line=min(start + 199, row["end_line"]), include_events=False)
+            except KnowledgeFault as exc:
+                if str(exc) != "knowledge_excerpt_too_large":
+                    raise
+                omitted.append({"id": row["id"], "reason": str(exc)})
+                continue
+            entry.update(path=row["path"], heading=row["heading"], kind=json.loads(row["metadata"])["kind"])
+            if len(entries) < limit and len(json.dumps(entries + [entry], ensure_ascii=False).encode()) <= max_bytes:
+                entries.append(entry)
     return {"entries": entries, "omitted": omitted, "max_bytes": max_bytes}
 
 
