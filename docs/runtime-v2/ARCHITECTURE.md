@@ -2,16 +2,19 @@
 
 截至 2026-10-18，RepoPilot 是面向可信本机仓库的 Issue 驱动研发运行时，支持默认本机和可选 Docker 执行后端。当前交付终点是人工批准后的 GitHub 草稿 PR；尚未覆盖原愿景中的自动合并和软件发布。本文描述实际代码，未来方向不视作已有能力。
 
-2026-10-27新增：工作区任务可以本地等待需求补充，使用CLI记录版本绑定的答复后恢复；批准和现场恢复进入同一请求记录。详见[人工协作](HUMAN.md)。平台评论往返、需求规划和单任务多Agent协作仍未接入，不能从本地等待能力推断已具备。
+2026-10-27新增：工作区任务可以本地等待需求补充，使用CLI记录版本绑定的答复后恢复；批准和现场恢复进入同一请求记录。详见[人工协作](HUMAN.md)。M3进一步加入可选的规划阶段、任务说明版本、集中提问批次与按需子Issue映射，见[计划](PLANNING.md)；并行实现、双视角审核和真实平台写入仍未接入，不能从本地等待或模拟平台能力推断已具备。
 
 同日M2新增[项目资料与决定管理](KNOWLEDGE.md)：正文版本文件、SQLite增量索引、版本确认和固定清单，现有实现／审核可分段读取原文，资料变化触发人工刷新。结构化机器决定是提议，人工答复带来源导出为任务资料；尚无真实模型收益结论。
+
+M3本地机制验证见[增量27](VALIDATION-27.md)：确定性模型与模拟平台替身，不代表真实评论、子Issue或规划效果。
 
 ## 原始需求对应到哪里
 
 | 原始流程 | 已有实现 | 验证与边界 |
 | --- | --- | --- |
 | 以 Issue 触发 | 手动 URL 接入；按登记仓库、标签和创建时间轮询；队列去重 | 真实 Issue #1 手动接入，#3 自动接入；使用轮询，没有 webhook |
-| 验证问题、确认需求 | 实现／审核可提出问题，工作区任务保存现场等待CLI答复，恢复时传递业务补充并更新证据 | 没有独立开发前规划阶段，也没有自动与Issue作者往返讨论；只验证本地机制 |
+| 验证问题、确认需求 | 实现／审核可提出问题，工作区任务保存现场等待CLI答复，恢复时传递业务补充并更新证据；`--plan`先整理任务说明、验收和顺序子任务，Issue任务可把问题批次发到父Issue评论 | 没有自动监听评论回复；平台评论与子Issue只有模拟协议验证，没有真实平台写入结论；Issue作者往返仍由操作者显式`post`/`sync` |
+| 规划与子任务 | 可选规划Agent只读资料和源码，生成带验收／依赖／修改边界的计划；程序校验无环、按拓扑顺序逐个子任务执行并单独提交；按需映射子Issue，重试不重复创建 | 只有顺序执行和单一worktree；没有并行槽位、子任务独立worktree、内部整合或按子任务双审（M4／M5） |
 | 开独立工作区 | 固定基线提交，每次运行独立 Git worktree，核对原仓库与远端身份 | 本机 Git；不自动为各语言安装环境或依赖 |
 | 写代码、测试 | 通用 UTF-8 文件工具、精确替换与写入、命名检查；限制编辑与调用次数 | 工具不依赖 Python AST；Python、JavaScript 小样例已验证，不代表所有语言生态都已验证 |
 | 审核与返工循环 | 编排层独立重跑全部登记检查；只读审核 Agent；有限次返工并重新提交、检查和审核 | Docker 模式使用新容器复核，默认模式仍在本机；审核绑定提交，检查失败可否决模型批准；仍需要人判断需求和测试是否充分 |
@@ -72,6 +75,9 @@ flowchart TD
 | [execution/files.py](../../repopilot/execution/files.py)、[execution/worker.py](../../repopilot/execution/worker.py)、[execution/archive.py](../../repopilot/execution/archive.py) | 无模型依赖的共用文件规则；容器固定操作协议；完整校验后导入普通文件 |
 | [storage/jobs.py](../../repopilot/storage/jobs.py)、[storage/budget.py](../../repopilot/storage/budget.py) | SQLite 状态与乐观并发、进程锁；模型费用预留、结算、共享累计上限 |
 | [collaboration/requests.py](../../repopilot/collaboration/requests.py)、[orchestration/human.py](../../repopilot/orchestration/human.py) | 人工请求协议、去重与版本绑定，答复后保留用量恢复，复用审批和现场核对 |
+| [collaboration/questions.py](../../repopilot/collaboration/questions.py)、[collaboration/comments.py](../../repopilot/collaboration/comments.py) | 批次编号／去重与上限、最终缺口；Issue评论正文、负责人过滤和引用剔除，不做网络请求 |
+| [planning/contracts.py](../../repopilot/planning/contracts.py)、[planner.py](../../repopilot/planning/planner.py)、[brief.py](../../repopilot/planning/brief.py) | 计划报告契约、依赖校验与拓扑顺序、子任务进度、任务说明版本；不直接执行模型 |
+| [planning/mapping.py](../../repopilot/planning/mapping.py)、[planning/cli.py](../../repopilot/planning/cli.py) | 计划到子Issue的幂等映射、平台不支持时保留本地映射；计划查看命令 |
 | [knowledge/store.py](../../repopilot/knowledge/store.py)、[retrieval.py](../../repopilot/knowledge/retrieval.py)、[orchestration/knowledge.py](../../repopilot/orchestration/knowledge.py) | 正文与增量索引、来源关联与任务范围检索、固定清单和失效／刷新；代码事实仍由memory管理 |
 | [delivery/forge.py](../../repopilot/delivery/forge.py)、[delivery/github.py](../../repopilot/delivery/github.py)、[delivery/gitlab.py](../../repopilot/delivery/gitlab.py) | 平台识别、凭证路由与唯一的发布流程；GitHub／GitLab 各自的 REST 与 Git 差异，见[平台接入](FORGES.md) |
 | [delivery/watcher.py](../../repopilot/delivery/watcher.py) | 轮询准入、按仓库来源选择平台、有界进程调度与停止 |
@@ -87,6 +93,8 @@ repopilot/
   cli.py                 命令入口与参数，不承载业务流程
   core/config.py         任务、模型与执行后端契约
   orchestration/         workflow生命周期、session检查点、phases业务阶段、state版本规则
+  collaboration/         人工请求、提问批次与Issue评论正文，不承载模型循环
+  planning/              任务说明、计划校验与顺序执行辅助、子Issue映射
   agents/                loop循环与限额、models适配、reports契约、prompts角色提示、trace证据
   execution/             文件工具、Git工作区、容器会话、传输和归档校验
   storage/               jobs状态与锁、budget累计费用

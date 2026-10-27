@@ -152,6 +152,94 @@ class GitHub(Forge):
                 "head_sha": value["head"]["sha"],
                 "head_repository": value["head"]["repo"]["full_name"]}
 
+    def probe_issue_features(self, repository, number):
+        """只读探测评论、原生子Issue和建单权限；写权限无法在不写入时证明。"""
+        return {"comments": self._probe(
+                    f"GET /repos/{repository}/issues/{number}/comments",
+                    lambda: self.request("GET", f"/repos/{repository}/issues/{number}/comments",
+                                         params={"per_page": 1}), absent={404, 410}),
+                "native_sub_issues": self._probe(
+                    f"GET /repos/{repository}/issues/{number}/sub_issues",
+                    lambda: self.request("GET", f"/repos/{repository}/issues/{number}/sub_issues",
+                                         params={"per_page": 1}), absent={404, 410, 415}),
+                "issue_creation": self._issue_creation(repository)}
+
+    def _probe(self, label, call, *, absent):
+        try:
+            call()
+            return {"status": "supported", "evidence": f"{label} returned 200"}
+        except GitHubError as exc:
+            if exc.status in absent:
+                return {"status": "unsupported", "evidence": f"{label} returned {exc.status}"}
+            if exc.status in {401, 403}:
+                return {"status": "unknown", "evidence": f"{label} returned {exc.status}"}
+            raise
+
+    def _issue_creation(self, repository):
+        value = self.request("GET", f"/repos/{repository}")
+        permissions = value.get("permissions") or {}
+        allowed = any(bool(permissions.get(name)) for name in ("admin", "maintain", "push", "triage"))
+        return {"status": "supported" if allowed else "unknown",
+                "evidence": "GET /repos/{repository} permissions" if allowed else
+                            "GET /repos/{repository} does not prove issues write"}
+
+    @staticmethod
+    def _comment(value):
+        user = value.get("user") or {}
+        return {"id": value.get("id"), "url": value.get("html_url"),
+                "body": value.get("body") or "", "author": user.get("login") or "",
+                "author_type": user.get("type") or "", "created_at": value.get("created_at"),
+                "system": False}
+
+    def issue_comments(self, repository, number):
+        """按时间升序读取评论；超过扫描上限明确失败，不把截断当完整答复。"""
+        result = []
+        for page in range(1, 6):
+            values = self.request("GET", f"/repos/{repository}/issues/{number}/comments",
+                                  params={"per_page": 100, "page": page})
+            if not isinstance(values, list):
+                raise GitHubError("github_invalid_response")
+            result.extend(self._comment(item) for item in values)
+            if len(values) < 100:
+                return result
+        raise GitHubError("issue_comment_scan_limit_reached")
+
+    def add_issue_comment(self, repository, number, body):
+        value = self.request("POST", f"/repos/{repository}/issues/{number}/comments",
+                             json={"body": body})
+        return self._comment(value)
+
+    def create_issue(self, repository, *, title, body):
+        value = self.request("POST", f"/repos/{repository}/issues",
+                             json={"title": title, "body": body})
+        return {"id": value.get("id"), "number": value.get("number"), "url": value.get("html_url"),
+                "title": value.get("title") or title}
+
+    def link_sub_issue(self, repository, parent, child_id):
+        value = self.request("POST", f"/repos/{repository}/issues/{parent}/sub_issues",
+                             json={"sub_issue_id": child_id})
+        return {"native": True, "relationship": value.get("parent_issue_id") if isinstance(value, dict) else None}
+
+    def find_issue_by_marker(self, repository, marker):
+        """按标记查找已创建的子Issue；扫描不完整时失败，避免重复创建。"""
+        for page in range(1, 6):
+            values = self.request("GET", f"/repos/{repository}/issues",
+                                  params={"state": "all", "sort": "created", "direction": "desc",
+                                          "per_page": 100, "page": page})
+            if not isinstance(values, list):
+                raise GitHubError("github_invalid_response")
+            for item in values:
+                if "pull_request" in item:
+                    continue
+                text = f"{item.get('title') or ''}\n{item.get('body') or ''}"
+                if marker in text:
+                    return {"id": item.get("id"), "number": item.get("number"),
+                            "url": item.get("html_url"), "title": item.get("title") or "",
+                            "state": item.get("state")}
+            if len(values) < 100:
+                return None
+        raise GitHubError("issue_scan_limit_reached")
+
     def pull_matches(self, pull, repository, commit):
         return (pull["head_sha"] == commit and
                 pull["head_repository"].lower() == repository.lower() and

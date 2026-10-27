@@ -72,12 +72,83 @@ def human_requests(state, root):
     rows = []
     for item in requests:
         reply = item.get("reply") or {}
+        label = kinds.get(item.get("kind"), str(item.get("kind")))
+        if item.get("final"):
+            label += "（最终缺口）"
+        elif item.get("batch"):
+            label += f"（第{item['batch']}批）"
         rows.append([escape(str(item.get("id", ""))),
-            escape(kinds.get(item.get("kind"), str(item.get("kind")))),
+            escape(label),
             escape(statuses.get(item.get("status"), str(item.get("status")))),
             escape(redact("\n".join(item.get("questions") or []), root)),
             escape(redact(str(reply.get("text") or ""), root))])
     return '<h2>人工请求</h2>' + table(["请求", "类型", "状态", "问题", "答复"], rows)
+
+
+def plan(state, root):
+    """展示任务说明、子任务计划、执行进度和提问批次；只读已有证据。"""
+    brief = state.get("task_brief") or {}
+    plan_data = state.get("plan") or {}
+    progress = state.get("plan_progress") or {}
+    batches = state.get("question_batches") or []
+    mappings = state.get("subtask_mappings") or []
+    if not brief and not plan_data and not batches:
+        return ""
+    parts = []
+    if brief:
+        parts.append("<h2>任务说明与计划</h2>")
+        unresolved = brief.get("unresolved") or []
+        rows = [["版本", f"r{brief.get('revision', 0)}"],
+                ["目标", escape(redact(str(brief.get("goal") or ""), root))],
+                ["验收", escape(redact("；".join(brief.get("acceptance") or []) or "尚未整理", root))],
+                ["假设", escape(redact("；".join(brief.get("assumptions") or []) or "无", root))],
+                ["范围外", escape(redact("；".join(brief.get("out_of_scope") or []) or "无", root))],
+                ["未决", escape(redact("；".join(unresolved), root)) if unresolved else "无"]]
+        parts.append("<table><tbody>" + "".join(
+            f"<tr><th>{escape(str(label))}</th><td>{value}</td></tr>" for label, value in rows) + "</tbody></table>")
+    if plan_data:
+        status = state.get("plan_status") or {}
+        parts.append(f"<p class='meta'>计划 <code>{escape(str(plan_data.get('version')))}</code>"
+                     f" · {escape(str(plan_data.get('split')))} · "
+                     f"完成 {escape(str(status.get('completed', 0)))}/{escape(str(status.get('total', 0)))}"
+                     f" · {escape(str(plan_data.get('split_reason') or ''))}</p>")
+        results = {item.get("id"): item for item in progress.get("results") or []}
+        rows = []
+        for subtask in plan_data.get("subtasks") or []:
+            result = results.get(subtask.get("id")) or {}
+            commit = str(result.get("commit") or "")
+            outcome = {"completed": "已完成", "blocked": "阻塞", "failed": "失败",
+                       "needs_clarification": "待澄清"}.get(result.get("status"), "待执行")
+            outcome_cell = escape(outcome)
+            if commit:
+                outcome_cell += f" <code>{escape(commit[:10])}</code>"
+            rows.append([escape(str(subtask.get("id"))),
+                         escape(redact(str(subtask.get("title") or ""), root)),
+                         escape("、".join(subtask.get("depends_on") or []) or "无"),
+                         escape(redact("；".join(subtask.get("boundaries") or []), root)),
+                         escape(redact("；".join(subtask.get("acceptance") or []), root)),
+                         outcome_cell])
+        parts.append(table(["子任务", "目标", "依赖", "修改边界", "验收", "进度"], rows))
+    if mappings:
+        rows = [[escape(str(item.get("subtask"))), escape(str(item.get("status"))),
+                 escape(str(item.get("kind") or "")),
+                 f"<a class='url' href='{escape(safe_url((item.get('issue') or {}).get('url')))}'>"
+                 f"{escape(str(((item.get('issue') or {}).get('url')) or '仅本地'))}</a>",
+                 escape(redact(str(item.get("note") or ""), root))] for item in mappings]
+        parts.append('<h3>子Issue映射</h3>' + table(["子任务", "状态", "类型", "外部工单", "说明"], rows))
+    if batches:
+        limit = state.get("question_limit") or 3
+        rows = []
+        for item in batches:
+            delivery = (next((request.get("delivery") for request in state.get("human_requests") or []
+                              if request.get("id") == item.get("request_id")), None) or {})
+            rows.append([escape(str(item.get("batch"))), escape(str(item.get("request_id"))),
+                         escape("已答复" if item.get("answered_at") else "等待答复"),
+                         escape(str(delivery.get("status") or "未投递")),
+                         escape(redact("\n".join(item.get("questions") or []), root))])
+        parts.append(f'<h3>集中提问（{len(batches)}/{escape(str(limit))} 批）</h3>'
+                     + table(["批次", "请求", "状态", "评论投递", "问题"], rows))
+    return "\n".join(parts)
 
 
 def materials(state, root):

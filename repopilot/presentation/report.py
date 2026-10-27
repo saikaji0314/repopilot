@@ -25,6 +25,7 @@ def render(state: dict, run_dir: Path, events: list[dict], root: Path) -> str:
         '<h2>阶段时间线</h2>',
         table(["时间（UTC）", "事件", "说明"], timeline_rows(events, root)),
         sections.implementation(state.get("report") or {}, root),
+        sections.plan(state, root),
         sections.human_requests(state, root),
         sections.materials(state, root),
         sections.candidate(changes, root),

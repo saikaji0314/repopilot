@@ -146,6 +146,85 @@ class GitLab(Forge):
         return {"url": value["web_url"], "number": value["iid"],
                 "head_sha": value.get("sha") or self.merge_request_head(repository, value["iid"])}
 
+    def probe_issue_features(self, repository, number):
+        """GitLab 没有可依赖的原生子Issue层级，因此明确标记为链接映射。"""
+        return {"comments": self._probe(
+                    f"GET /projects/.../issues/{number}/notes",
+                    lambda: self.request("GET", f"/projects/{self.project(repository)}/issues/{number}/notes",
+                                         params={"per_page": 1}), absent={404, 410}),
+                "native_sub_issues": {"status": "unsupported",
+                                      "evidence": "gitlab uses linked issue mapping; no native child hierarchy"},
+                "issue_creation": self._issue_creation(repository)}
+
+    def _probe(self, label, call, *, absent):
+        try:
+            call()
+            return {"status": "supported", "evidence": f"{label} returned 200"}
+        except GitLabError as exc:
+            if exc.status in absent:
+                return {"status": "unsupported", "evidence": f"{label} returned {exc.status}"}
+            if exc.status in {401, 403}:
+                return {"status": "unknown", "evidence": f"{label} returned {exc.status}"}
+            raise
+
+    def _issue_creation(self, repository):
+        value = self.request("GET", f"/projects/{self.project(repository)}")
+        access = ((value.get("permissions") or {}).get("project_access") or {}).get("access_level") or 0
+        allowed = int(access) >= 20  # GitLab Reporter 及以上可以创建Issue
+        return {"status": "supported" if allowed else "unknown",
+                "evidence": f"GET /projects/... access_level={access}"}
+
+    def _comment(self, repository, number, value):
+        author = value.get("author") or {}
+        return {"id": value.get("id"),
+                "url": f"https://{self.host}/{repository}/-/issues/{number}#note_{value.get('id')}",
+                "body": value.get("body") or "", "author": author.get("username") or "",
+                "author_type": author.get("type") or "", "created_at": value.get("created_at"),
+                "system": bool(value.get("system"))}
+
+    def issue_comments(self, repository, number):
+        result = []
+        for page in range(1, 6):
+            values = self.request("GET", f"/projects/{self.project(repository)}/issues/{number}/notes",
+                                  params={"per_page": 100, "page": page})
+            if not isinstance(values, list):
+                raise GitLabError("gitlab_invalid_response")
+            result.extend(self._comment(repository, number, item) for item in values)
+            if len(values) < 100:
+                return result
+        raise GitLabError("issue_comment_scan_limit_reached")
+
+    def add_issue_comment(self, repository, number, body):
+        value = self.request("POST", f"/projects/{self.project(repository)}/issues/{number}/notes",
+                             json={"body": body})
+        return self._comment(repository, number, value)
+
+    def create_issue(self, repository, *, title, body):
+        value = self.request("POST", f"/projects/{self.project(repository)}/issues",
+                             json={"title": title, "description": body})
+        return {"id": value.get("id"), "number": value.get("iid"), "url": value.get("web_url"),
+                "title": value.get("title") or title}
+
+    def link_sub_issue(self, repository, parent, child_id):
+        return {"native": False, "reason": "gitlab_native_sub_issues_unavailable"}
+
+    def find_issue_by_marker(self, repository, marker):
+        for page in range(1, 6):
+            values = self.request("GET", f"/projects/{self.project(repository)}/issues",
+                                  params={"state": "all", "order_by": "created_at", "sort": "desc",
+                                          "per_page": 100, "page": page})
+            if not isinstance(values, list):
+                raise GitLabError("gitlab_invalid_response")
+            for item in values:
+                text = f"{item.get('title') or ''}\n{item.get('description') or ''}"
+                if marker in text:
+                    return {"id": item.get("id"), "number": item.get("iid"),
+                            "url": item.get("web_url"), "title": item.get("title") or "",
+                            "state": item.get("state")}
+            if len(values) < 100:
+                return None
+        raise GitLabError("issue_scan_limit_reached")
+
     def pull_matches(self, pull, repository, commit):
         expected = f"https://{self.host}/{repository}/-/merge_requests/"
         return pull["head_sha"] == commit and pull["url"].startswith(expected)

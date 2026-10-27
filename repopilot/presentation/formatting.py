@@ -85,7 +85,9 @@ def timeline_events(events: list[dict], limit: int = 24) -> list[dict]:
 
     interesting = {"workspace_ready", "verify_finished", "review_started", "review_finished",
                    "rework_started", "rework_finished", "rework_limit_reached", "review_skipped",
-                   "run_error", "run_started", "run_finished", "model_failed", "phase_changed"}
+                   "run_error", "run_started", "run_finished", "model_failed", "phase_changed",
+                   "plan_recorded", "plan_invalid", "subtask_started", "subtask_finished",
+                   "subtask_blocked"}
     picked = [item for item in events if item.get("event") in interesting]
     return picked if limit is None else picked[-limit:]
 
@@ -120,6 +122,18 @@ def timeline_rows(events: list[dict], root: Path, limit: int = 24) -> list[list[
             text = f"跳过审核：{event.get('reason')}"
         elif name == "workspace_ready":
             text = "创建独立工作区，基线提交 " + f"<code>{escape(str(event.get('base_commit'))[:10])}</code>"
+        elif name == "plan_recorded":
+            text = (f"计划 {escape(str(event.get('version')))}：{escape(str(event.get('split')))}，"
+                    f"{escape(str(event.get('subtasks')))} 个子任务")
+        elif name == "subtask_started":
+            text = f"开始子任务 {escape(str(event.get('subtask')))}：{escape(str(event.get('title') or ''))}"
+        elif name == "subtask_finished":
+            text = (f"子任务 {escape(str(event.get('subtask')))} 完成，提交 "
+                    f"<code>{escape(str(event.get('commit'))[:10])}</code>")
+        elif name == "subtask_blocked":
+            text = f"子任务 {escape(str(event.get('subtask')))} 停止：{escape(str(event.get('status')))}"
+        elif name == "plan_invalid":
+            text = f"计划不可执行：{escape(str(event.get('reason')))}"
         elif name in {"run_error", "model_failed"}:
             text = f"{name}：{event.get('error_type') or ''} {escape(str(event.get('phase') or ''))}"
         else:
@@ -160,9 +174,28 @@ def next_action(state: dict) -> str:
             return ('<p class="note">资料依据已变化或不可用。核查并确认资料后，用 '
                     '<code>repopilot knowledge refresh</code>指定运行、请求ID、请求版本、当前提交和理由，'
                     '再显式 resume；刷新会重新实现、检查和审核，不会批准交付。</p>')
+        pending = [r for r in state.get("human_requests", [])
+                   if r.get("status") == "pending" and r.get("kind") == "clarification"]
+        if pending and state.get("issue"):
+            request = pending[-1]
+            delivery = request.get("delivery") or {}
+            if delivery.get("status") not in {"delivered", "reused", "answered"}:
+                return (f'<p class="note">等待业务澄清。可用 <code>repopilot human post {safe_run}</code> '
+                        '把这一批问题发到父Issue评论，负责人回复后用 <code>repopilot human sync '
+                        f'{safe_run}</code>导入；没有平台凭证时仍可用 <code>repopilot human answer</code> '
+                        '在本机答复。等待期间不消耗模型调用。</p>')
+            if request.get("final"):
+                return ('<p class="note">自动集中提问已达到上限，当前只是最终缺口说明。请负责人补充资料或'
+                        '明确改变方案后再 resume；原提问计数保留，不会自动开始下一批。</p>')
+            return (f'<p class="note">问题已发到父Issue评论，等待登记负责人回复；'
+                    f'用 <code>repopilot human sync {safe_run}</code> 只读核对并导入答复，'
+                    '其他人的评论不会推进任务。</p>')
         return (f'<p class="note">等待需求补充。用 <code>repopilot human list {safe_run}</code> '
                 '查看请求，再用 <code>repopilot human answer</code> 指定请求ID、版本与答复；'
                 '记录答复后显式 resume，答复不会批准或推送代码。</p>')
     if status in {"failed", "workspace_error", "phase_error", "limit_reached"}:
+        if str(state.get("stop_reason") or "").startswith("invalid_plan_"):
+            return ('<p class="note">计划不可执行，未进入实现。用 <code>repopilot plan show RUN_ID</code> '
+                    '查看依赖或子任务问题，补充需求后 retry；环形依赖或缺失前置产物不会被强行执行。</p>')
         return '<p class="note">运行未完成，需要查看失败原因后决定 retry 或调整配置。</p>'
     return ""

@@ -77,12 +77,18 @@ def sync_answers(state, root, secrets=()):
         key = digest(answer)
         if key in done:
             continue
-        if answer.get("actor") != "local-operator" or answer.get("channel") != "cli":
+        actor, channel = answer.get("actor"), answer.get("channel")
+        if (actor, channel) not in {("local-operator", "cli"), ("registered-owner", "issue")}:
             raise KnowledgeFault("knowledge_answer_source_untrusted")
         identifier = "answer-" + digest([state["run_id"], key])[:24]
+        sources = [f"run:{answer['run_id']}/human:{answer['request_id']}"]
+        source = answer.get("source") or {}
+        if channel == "issue" and str(source.get("url") or "").startswith("https://"):
+            sources.append(source["url"])
         text = "# 人工业务补充\n\n" + "\n".join(answer["questions"]) + "\n\n" + answer["answer"] + "\n"
-        material = Material(id=identifier, kind="task", title="人工业务补充", required=True,
-            scope=state["run_id"], sources=[f"run:{answer['run_id']}/human:{answer['request_id']}"])
+        material = Material(id=identifier, kind="task",
+            title="人工业务补充" if channel == "cli" else "人工业务补充（Issue 评论）",
+            required=True, scope=state["run_id"], sources=sources)
         record = store.record(repository, text, material, secrets=secrets)
         if record["status"] != "confirmed":
             record = store.confirm(repository, identifier, version=record["version"], reason="derived_from_local_answer",

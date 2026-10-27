@@ -13,23 +13,32 @@ from repopilot.orchestration import knowledge
 from repopilot.knowledge.documents import KnowledgeFault
 from repopilot.collaboration.requests import resolve_request
 from repopilot.orchestration.state import TERMINAL, approval_digest, attach, canonical_hash
+from repopilot.planning import brief as task_brief
+from repopilot.planning import planner as planning
 from repopilot.storage.jobs import JobStore, StateError, job_lock, timestamp
 from repopilot.execution.workspace import head_commit, source_snapshot
 
 
 def start(task, settings, output_root, *, model=None, workspace=True, review=True,
           require_approval=True, stop_after=None, issue=None, retry_of=None, retry_reason=None,
-          base_commit=None, human_answers=None):
+          base_commit=None, human_answers=None, carry=None):
     state = create_job(task, settings, output_root, workspace=workspace, review=review,
         require_approval=require_approval, issue=issue, retry_of=retry_of, retry_reason=retry_reason,
-        base_commit=base_commit, human_answers=human_answers)
+        base_commit=base_commit, human_answers=human_answers, carry=carry)
     return resume(state["run_id"], settings, output_root, model=model, stop_after=stop_after)
 
 
 def create_job(task, settings, output_root, *, workspace=True, review=True,
                require_approval=True, issue=None, retry_of=None, retry_reason=None,
-               base_commit=None, human_answers=None):
+               base_commit=None, human_answers=None, carry=None):
     """先持久化任务身份，允许调度器在执行模型之前记录队列对应关系。"""
+    if settings.plan_enabled and not workspace:
+        raise StateError("plan_requires_workspace")
+    carried = json.loads(json.dumps(carry or {}))
+    prior_plan = carried.get("plan") if settings.plan_enabled else None
+    initial_brief = carried.get("task_brief") or task_brief.initial(task)
+    brief_history = carried.get("task_brief_history") or {
+        initial_brief["sha256"]: initial_brief}
     store = JobStore(output_root)
     state = store.create({
         "run_id": f"{task.id}-{uuid4().hex[:12]}", "task": task.model_dump(mode="json"),
@@ -42,8 +51,18 @@ def create_job(task, settings, output_root, *, workspace=True, review=True,
         "reviewed_commit": None, "reworks": 0, "rework_pending": False,
         "control": {}, "edits": {}, "active_seconds": 0, "issue": issue,
         "approval": None, "created_at": timestamp(), "retry_of": retry_of, "retry_reason": retry_reason,
-        "human_requests": [], "human_answers": list(human_answers or []),
-        "requirements_revision": len(human_answers or []),
+        "human_requests": [], "human_answers": list(carried.get("human_answers") or human_answers or []),
+        "requirements_revision": len(carried.get("human_answers") or human_answers or []),
+        "question_batches": list(carried.get("question_batches") or []),
+        "question_handovers": list(carried.get("question_handovers") or []),
+        "question_limit": carried.get("question_limit"),
+        "task_brief": initial_brief, "task_brief_history": brief_history,
+        "plan": prior_plan, "plan_history": list(carried.get("plan_history") or []) if prior_plan else [],
+        "plan_progress": ({"order": prior_plan["order"], "current": None, "results": [],
+                           "started_at": timestamp(), "reused": True} if prior_plan else
+                          {"order": [], "current": None, "results": []}),
+        "subtask_mappings": list(carried.get("subtask_mappings") or []) if prior_plan else [],
+        "platform_preflight": None,
     }, issue_key=None if issue is None else f"{issue['repository']}#{issue['number']}", retry_of=retry_of)
     if issue and canonical_hash(issue) != canonical_hash(state["issue"]):
         raise StateError("issue_changed_since_intake")
@@ -69,11 +88,21 @@ def retry(run_id, settings, root, *, reason, overrides=None, model=None, stop_af
         if not reason.strip():
             raise StateError("reason_required")
         frozen = frozen_settings(state["settings"], settings, overrides)
+        carry = {
+            "human_answers": state.get("human_answers"),
+            "question_batches": state.get("question_batches"),
+            "question_handovers": state.get("question_handovers"),
+            "question_limit": state.get("question_limit"),
+            "task_brief": state.get("task_brief"),
+            "task_brief_history": state.get("task_brief_history"),
+            "plan": state.get("plan"),
+            "plan_history": state.get("plan_history"),
+            "subtask_mappings": state.get("subtask_mappings"),
+        }
         return start(Task.model_validate(state["task"]), frozen, root, model=model,
             workspace=state["workspace_enabled"], review=state["review_enabled"],
             require_approval=state["require_approval"], issue=state["issue"], stop_after=stop_after,
-            retry_of=run_id, retry_reason=reason, base_commit=base_commit,
-            human_answers=state.get("human_answers"))
+            retry_of=run_id, retry_reason=reason, base_commit=base_commit, carry=carry)
 
 
 def resume(run_id, settings, output_root, *, model=None, stop_after=None):
@@ -186,6 +215,15 @@ def snapshot(store, state, settings):
         "report_status": None if report is None else report["status"], "edits": state["edits"],
         "human_requests": state.get("human_requests", []),
         "requirements_revision": state.get("requirements_revision", 0),
+        "question_batches": state.get("question_batches", []),
+        "question_handovers": state.get("question_handovers", []),
+        "question_limit": state.get("question_limit"),
+        "task_brief": state.get("task_brief"),
+        "plan": state.get("plan"),
+        "plan_status": planning.status(state),
+        "plan_progress": state.get("plan_progress"),
+        "subtask_mappings": state.get("subtask_mappings", []),
+        "platform_preflight": state.get("platform_preflight"),
         "knowledge_snapshot_id": (state.get("knowledge_snapshot") or {}).get("snapshot_id"),
         "decision_records": state.get("decision_records", []),
         "output_directory": str(directory), "issue": state["issue"], "approval": state["approval"],

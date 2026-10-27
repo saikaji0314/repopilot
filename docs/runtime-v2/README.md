@@ -14,12 +14,13 @@
 
 ## 状态与恢复
 
-业务阶段：`prepare → implement → anchor → verify → review → approval`。要求返工时进入 `rework → anchor → verify → review`。内层模型工具循环由 LangChain create_agent／LangGraph 提供；外层业务状态机负责固定提交、独立验证与交付条件。
+业务阶段：`prepare → [plan] → implement → anchor → verify → review → approval`；`--plan`时先只读整理任务说明和顺序子任务，计划无效或依赖缺失不会进入实现。要求返工时进入 `rework → anchor → verify → review`。内层模型工具循环由 LangChain create_agent／LangGraph 提供；外层业务状态机负责固定提交、独立验证与交付条件。
 
 | 状态 | 含义与后续 |
 | --- | --- |
 | `paused` | 完整阶段后停止，`resume` 从下一阶段继续 |
-| `needs_input` | 工作区任务等待需求补充；`human list/answer`记录有效答复后，再显式`resume`；等待不调用模型 |
+| `needs_input` | 工作区任务等待需求补充；`human list/answer`记录有效答复后，再显式`resume`；等待不调用模型。达到3批自动提问上限后只生成最终缺口说明，不自动开启下一批 |
+| `plan`阶段 | 计划写进`plan`并校验依赖；有环、缺失依赖或越界子任务数会以`invalid_plan_*`停止，不执行实现 |
 | `awaiting_approval` | 审核及独立检查通过，等待人工核对具体提交 |
 | `approved` / `rejected` | 已记录人工决定；approved 可显式 publish |
 | `recovery_required` | 检查点有未完成阶段，必须先核对现场并 recover |
@@ -31,11 +32,11 @@
 
 SQLite 每次动作开始前写入 in_flight，每个完整阶段后写入下一阶段。模型与工具事件继续记录累计调用、Token、费用、编辑及返工次数；恢复还与预算账本中的实际预留调用数核对，不能通过重启获得新额度。安全边界处保存工作树内容摘要，恢复前拒绝未经核对的外部改动。
 
-`--stop-after prepare|implement|anchor|verify|review|rework` 适合演示跨进程续跑。阶段内部中断不声称 exactly-once：模型请求可能已计费、检查可能已有副作用、编辑可能只完成一部分。`recover --commit SHA --reason ...` 表示操作者接纳当前现场；之后重新执行该阶段，模型收到核对说明，之前完整模型对话不会重建。未知模型费用继续占预算。已开始的返工不会因恢复重复增加轮数。
+`--stop-after prepare|plan|implement|anchor|verify|review|rework` 适合演示跨进程续跑。阶段内部中断不声称 exactly-once：模型请求可能已计费、检查可能已有副作用、编辑可能只完成一部分。`recover --commit SHA --reason ...` 表示操作者接纳当前现场；之后重新执行该阶段，模型收到核对说明，之前完整模型对话不会重建。未知模型费用继续占预算。已开始的返工不会因恢复重复增加轮数。
 
 同一运行用操作系统文件锁串行化；SQLite 乐观版本检查拒绝过期写入。两个不同运行的工作区互相独立，但首版不承诺同一仓库多任务并发交付协调，也不做自动清理。需要工作区、Git 对象和本地 SQLite 一同保留，不支持跨机器恢复。
 
-本地需求补充、固定提交批准和现场恢复共用可追溯请求记录，但授权含义不同。业务答复绑定等待时的版本，不授予推送权限；具体命令、重复答复和历史运行兼容见[人工协作](HUMAN.md)。Issue评论往返及多Agent拆分协作仍待后续接入。
+本地需求补充、固定提交批准和现场恢复共用可追溯请求记录，但授权含义不同。业务答复绑定等待时的版本，不授予推送权限；具体命令、重复答复和历史运行兼容见[人工协作](HUMAN.md)。M3增加可选的任务说明与顺序计划、3批集中提问、父Issue评论问答和按需子Issue映射，见[计划](PLANNING.md)；并行实现、双视角审核和真实平台写入仍未接入。
 
 项目资料与决定可显式登记到[资料服务](KNOWLEDGE.md)：正文文件版本化，SQLite保存增量检索索引和确认记录，运行固定资料版本。依据变化会转为人工请求，显式刷新后重新验证；原`memory`代码事实书签仍为单独的可选能力。
 
@@ -55,7 +56,7 @@ GitHub 仅接收标准 `https://github.com/OWNER/REPO/issues/N`；Issue 必须�
 
 ## 限制与费用
 
-默认模型请求 36、工具调用 40、编辑 12、返工 3（最大 5）、输出 2048 tokens、上下文 60,000 bytes。活跃执行期限 300 秒，暂停等待不计时；HTTP 超时不超过 30 秒，检查按剩余时间收紧。无法保证毫秒级硬截止或清理刻意脱离的后台进程。采用 LangChain ContextEditingMiddleware／ClearToolUsesEdit：按字节计数，在上限一半处开始清理较早的读取输出，随上下文大小保留最近 5–12 条（极小上限至少 2 条），保留工具配对、编辑和检查结果，本地事件仍保留完整输出。它不生成语义摘要，可能丢失此前源码细节；最终超过硬上限仍停止。启动或 retry 可显式调整 --max-context-bytes（最大 500,000）与 --max-tool-calls（最大 200），resume 不放大原限额。
+默认模型请求 36、工具调用 40、编辑 12、返工 3（最大 5）、输出 2048 tokens、上下文 60,000 bytes。`--plan`额外增加规划调用，默认最多6个子任务、每个父任务最多3批自动集中提问；这些只是执行上限，不保证计划质量。活跃执行期限 300 秒，暂停等待不计时；HTTP 超时不超过 30 秒，检查按剩余时间收紧。无法保证毫秒级硬截止或清理刻意脱离的后台进程。采用 LangChain ContextEditingMiddleware／ClearToolUsesEdit：按字节计数，在上限一半处开始清理较早的读取输出，随上下文大小保留最近 5–12 条（极小上限至少 2 条），保留工具配对、编辑和检查结果，本地事件仍保留完整输出。它不生成语义摘要，可能丢失此前源码细节；最终超过硬上限仍停止。启动或 retry 可显式调整 --max-context-bytes（最大 500,000）与 --max-tool-calls（最大 200），resume 不放大原限额。
 
 预算在每次模型请求前由 SQLite 原子预留。每次运行估算上限 2 元；累计账本默认 200 元，不按日期清零、不自动放大。缺失用量或中断保留预留。估算输入按字节加余量，DeepSeek 默认估算单价输入 3／输出 12 元每百万 tokens，其他供应商须显式配置；不折扣缓存，不是供应商实付或账户级限额。
 
@@ -65,7 +66,7 @@ GitHub 仅接收标准 `https://github.com/OWNER/REPO/issues/N`；Issue 必须�
 
 历史增量：[调查](VALIDATION-01.md)、[工作区](VALIDATION-02.md)、[审核返工](VALIDATION-03.md)。持久化与审批的历史实现见[增量 4](VALIDATION-04.md)，真实交付与常驻监听见[增量 5](VALIDATION-05.md)，展示步骤见[演示](DEMO.md)，区分确定性模拟、真实本地 Git／检查、真实模型和真实 GitHub 写入，不能互相代替。
 
-[SWE-bench 接入协议](../../evals/swebench/README.md)提供单题输入边界与官方补丁导出；[增量13](VALIDATION-13.md)记录实际评分环境预检，尚非模型修复效果评测。
+[SWE-bench 接入协议](../../evals/swebench/README.md)提供单题输入边界与官方补丁导出；[增量13](VALIDATION-13.md)记录实际评分环境预检，尚非模型修复效果评测。[增量27](VALIDATION-27.md)记录M3计划、集中提问、评论渠道和子Issue映射的本地机制验证。
 
 [增量15](VALIDATION-15.md)提供冻结5题的真实开发基线，以及同一工具响应重放的产物保存对照；区分官方验收、审核完成、空补丁与未修复，不外推完整Lite或生产能力。
 

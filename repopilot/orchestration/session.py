@@ -15,6 +15,7 @@ from repopilot.core.config import Task
 from repopilot.orchestration.phases import PhaseRunner
 from repopilot.orchestration import knowledge
 from repopilot.knowledge.documents import KnowledgeFault
+from repopilot.planning.contracts import PlanFault
 from repopilot.orchestration.state import attach
 from repopilot.execution.workspace import WorkspaceError, source_snapshot
 
@@ -98,6 +99,10 @@ class RunSession:
         if isinstance(exc, KnowledgeFault):
             knowledge.pause(state, self.store.root, str(exc))
             self.trace.event("knowledge_changed", reason=str(exc), phase=phase)
+        elif isinstance(exc, PlanFault):
+            state["status"], state["stop_reason"] = "phase_error", f"invalid_plan_{exc}"
+            state["in_flight"] = None
+            self.trace.event("plan_invalid", reason=str(exc), phase=phase)
         elif isinstance(exc, (ValidationError, StructuredOutputValidationError)):
             state["status"] = "review_inconclusive" if phase == "review" else "phase_error"
             state["stop_reason"], state["in_flight"] = f"invalid_{phase}_report", None

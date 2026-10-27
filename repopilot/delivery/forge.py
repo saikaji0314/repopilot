@@ -30,9 +30,10 @@ SUPPORTED_PROVIDERS = ("github", "gitlab")
 class ForgeError(RuntimeError):
     """平台接入失败的统一基类；具体平台再用自己的子类保留错误码前缀。"""
 
-    def __init__(self, message, *, retry_after=0):
+    def __init__(self, message, *, retry_after=0, status=None):
         super().__init__(message)
         self.retry_after = retry_after
+        self.status = status
 
 
 @dataclass(frozen=True)
@@ -250,6 +251,10 @@ class Forge:
     def headers(self):
         raise NotImplementedError
 
+    def allowed_paths(self):
+        """只允许固定 API 前缀；能力探测额外需要当前令牌身份。"""
+        return (self.path_prefix, "/user")
+
     def fail(self, code, *, retry_after=0):
         return self.Error(code, retry_after=retry_after)
 
@@ -258,7 +263,8 @@ class Forge:
 
     def request(self, method, path, **kwargs):
         # 不接收任意 URL，避免把鉴权头发送到任务指定的服务器。
-        if not path.startswith(self.path_prefix) or "://" in path or ".." in path:
+        if (not any(path.startswith(prefix) for prefix in self.allowed_paths())
+                or "://" in path or ".." in path):
             raise self.Error("invalid_api_path")
         try:
             response = self.client.request(method, path, **kwargs)
@@ -266,11 +272,43 @@ class Forge:
             raise self.Error(f"{self.name}_transport_error") from None
         if response.status_code not in {200, 201}:
             raise self.Error(f"{self.name}_http_{response.status_code}",
-                             retry_after=self.retry_after(response))
+                             retry_after=self.retry_after(response), status=response.status_code)
         try:
             return response.json()
         except ValueError:
             raise self.Error(f"{self.name}_invalid_response") from None
+
+    def viewer(self):
+        """读取令牌身份；这是只读预检，不代表有评论或建单写权限。"""
+        value = self.request("GET", "/user")
+        login = str(value.get("login") or value.get("username") or "").strip()
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,99}", login):
+            raise self.Error(f"{self.name}_viewer_invalid")
+        return login
+
+    def preflight(self, issue_url, *, owner=None):
+        """只读探查平台能力、令牌身份和登记负责人，不做任何写入。"""
+        parsed = parse_issue_url(issue_url)
+        if parsed["provider"] != self.name or parsed["host"].lower() != self.host.lower():
+            raise self.Error("issue_identity_mismatch")
+        repository, number = parsed["repository"], parsed["number"]
+        viewer = self.viewer()
+        features = self.probe_issue_features(repository, number)
+        return {"provider": self.name, "host": self.host, "repository": repository,
+                "issue": {"number": number, "url": issue_url},
+                "viewer": viewer, "registered_owner": owner,
+                "comments": features["comments"], "native_sub_issues": features["native_sub_issues"],
+                "issue_creation": features["issue_creation"], "write_verified": False,
+                "checked_at": timestamp()}
+
+    def probe_issue_features(self, repository, number):
+        raise NotImplementedError
+
+    def find_issue_comment(self, repository, number, marker):
+        for item in self.issue_comments(repository, number):
+            if marker in str(item.get("body") or ""):
+                return item
+        return None
 
     def retry_after(self, response):
         """读取限流提示；解析失败按 0 处理，不影响错误本身。"""

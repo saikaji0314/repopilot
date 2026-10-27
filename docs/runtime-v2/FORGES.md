@@ -1,6 +1,6 @@
 # 仓库平台接入：GitHub 与 GitLab
 
-更新：2026-10-18。范围是**读取 Issue、取默认分支基线、推分支、创建草稿合并请求**，不改交付终点（人工批准具体提交后创建草稿，不合并、不发布软件）。
+更新：2026-10-27。范围是**读取 Issue、取默认分支基线、推分支、创建草稿合并请求**，以及新增的只读能力预检、父Issue评论问答和按需子Issue映射。不改交付终点（人工批准具体提交后创建草稿，不合并、不发布软件）。
 
 ## 平台如何判断
 
@@ -15,10 +15,11 @@
 
 | 平台 | 变量（按顺序） | 说明 |
 | --- | --- | --- |
-| GitHub | `GH_TOKEN`、`GITHUB_TOKEN` | 读取 Issue、推送分支、创建 PR 需要相应权限 |
-| GitLab | `GITLAB_TOKEN`、`GL_TOKEN` | 个人访问令牌至少需要 `api` 与 `read_repository` |
+| GitHub | `GH_TOKEN`、`GITHUB_TOKEN` | 读取 Issue、评论、建子Issue、推送分支、创建 PR 需要相应权限 |
+| GitLab | `GITLAB_TOKEN`、`GL_TOKEN` | 个人访问令牌至少需要 `api` 与 `read_repository`；评论／建单还需对应项目权限 |
+| 登记负责人 | `REPOPILOT_OWNER` | 唯一可从父Issue评论采纳业务答复的登录名；不是批准授权 |
 
-进程环境整体优先于 `.env`；缺少令牌时以 `github_token_required` / `gitlab_token_required` 明确失败，不会用空令牌重试。令牌只进入宿主进程的 HTTP 头与 git 的临时认证头，不写进任务、模型上下文、命令参数或仓库配置文件。
+进程环境整体优先于 `.env`；缺少令牌时以 `github_token_required` / `gitlab_token_required` 明确失败，不会用空令牌重试。令牌只进入宿主进程的 HTTP 头与 git 的临时认证头，不写进任务、模型上下文、命令参数或仓库配置文件。`REPOPILOT_OWNER` 只是登记身份，不代替平台认证；其他登录名和机器人评论只作线索。
 
 自建 GitLab 用 host 区分，例如 `https://gitlab.example.com/team/app/-/issues/1`；API 基址为 `https://<host>/api/v4`。
 
@@ -55,6 +56,42 @@
 
 自动监听也按每个目标仓库自己的 remote 选择平台，因此同一个监听器可以同时盯 GitHub 与 GitLab 的仓库；`--status` 等只读命令不加载任何平台凭证。
 
+## 能力与授权预检
+
+评论、子Issue和建单都是新增的外部写入，必须先做只读预检：
+
+```powershell
+repopilot human preflight RUN_ID --output .local/runtime
+repopilot plan show RUN_ID --output .local/runtime
+```
+
+预检返回：平台与仓库身份、Issue编号、当前令牌登录名、登记负责人、评论读取能力、原生子Issue能力、建单权限和检查时间。它只发 `GET`，不改任何远端状态。`write_verified=false` 是刻意保留的事实：读取成功和令牌身份不能证明写权限，真正的写失败会在 `human post` 或 `plan map` 时明确返回。
+
+预检状态只有 `supported`、`unsupported`、`unknown` 三种。`unknown` 不当作成功：评论读取未知时拒绝发送；原生子Issue未知时退回链接映射；建单权限未知时仍可尝试，因为 GitHub 的仓库权限字段不能覆盖细粒度 Issues 权限，失败会保留记录而不是重复尝试。
+
+## 父Issue评论问答
+
+```powershell
+repopilot human post RUN_ID --output .local/runtime
+repopilot human sync RUN_ID --output .local/runtime
+```
+
+`post`把当前待答批次写成一条父Issue评论，正文带稳定HTML标记、批次号、阻塞阶段和编号问题。发送前先把标记与意图写入任务检查点，成功后才保存评论ID和链接；同一标记已存在时复用。`sync`只读取批次评论之后的评论，并且只采纳作者等于 `REPOPILOT_OWNER` 的文本；机器人、系统评论、自身标记评论、纯引用和问题原文回声都被忽略。没有批次评论、没有有效答复或评论已删除时保持等待，不把无答复当同意。重复`sync`返回已答复记录，不重复增加需求版本。
+
+评论答复只用于业务澄清，不是交付批准；批准仍使用绑定完整SHA的`approve`。评论正文不包含原始模型会话、密钥或本机私密材料，常见凭证形态会被拒绝发送。
+
+## 子Issue映射
+
+`repopilot plan map RUN_ID`把计划中`track=issue`的子任务映射到父Issue：
+
+| 平台 | 行为 |
+| --- | --- |
+| GitHub | 预检原生子Issue接口；可用时创建Issue并尝试原生关系；否则保留普通Issue并标为链接映射 |
+| GitLab | 没有可依赖的原生子Issue层级，创建普通Issue并明确标为`linked`，不声称创建原生子项 |
+| 建单不受支持 | 记录`local_only`，不破坏本地计划，也不假装已创建外部工单 |
+
+每个子任务使用稳定标记；重复执行或响应丢失后先查标记和已保存映射，不重复创建。映射记录父Issue、计划版本、外部编号和说明；程序不关闭、不回写或删除外部工单。建单前的权限预检失败会保留失败记录并报错，不静默创建。
+
 ## 发布中断与资料变更
 
 再次运行`publish RUN_ID`处理未完成发布。若资料依据已变化，先只读查询原分支头和带运行标记的草稿，将结果、原批准及发布身份保留在`publication.reconciliations`；`status RUN_ID`可查看。查询失败时保留原未完成状态，重试查询。该分支不推送、不创建草稿，不将已观察到的旧草稿当作新依据下的交付成功。
@@ -76,5 +113,8 @@
 - GitLab 的 `Draft:` 前缀语义按官方文档实现，但未在真实实例上确认草稿状态显示；
 - GitLab Webhook 事件、监听端的增量同步未实现，仍按时间轮询。
 - 监听队列的去重键是 `仓库路径#编号`，不含平台与 host。同一个监听器若同时登记 `group/project` 在 GitHub 与 GitLab 的同号 Issue，会被当作同一条；本轮没有改键，避免破坏既有已落盘运行的去重语义。
+- 本轮新增评论、子Issue和建单接口仍全部是 `httpx.MockTransport` 模拟；没有真实 GitHub／GitLab 评论、原生子Issue或建单写入。GitHub 原生子Issue接口是否对当前仓库／令牌可用，以实际接入时 `human preflight` 的 `supported/unsupported/unknown` 为准。
+- 评论扫描最多5页×100条；超过时明确失败，不把截断结果当作完整答复。没有实现评论编辑／删除的增量同步。
+- `REPOPILOT_OWNER` 是本机登记的唯一负责人登录名，不是企业身份认证；如果令牌属于同一个人，程序仍以评论标记排除自己发出的批次正文。
 
 首次在真实 GitLab 上使用时，建议先在测试项目里跑一条只读 `status` 与一条 `issue` 接入，确认 API 版本、令牌作用域与项目路径，再走批准与发布。

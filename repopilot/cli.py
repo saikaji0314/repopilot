@@ -14,12 +14,14 @@ from repopilot.delivery.forge import ForgeError, open_forge, publish as forge_pu
 from repopilot.storage.jobs import JobStore, StateError
 
 COMMANDS = {'run', 'issue', 'resume', 'retry', 'status', 'jobs', 'report', 'approve', 'reject',
-            'recover', 'publish', 'watch', 'memory', 'human', 'knowledge'}
+            'recover', 'publish', 'watch', 'memory', 'human', 'knowledge', 'plan'}
 SUCCESS_STATUSES = {'ok', 'completed', 'paused', 'needs_input', 'awaiting_approval', 'approved', 'published', 'rejected'}
 STATUS_FIELDS = ('run_id', 'status', 'phase', 'in_flight', 'stop_reason', 'reviewed_commit',
                  'report', 'review_report', 'verified', 'issue', 'approval', 'pull_request',
-                 'human_requests', 'requirements_revision', 'knowledge_snapshot', 'knowledge_history', 'decision_records',
-                 'publication')
+                 'human_requests', 'requirements_revision', 'knowledge_snapshot', 'knowledge_history',
+                 'decision_records', 'publication', 'task_brief', 'plan', 'plan_status', 'plan_progress',
+                 'subtask_mappings', 'question_batches', 'question_handovers', 'question_limit',
+                 'platform_preflight')
 
 
 def _watch_options(parser):
@@ -32,7 +34,7 @@ def _watch_options(parser):
 
 
 def _execution_options(parser, name):
-    parser.add_argument('--stop-after', choices=['prepare', 'implement', 'anchor', 'verify', 'review', 'rework'])
+    parser.add_argument('--stop-after', choices=['prepare', 'plan', 'implement', 'anchor', 'verify', 'review', 'rework'])
     if name == 'resume':
         return
     parser.add_argument('--profile', type=Path, help='执行限额与思考模式 YAML，不含凭证')
@@ -41,6 +43,8 @@ def _execution_options(parser, name):
     parser.add_argument('--max-run-cost-cny', type=float)
     parser.add_argument('--memory', dest='memory_enabled', action=argparse.BooleanOptionalAction, default=None,
                         help='启用仓库事实检索；--no-memory关闭，新运行默认关闭')
+    parser.add_argument('--plan', dest='plan_enabled', action=argparse.BooleanOptionalAction, default=None,
+                        help='先整理任务说明与顺序子任务；--no-plan保持原单Agent流程')
 
 
 def _task_options(parser, name):
@@ -74,6 +78,10 @@ def build_parser():
             from repopilot.knowledge.cli import configure
             configure(command)
             continue
+        if name == 'plan':
+            from repopilot.planning.cli import configure
+            configure(command)
+            continue
         if name == 'watch':
             _watch_options(command)
             continue
@@ -99,7 +107,8 @@ def _run_settings(args):
     settings = load_settings()
     overrides = load_profile(args.profile) if getattr(args, 'profile', None) else {}
     overrides.update({key: getattr(args, key) for key in
-                      ('max_context_bytes', 'max_tool_calls', 'max_run_cost_cny', 'max_rework', 'memory_enabled')
+                      ('max_context_bytes', 'max_tool_calls', 'max_run_cost_cny', 'max_rework',
+                       'memory_enabled', 'plan_enabled')
                       if getattr(args, key, None) is not None})
     return type(settings).model_validate({**settings.model_dump(), **overrides}), overrides
 
@@ -164,6 +173,9 @@ def execute_command(args):
         return execute(args)
     if args.command == 'knowledge':
         from repopilot.knowledge.cli import execute
+        return execute(args)
+    if args.command == 'plan':
+        from repopilot.planning.cli import execute
         return execute(args)
     if args.command == 'memory':
         from repopilot.memory.cli import execute

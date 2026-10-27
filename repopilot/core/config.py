@@ -101,6 +101,10 @@ class RuntimeSettings(Contract):
     request_timeout_seconds: float = Field(default=30, gt=0, le=120)
     max_run_cost_cny: float = Field(default=2, gt=0)
     budget_cny: float = Field(default=200, gt=0)
+    # M3：先规划再顺序执行；不拆分的小任务只多一次规划报告。
+    plan_enabled: bool = False
+    max_plan_subtasks: int = Field(default=6, ge=1, le=8)
+    max_question_batches: int = Field(default=3, ge=1, le=5)
     # 保守估算参数，不代表供应商的实际账单单价。
     input_cny_per_million: float = Field(default=3, gt=0)
     output_cny_per_million: float = Field(default=12, gt=0)
@@ -167,7 +171,8 @@ def load_settings(env_file: Path | None = None) -> RuntimeSettings:
 
 EXECUTION_OPTIONS = {"max_model_calls", "max_tool_calls", "max_edits", "max_rework", "max_output_tokens",
                      "max_context_bytes", "run_timeout_seconds", "request_timeout_seconds", "max_run_cost_cny",
-                     "thinking", "reasoning_effort", "memory_enabled"}
+                     "thinking", "reasoning_effort", "memory_enabled", "plan_enabled",
+                     "max_plan_subtasks", "max_question_batches"}
 
 
 def execution_options(value):
