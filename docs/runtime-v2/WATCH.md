@@ -12,6 +12,8 @@ flowchart LR
     D2 --> E
     E --> F[持久化等待人工审批]
     F --> G[明确批准提交后创建草稿 PR]
+    E -->|需要澄清| H[自动发父Issue评论]
+    H -->|监听器按poll_seconds读取负责人回复| E
 ```
 
 ## 接入与启动
@@ -22,6 +24,7 @@ flowchart LR
 
 ```yaml
 poll_seconds: 60
+poll_comments: true
 max_workers: 1
 max_per_repository: 1
 targets:
@@ -29,6 +32,8 @@ targets:
     label: repopilot
     include_existing: false
     settings:
+      plan_enabled: true
+      issue_comments_enabled: true
       thinking: enabled
       reasoning_effort: low
       max_context_bytes: 300000
@@ -40,6 +45,8 @@ targets:
       run_timeout_seconds: 900
       max_run_cost_cny: 8
 ```
+
+`plan_enabled`和`issue_comments_enabled`默认都是true：新Issue先做任务说明与计划，等待澄清时自动发父Issue评论并轮询回复。`--no-plan`／`REPOPILOT_PLAN_ENABLED=false`或`poll_comments: false`／`REPOPILOT_ISSUE_COMMENTS_ENABLED=false`可以关闭；关闭后仍是原单Agent和本地答复路径。`poll_comments`只控制监听器是否扫描等待批次，不改变单次`human post`／`sync`。
 
 ```powershell
 # 当前终端常驻；Ctrl+C 停止接新任务，等待当前 worker 落盘后退出
@@ -65,11 +72,12 @@ targets:
 - 使用 Issues REST 分页，不依赖首屏；单轮超过 1,000 条时报错。默认每 60 秒轮询，最小 15 秒；错误指数退避，并遵守 Retry-After／耗尽限流窗口的等待时间。
 - 每个 Issue 的队列键唯一；已有运行（含失败、审批中或已交付）不自动重跑。显式 retry 才开启新尝试，保留旧失败和同一累计预算账本。
 - worker 再次读取开放 Issue、核对 origin，拉取远端默认分支对象并固定基线；不 checkout／reset 用户原工作树，也不改变用户分支。随后先持久化 run_id 与队列关系，再调用模型。
+- 新任务默认先规划；规划、实现或审核需要澄清时保存`needs_input`并自动投递父Issue批次评论。监听器每轮按`poll_seconds`扫描等待中的运行，按剩余worker槽位读取登记负责人回复；有有效答复才恢复任务，没有答复只记录核对时间，不调用模型。
 - 成功停在 awaiting_approval，不自动 approve／publish。失败会释放 worker、保留原因，不进入无限重试。
 
 ## 并发与恢复
 
-`max_workers` 为全局上限（1–4），`max_per_repository` 为同仓库运行上限（1–4）。默认两个值都是 1。可先把全局设为 2，让不同仓库并行；确认机器资源、检查命令和成本后再提高同仓库并发。
+`max_workers` 为全局上限（1–4），`max_per_repository` 为同仓库运行上限（1–4）。默认两个值都是 1。可先把全局设为 2，让不同仓库并行；确认机器资源、检查命令和成本后再提高同仓库并发。评论同步和恢复与 issue worker 共用同一个有界进程池，因此等待回复本身不占槽位，只有真正恢复执行才占。
 
 worktree 隔离不等于操作系统隔离。两个任务仍共享宿主权限、网络、部分 Git 元数据和本地资源；登记检查必须避免共享可写数据、固定端口和真实账号。源仓库工作树保持不变并不证明没有宿主副作用。
 
@@ -81,6 +89,6 @@ worktree 隔离不等于操作系统隔离。两个任务仍共享宿主权限�
 
 已真实验证单监听器、一个独立 worker 自动处理新 Issue 到人审暂停；已用两个真实 spawn 进程、虚构队列验证不同仓库可以同时运行，并用回归验证同仓库限额。它不是两个真实模型工单的并发效果证明。
 
-重启去重、停止入口、故障退避与既有任务不重复接入都有回归／本机验证；没有长期运行、机器重启恢复、网络长时间故障或多主机部署证据。完整事实见 [验证记录](VALIDATION-05.md)。
+重启去重、停止入口、故障退避与既有任务不重复接入都有回归／本机验证；没有长期运行、机器重启恢复、网络长时间故障或多主机部署证据。评论自动投递／轮询只有Fake／MockTransport机制和本地队列验证，没有真实GitHub Issue评论往返或平台限流长期运行证据；完整事实见 [验证记录](VALIDATION-05.md)。
 
 接口来源：[GitHub List repository issues](https://docs.github.com/en/rest/issues/issues#list-repository-issues)、[GitHub REST 最佳实践](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api)。

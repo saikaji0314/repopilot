@@ -7,6 +7,7 @@ from uuid import uuid4
 from repopilot.agents.trace import Trace
 from repopilot.storage.budget import Budget
 from repopilot.core.config import RuntimeSettings, Task, execution_options
+from repopilot.delivery.forge import ForgeError
 from repopilot.orchestration.session import execute_run
 from repopilot.orchestration import human
 from repopilot.orchestration import knowledge
@@ -32,8 +33,9 @@ def create_job(task, settings, output_root, *, workspace=True, review=True,
                require_approval=True, issue=None, retry_of=None, retry_reason=None,
                base_commit=None, human_answers=None, carry=None):
     """先持久化任务身份，允许调度器在执行模型之前记录队列对应关系。"""
-    if settings.plan_enabled and not workspace:
-        raise StateError("plan_requires_workspace")
+    # 只读调查没有worktree，不能进入需要Git基线的规划；静默关闭而不是修改调用方设置。
+    if not workspace and settings.plan_enabled:
+        settings = settings.model_copy(update={"plan_enabled": False})
     carried = json.loads(json.dumps(carry or {}))
     prior_plan = carried.get("plan") if settings.plan_enabled else None
     initial_brief = carried.get("task_brief") or task_brief.initial(task)
@@ -61,6 +63,8 @@ def create_job(task, settings, output_root, *, workspace=True, review=True,
         "plan_progress": ({"order": prior_plan["order"], "current": None, "results": [],
                            "started_at": timestamp(), "reused": True} if prior_plan else
                           {"order": [], "current": None, "results": []}),
+        "plan_refresh_history": list(carried.get("plan_refresh_history") or []) if prior_plan else [],
+        "plan_refresh_required": bool(carried.get("plan_refresh_required")) if prior_plan else False,
         "subtask_mappings": list(carried.get("subtask_mappings") or []) if prior_plan else [],
         "platform_preflight": None,
     }, issue_key=None if issue is None else f"{issue['repository']}#{issue['number']}", retry_of=retry_of)
@@ -82,8 +86,12 @@ def retry(run_id, settings, root, *, reason, overrides=None, model=None, stop_af
     store = JobStore(root)
     with job_lock(store.root, run_id):
         state = store.get(run_id)
-        if state["status"] not in {"limit_reached", "failed", "phase_error", "workspace_error",
-                                   "review_inconclusive", "rework_limit_reached", "rejected"}:
+        retryable = state["status"] in {"limit_reached", "failed", "phase_error", "workspace_error",
+                                        "review_inconclusive", "rework_limit_reached", "rejected"}
+        # 计划中某个子任务报告blocked时保留completed原语义；它是可人工交接的阻塞，不是正常完成。
+        if state["status"] == "completed" and str(state.get("stop_reason") or "").startswith("subtask_"):
+            retryable = True
+        if not retryable:
             raise StateError("retry_requires_finished_attempt")
         if not reason.strip():
             raise StateError("reason_required")
@@ -97,6 +105,8 @@ def retry(run_id, settings, root, *, reason, overrides=None, model=None, stop_af
             "task_brief_history": state.get("task_brief_history"),
             "plan": state.get("plan"),
             "plan_history": state.get("plan_history"),
+            "plan_refresh_history": state.get("plan_refresh_history"),
+            "plan_refresh_required": state.get("plan_refresh_required"),
             "subtask_mappings": state.get("subtask_mappings"),
         }
         return start(Task.model_validate(state["task"]), frozen, root, model=model,
@@ -111,27 +121,59 @@ def resume(run_id, settings, output_root, *, model=None, stop_after=None):
         state = store.get(run_id)
         settings = frozen_settings(state["settings"], settings)
         if state["in_flight"] == "publish":
-            return snapshot(store, state, settings)
-        if state["in_flight"]:
+            result = snapshot(store, state, settings)
+        elif state["in_flight"]:
             state["status"] = "recovery_required"
             state["stop_reason"] = "interrupted_phase_requires_explicit_recovery"
             human.recovery_request(state, store.root)
             store.save(state)
-            return snapshot(store, state, settings)
-        if state["status"] in {"ready", "paused", "needs_input", "awaiting_approval", "approved"}:
-            try:
-                if state.get("base_commit") and knowledge.sync_answers(
-                        state, store.root, (settings.api_key.get_secret_value(),)):
-                    # 文档索引和任务库之间没有跨库事务；只重放已有人工事件的派生产物。
+            result = snapshot(store, state, settings)
+        else:
+            if state["status"] in {"ready", "paused", "needs_input", "awaiting_approval", "approved"}:
+                try:
+                    if state.get("base_commit") and knowledge.sync_answers(
+                            state, store.root, (settings.api_key.get_secret_value(),)):
+                        # 文档索引和任务库之间没有跨库事务；只重放已有人工事件的派生产物。
+                        store.save(state)
+                    knowledge.validate(state, store.root)
+                except KnowledgeFault as exc:
+                    knowledge.pause(state, store.root, str(exc))
                     store.save(state)
-                knowledge.validate(state, store.root)
-            except KnowledgeFault as exc:
-                knowledge.pause(state, store.root, str(exc))
-                store.save(state)
-                return snapshot(store, state, settings)
-        if state["status"] in TERMINAL or state["status"] in {"awaiting_approval", "approved"}:
-            return snapshot(store, state, settings)
-        return drive(store, state, settings, model=model, stop_after=stop_after)
+            if state["status"] in TERMINAL or state["status"] in {"awaiting_approval", "approved"}:
+                result = snapshot(store, state, settings)
+            else:
+                result = drive(store, state, settings, model=model, stop_after=stop_after)
+    return _auto_deliver_comment(store, run_id, settings, result)
+
+
+def _auto_deliver_comment(store, run_id, settings, result):
+    """Issue任务等待澄清时先落盘再自动发批次评论；失败只记录，不吞掉等待状态。"""
+    if not settings.issue_comments_enabled:
+        return result
+    state = store.get(run_id)
+    # 旧运行没有显式开关时不自动产生外部评论；仍可显式 human post。
+    if "issue_comments_enabled" not in (state.get("settings") or {}):
+        return result
+    if state["status"] != "needs_input" or not (state.get("issue") or {}).get("url"):
+        return result
+    pending = [item for item in state.get("human_requests", [])
+               if item.get("kind") == "clarification" and item.get("status") == "pending"]
+    if not pending:
+        return result
+    if (pending[-1].get("delivery") or {}).get("status") in {"delivered", "reused"}:
+        return result
+    try:
+        posted = human.post_issue(run_id, store.root)
+    except Exception as exc:
+        current = store.get(run_id)
+        result = snapshot(store, current, settings)
+        result["auto_comment"] = {
+            "status": "failed", "error_type": type(exc).__name__,
+            "reason": str(exc) if isinstance(exc, (StateError, ForgeError)) else None}
+        return result
+    result = snapshot(store, store.get(run_id), settings)
+    result["auto_comment"] = {"status": "posted", "delivery": posted.get("delivery")}
+    return result
 
 
 def drive(store, state, settings, *, model=None, stop_after=None):
@@ -220,8 +262,11 @@ def snapshot(store, state, settings):
         "question_limit": state.get("question_limit"),
         "task_brief": state.get("task_brief"),
         "plan": state.get("plan"),
+        "plan_history": state.get("plan_history", []),
         "plan_status": planning.status(state),
         "plan_progress": state.get("plan_progress"),
+        "plan_refresh_history": state.get("plan_refresh_history", []),
+        "plan_refresh_required": bool(state.get("plan_refresh_required")),
         "subtask_mappings": state.get("subtask_mappings", []),
         "platform_preflight": state.get("platform_preflight"),
         "knowledge_snapshot_id": (state.get("knowledge_snapshot") or {}).get("snapshot_id"),

@@ -198,4 +198,8 @@ def next_action(state: dict) -> str:
             return ('<p class="note">计划不可执行，未进入实现。用 <code>repopilot plan show RUN_ID</code> '
                     '查看依赖或子任务问题，补充需求后 retry；环形依赖或缺失前置产物不会被强行执行。</p>')
         return '<p class="note">运行未完成，需要查看失败原因后决定 retry 或调整配置。</p>'
+    if status == "completed" and str(state.get("stop_reason") or "").startswith("subtask_"):
+        return ('<p class="note">计划子任务报告阻塞，未形成可交付候选；这不是完成交付。'
+                '核对 <code>repopilot plan show RUN_ID</code> 后可用 retry 保留现场继续，'
+                '费用和提问次数不会清零。</p>')
     return ""

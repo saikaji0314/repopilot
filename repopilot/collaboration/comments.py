@@ -1,5 +1,6 @@
 """Issue 评论渠道：集中问题正文、登记负责人识别与引用过滤；不做网络请求。"""
 
+from datetime import datetime, timezone
 import os
 from pathlib import Path
 import re
@@ -80,37 +81,67 @@ def _echo(text, request):
     return not value or value in candidates
 
 
-def select_reply(comments, request, *, owner, batch_id=None):
-    """按评论顺序找到批次评论之后的第一条有效负责人答复。
+def _moment(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        result = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return result if result.tzinfo else result.replace(tzinfo=timezone.utc)
 
-    返回 (答复, 之后未被采用的有效答复列表)。优先按发送时保存的评论ID定位批次，
-    避免别人复制标记后改变“批次之后”的边界；没有保存ID的旧运行才退回标记查找。
-    批次评论不存在时返回 (None, [])，调用方必须把它当成“没有可采纳答复”，
-    不能从别处推断答案。
+
+def _ordered(comments):
+    """按 created_at 排序；缺失时间时保留平台返回顺序，交给调用方按ID兜底。"""
+    timed = [(index, item, _moment(item.get("created_at"))) for index, item in enumerate(comments)]
+    if any(moment is None for _, _, moment in timed):
+        return list(comments)
+    return [item for _, item, _ in sorted(timed, key=lambda entry: (entry[2], entry[0]))]
+
+
+def select_reply(comments, request, *, owner, batch_id=None, batch_created_at=None):
+    """按时间顺序找到批次评论之后的第一条有效负责人答复。
+
+    返回 (答复, 被忽略的有效候选及原因)。优先按发送时保存的评论ID定位批次，
+    避免别人复制标记后改变边界；没有保存ID的旧运行才退回标记查找。
+    批次评论不存在时返回 (None, [])，不能从别处推断答案。
     """
+    ordered = _ordered(comments)
     if batch_id is not None:
-        position = next((index for index, item in enumerate(comments)
+        position = next((index for index, item in enumerate(ordered)
                          if item.get("id") == batch_id), None)
     else:
         marker_text = marker(request)
-        position = next((index for index, item in enumerate(comments)
+        position = next((index for index, item in enumerate(ordered)
                          if marker_text in str(item.get("body") or "")), None)
     if position is None:
         return None, []
+    boundary = _moment(batch_created_at) or _moment(ordered[position].get("created_at"))
     accepted, later = None, []
-    for item in comments[position + 1:]:
+    for item in ordered[position + 1:]:
         body = str(item.get("body") or "")
-        if item.get("system"):
-            continue
         author = str(item.get("author") or "")
-        if not author or author.casefold() != str(owner).casefold():
+        if item.get("system"):
+            later.append(comment_source(item, reason="system"))
             continue
         if str(item.get("author_type") or "").casefold() == "bot" or author.casefold().endswith("[bot]"):
+            later.append(comment_source(item, reason="bot"))
             continue
-        if "<!-- repopilot-" in body:
+        if author.casefold() != str(owner).casefold():
+            later.append(comment_source(item, reason="not_registered_owner"))
+            continue
+        # RepoPilot 自己的批次正文以HTML标记开头；负责人引用它会以">"开头，不能在这里整条丢弃。
+        if body.lstrip().startswith("<!-- repopilot-"):
+            later.append(comment_source(item, reason="repopilot_comment"))
+            continue
+        moment = _moment(item.get("created_at"))
+        if boundary is not None and moment is not None and moment <= boundary:
+            later.append(comment_source(item, reason="before_batch"))
             continue
         text = reply_text(body)
         if _echo(text, request):
+            later.append(comment_source(item, reason="quoted_or_echo"))
             continue
         try:
             checked_body(text)

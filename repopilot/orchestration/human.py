@@ -1,6 +1,7 @@
 """把人工交互接到工作区、版本与任务状态，不在等待期间占用模型会话。"""
 
 from contextlib import contextmanager
+import json
 from pathlib import Path
 
 from repopilot.collaboration import comments
@@ -77,6 +78,24 @@ def list_requests(run_id, root):
             "task_brief": state.get("task_brief")}
 
 
+def waiting_comment_runs(root, limit=20):
+    """列出等待中的Issue澄清批次，供watch有节制地投递／读取评论。"""
+    store, result = JobStore(root), []
+    for item in store.list():
+        if item.get("status") != "needs_input" or not (item.get("issue") or {}).get("url"):
+            continue
+        state = store.get(item["run_id"])
+        # 只有显式开启Issue评论的新运行才进入自动投递/轮询；旧运行可手工 post/sync。
+        if (state.get("settings") or {}).get("issue_comments_enabled") is not True:
+            continue
+        if any(request.kind == "clarification" and request.status == "pending"
+               for request in all_requests(state)):
+            result.append(item["run_id"])
+            if len(result) >= limit:
+                break
+    return result
+
+
 def _pending_clarification(state):
     pending = [item for item in all_requests(state)
                if item.kind == "clarification" and item.status == "pending"]
@@ -96,23 +115,47 @@ def _apply_answer(state, root, request, *, text, actor, channel, source=None):
             or state.get("in_flight") or capture_context(state, root) != request.context):
         raise StateError("stale_human_request")
     validate(state, root)
+    previous_brief = state.get("task_brief") or {}
+    previous_plan = state.get("plan")
     resolved = resolve_request(state, request, action="answer", text=text,
                                actor=actor, channel=channel, source=source)
     state["requirements_revision"] = state.get("requirements_revision", 0) + 1
-    state.setdefault("human_answers", []).append({
+    task_brief.append_answer(state, resolved, text=resolved.reply.text, actor=actor,
+                             channel=channel, source=source)
+    brief = state["task_brief"]
+    refresh = None
+    if previous_plan and int(brief.get("revision") or 0) > int(previous_plan.get("brief_revision") or 0):
+        refresh = {"old_plan": previous_plan.get("version"),
+                   "old_brief_revision": previous_plan.get("brief_revision"),
+                   "new_brief_revision": brief.get("revision"),
+                   "old_progress": json.loads(json.dumps(state.get("plan_progress") or {})),
+                   "request_id": request.id, "at": timestamp()}
+        state.setdefault("plan_refresh_history", []).append(refresh)
+        state["plan_refresh_required"] = True
+        state["plan_progress"] = {"order": [], "current": None, "results": [],
+                                  "restarted_at": timestamp()}
+    answer_record = {
         "run_id": state["run_id"], "request_id": request.id,
         "questions": request.questions, "answer": resolved.reply.text,
         "revision": state["requirements_revision"], "actor": actor,
         "channel": channel, "at": resolved.reply.at, "source": source,
-    })
-    task_brief.append_answer(state, resolved, text=resolved.reply.text, actor=actor,
-                             channel=channel, source=source)
+        "brief_before": previous_brief.get("revision"),
+        "brief_after": brief.get("revision"),
+        "plan_before": None if not previous_plan else previous_plan.get("version"),
+        "plan_refresh": None if refresh is None else {
+            "old_plan": refresh["old_plan"], "old_brief_revision": refresh["old_brief_revision"],
+            "new_brief_revision": refresh["new_brief_revision"]},
+    }
+    state.setdefault("human_answers", []).append(answer_record)
     question_batches.mark_answered(state, resolved)
     # 业务答复会改变审核依据；保留历史，但不沿用旧结论／批准。
     state["verified"], state["review_report"], state["approval"] = [], None, None
     state.pop("approval_digest", None)
     if state["phase"] == "review":
         state["phase"] = "verify"
+    if refresh is not None:
+        # 任务说明已前进：旧计划保留在plan_history/plan_refresh_history，下一阶段先重规划。
+        state["phase"] = "plan"
     state["status"], state["stop_reason"] = "paused", "human_answer_recorded"
     return resolved
 
@@ -121,7 +164,8 @@ def _answer_result(state, request):
     return {"status": state["status"], "run_id": state["run_id"],
             "request": request.model_dump(mode="json"),
             "requirements_revision": state.get("requirements_revision", 0),
-            "task_brief_revision": (state.get("task_brief") or {}).get("revision")}
+            "task_brief_revision": (state.get("task_brief") or {}).get("revision"),
+            "plan_refresh_required": bool(state.get("plan_refresh_required"))}
 
 
 def answer(run_id, root, *, request_id, version, text):
@@ -253,14 +297,15 @@ def sync_issue(run_id, root, *, forge=None):
         pending = [item for item in all_requests(state)
                    if item.kind == "clarification" and item.status == "pending"]
         answered = [item for item in all_requests(state)
-                    if item.kind == "clarification" and item.status == "answered"
-                    and (item.delivery or {}).get("status") == "answered"]
+                    if item.kind == "clarification" and item.status == "answered"]
         if pending:
             request = pending[-1]
         elif answered:
             request = answered[-1]
+            reply = request.reply
             return {"status": state["status"], "run_id": run_id, "synced": True,
                     "already_answered": True, "request": request.model_dump(mode="json"),
+                    "answered_channel": None if reply is None else reply.channel,
                     "requirements_revision": state.get("requirements_revision", 0),
                     "task_brief_revision": (state.get("task_brief") or {}).get("revision")}
         else:
@@ -277,7 +322,8 @@ def sync_issue(run_id, root, *, forge=None):
                 raise StateError("issue_comments_unavailable")
             values = client.issue_comments(repository, number)
             reply, later = comments.select_reply(values, request, owner=owner,
-                                                 batch_id=delivery.get("comment_id"))
+                                                 batch_id=delivery.get("comment_id"),
+                                                 batch_created_at=delivery.get("created_at"))
             if reply is None:
                 # 没有批次评论或没有负责人答复都不算同意；只记录本次只读核对。
                 _delivery(state, request, last_checked_at=timestamp(),

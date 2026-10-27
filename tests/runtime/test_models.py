@@ -19,7 +19,8 @@ from repopilot.storage.jobs import StateError
 def settings(provider, **overrides):
     return RuntimeSettings(**dict(dict(provider=provider, api_key="synthetic-only",
         model="synthetic-model", base_url="https://provider.example.test/v1",
-        input_cny_per_million=5, output_cny_per_million=20), **overrides))
+        input_cny_per_million=5, output_cny_per_million=20,
+        plan_enabled=False, issue_comments_enabled=False), **overrides))
 
 
 def test_new_provider_never_falls_back_to_deepseek_key_or_prices(tmp_path, monkeypatch):

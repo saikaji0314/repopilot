@@ -13,7 +13,8 @@ import yaml
 from repopilot.core.config import Contract, RuntimeSettings, Task, execution_options, load_settings, load_task
 from repopilot.delivery.forge import ForgeError, open_forge, remote_origin
 from repopilot.delivery.queue import IssueQueue  # 兼容原 watcher.IssueQueue 入口
-from repopilot.storage.jobs import StateError, job_lock, timestamp
+from repopilot.orchestration import human
+from repopilot.storage.jobs import JobStore, StateError, job_lock, timestamp
 from repopilot.orchestration import workflow as workflow
 
 
@@ -33,6 +34,7 @@ class WatchConfig(Contract):
     poll_seconds: float = Field(default=60, ge=15, le=3600)
     max_workers: int = Field(default=1, ge=1, le=4)
     max_per_repository: int = Field(default=1, ge=1, le=4)
+    poll_comments: bool = True
     targets: list[WatchTarget] = Field(min_length=1, max_length=10)
 
 
@@ -101,12 +103,33 @@ def run_queued_job(root, item):
             forge.close()
 
 
+def run_waiting_job(root, run_id):
+    """有节制地核对一个等待中的Issue批次：必要时自动投递，再读取负责人回复并恢复。"""
+    try:
+        settings = load_settings()
+        result = workflow.resume(run_id, settings, Path(root))
+        synced = human.sync_issue(run_id, Path(root))
+        if synced.get("synced"):
+            result = workflow.resume(run_id, settings, Path(root))
+        state = JobStore(root).get(run_id)
+        issue = state.get("issue") or {}
+        if issue.get("repository") and issue.get("number"):
+            IssueQueue(root).finish(f"{issue['repository'].lower()}#{issue['number']}",
+                                    result.get("status", state["status"]))
+        return {"kind": "comment", "run_id": run_id, "status": result.get("status"),
+                "sync": {key: synced.get(key) for key in ("synced", "already_answered", "reason")},
+                "auto_comment": result.get("auto_comment")}
+    except Exception as exc:
+        return {"kind": "comment", "run_id": run_id, "status": "failed",
+                "error": str(exc) if isinstance(exc, (StateError, ForgeError)) else type(exc).__name__}
+
+
 def emit(event, **values):
     print(json.dumps({"time": timestamp(), "event": event, **values}, ensure_ascii=True), flush=True)
 
 
 def watch(config, root, *, once=False):
-    """一个监听进程配有界进程池；轮询和工作进程都在前台生命周期内受控。"""
+    """一个监听进程配有界进程池；轮询、评论同步和工作进程都在前台生命周期内受控。"""
     queue = IssueQueue(root)
     with job_lock(queue.root, "issue-watcher"):
         stop_file = queue.root / "watcher.stop"
@@ -114,12 +137,15 @@ def watch(config, root, *, once=False):
         interrupted = queue.mark_interrupted()
         if interrupted:
             emit("attention_required", interrupted=interrupted)
-        futures, next_poll, failures, polled, failed_poll = {}, 0, 0, False, False
+        futures, comment_futures = {}, {}
+        next_poll = next_comment_poll = 0
+        failures, polled, comment_polled, failed_poll = 0, False, False, False
         next_heartbeat = 0
         try:
             with ProcessPoolExecutor(max_workers=config.max_workers,
                                      mp_context=multiprocessing.get_context("spawn")) as pool:
-                emit("watch_started", max_workers=config.max_workers, max_per_repository=config.max_per_repository)
+                emit("watch_started", max_workers=config.max_workers, max_per_repository=config.max_per_repository,
+                     poll_comments=config.poll_comments)
                 try:
                     while True:
                         now = time.monotonic()
@@ -127,7 +153,7 @@ def watch(config, root, *, once=False):
                             queue.heartbeat("running")
                             next_heartbeat = now + 5
                         if stop_file.exists():
-                            emit("watch_stopping", active_workers=len(futures))
+                            emit("watch_stopping", active_workers=len(futures) + len(comment_futures))
                             break
                         if (not once or not polled) and now >= next_poll:
                             try:
@@ -145,7 +171,7 @@ def watch(config, root, *, once=False):
                                 emit("poll_failed", error=str(exc) if isinstance(exc, ForgeError) else type(exc).__name__, retry_after=delay)
                             polled = True
                         if stop_file.exists():
-                            emit("watch_stopping", active_workers=len(futures))
+                            emit("watch_stopping", active_workers=len(futures) + len(comment_futures))
                             break
                         for future in list(futures):
                             if future.done():
@@ -155,18 +181,47 @@ def watch(config, root, *, once=False):
                                 except Exception as exc:
                                     queue.finish(item["issue_key"], "interrupted", type(exc).__name__)
                                     emit("worker_interrupted", issue_key=item["issue_key"], error=type(exc).__name__)
-                        while len(futures) < config.max_workers:
+                        for future in list(comment_futures):
+                            if future.done():
+                                run_id = comment_futures.pop(future)
+                                try:
+                                    emit("comment_job_finished", **future.result())
+                                except Exception as exc:
+                                    emit("comment_job_failed", run_id=run_id, error=type(exc).__name__)
+                        while len(futures) + len(comment_futures) < config.max_workers:
                             item = queue.claim(config.max_per_repository)
                             if item is None:
                                 break
                             futures[pool.submit(run_queued_job, str(queue.root), item)] = item
                             emit("job_dispatched", issue_key=item["issue_key"])
-                        if once and polled and not futures:
+                        if config.poll_comments and now >= next_comment_poll:
+                            slots = config.max_workers - len(futures) - len(comment_futures)
+                            if slots > 0:
+                                busy = set(comment_futures.values())
+                                try:
+                                    waiting = human.waiting_comment_runs(queue.root)
+                                except Exception as exc:
+                                    waiting = []
+                                    emit("comment_poll_failed", error=type(exc).__name__)
+                                for run_id in waiting:
+                                    if slots <= 0:
+                                        break
+                                    if run_id in busy:
+                                        continue
+                                    comment_futures[pool.submit(
+                                        run_waiting_job, str(queue.root), run_id)] = run_id
+                                    busy.add(run_id)
+                                    slots -= 1
+                                    emit("comment_job_dispatched", run_id=run_id)
+                            next_comment_poll = time.monotonic() + config.poll_seconds
+                            comment_polled = True
+                        if (once and polled and (not config.poll_comments or comment_polled)
+                                and not futures and not comment_futures):
                             return {"status": "error" if failed_poll else "completed", "queue": queue.list()}
                         time.sleep(0.5 if once else 1)
                 except KeyboardInterrupt:
                     # 停止接新任务，等待已开始 worker 落盘，避免随意杀死检查进程树。
-                    emit("watch_stopping", active_workers=len(futures))
+                    emit("watch_stopping", active_workers=len(futures) + len(comment_futures))
         finally:
             queue.heartbeat("stopped")
         return {"status": "paused", "queue": queue.list()}

@@ -151,8 +151,8 @@ def test_issue_edit_blocks_publication(tmp_path):
 def test_issue_deduplication_avoids_second_model_run(tmp_path):
     state, root, api = github_candidate(tmp_path)
     from repopilot.core.config import Task, RuntimeSettings
-    result = workflow.start(Task.model_validate(state["task"]), RuntimeSettings(api_key="synthetic"), root,
-        issue=ISSUE, model=FakeModel(responses=[]))
+    result = workflow.start(Task.model_validate(state["task"]), RuntimeSettings(api_key="synthetic",
+        plan_enabled=False), root, issue=ISSUE, model=FakeModel(responses=[]))
     assert result["run_id"] == state["run_id"]
     assert result["model_calls"] == 3
 

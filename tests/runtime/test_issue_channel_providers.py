@@ -130,7 +130,7 @@ def test_gitlab_comment_and_issue_payloads_use_description_and_note_url():
 
     def handler(request):
         raw = request.url.raw_path.split(b"?")[0].decode()
-        seen.append((request.method, raw, request.content))
+        seen.append((request.method, raw, request.content, dict(request.url.params)))
         if request.method == "GET":
             return httpx.Response(200, json=[{"id": 7, "body": "answer", "system": False,
                 "author": {"username": "owner-login"}, "created_at": "2026-10-27T00:00:00Z"}])
@@ -148,7 +148,10 @@ def test_gitlab_comment_and_issue_payloads_use_description_and_note_url():
     assert posted["id"] == 8 and posted["url"].endswith("#note_8")
     created = api.create_issue("group/project", title="sub", body="body")
     assert created["number"] == 4 and created["id"] == 21
-    payloads = [json.loads(content) for method, path, content in seen if content]
+    payloads = [json.loads(content) for method, path, content, params in seen if content]
     assert {"body": "question"} in payloads
     assert {"title": "sub", "description": "body"} in payloads
+    comment_params = next(params for method, path, content, params in seen
+                          if method == "GET" and path.endswith("/notes"))
+    assert comment_params["sort"] == "asc" and comment_params["order_by"] == "created_at"
     api.close()

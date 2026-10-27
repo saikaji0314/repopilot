@@ -5,11 +5,16 @@ from pathlib import Path
 
 import pytest
 
+import repopilot.cli as cli
 from repopilot.collaboration import comments
+from repopilot.collaboration.requests import HumanRequest
 from repopilot.agents import loop as engine
+from repopilot.core.config import RuntimeSettings
+from repopilot.delivery import watcher
 from repopilot.orchestration import human, workflow
 from repopilot.planning import mapping, planner
 from repopilot.planning.contracts import PlanFault
+from repopilot.presentation.formatting import next_action
 from repopilot.presentation.report import build
 from repopilot.storage.jobs import JobStore, StateError
 from tests.runtime.test_human import reply
@@ -201,18 +206,21 @@ def test_question_limit_is_shared_across_plan_implement_and_review(tmp_path):
     assert pending(result)["batch"] == 1 and pending(result)["phase"] == "implement"
     human.answer(result["run_id"], root, request_id=pending(result)["id"],
                  version=pending(result)["version"], text="返回 JSON")
+    # 答复改变任务说明后先自动重规划，再重新执行计划；不会沿用旧计划的子任务进度。
     result = workflow.resume(result["run_id"], settings, root,
-        model=FakeModel(responses=[implement_done(), review_question]))
+        model=FakeModel(responses=[plan_ready(), write(3), implement_done(), review_question]))
     assert result["status"] == "needs_input"
     request = pending(result)
     assert request["batch"] == 2 and request["phase"] == "review"
     assert [item["batch"] for item in result["question_batches"]] == [1, 2]
+    assert len(result["plan_history"]) == 2
     human.answer(result["run_id"], root, request_id=request["id"],
                  version=request["version"], text="保留旧字段")
     done = workflow.resume(result["run_id"], settings, root,
-        model=FakeModel(responses=[review_approved()]))
+        model=FakeModel(responses=[plan_ready(), write(4), implement_done(), review_approved()]))
     assert done["status"] == "awaiting_approval", done
     assert len(done["question_batches"]) == 2
+    assert len(done["plan_refresh_history"]) == 2
 
 
 class FakeMappingForge:
@@ -315,6 +323,9 @@ class FakeCommentForge:
     def __init__(self, *, supported=True):
         self.supported = supported
         self.comments, self.posts = [], 0
+
+    def close(self):
+        return None
 
     def preflight(self, url, *, owner=None):
         return {"provider": "github", "host": "github.com", "repository": "owner/repo",
@@ -506,3 +517,219 @@ def test_plan_and_human_list_commands_need_no_model_credentials(tmp_path, monkey
     args = cli.build_parser().parse_args(["human", "list", result["run_id"], "--output", str(root)])
     listed = cli.execute_command(args)
     assert listed["status"] == "ok" and listed["task_brief"]["revision"] == 1
+
+
+def note(identifier, body, author, created_at, *, author_type="User", system=False):
+    return {"id": identifier, "body": body, "author": author, "author_type": author_type,
+            "created_at": created_at, "system": system,
+            "url": f"https://github.com/owner/repo/issues/1#issuecomment-{identifier}"}
+
+
+def request_for(question="空输入返回什么？", identifier="human-f1-test"):
+    return HumanRequest(id=identifier, kind="clarification", phase="plan", summary="需要确认",
+                        questions=[question], context={}, version="v",
+                        created_at="2026-10-27T00:00:00Z")
+
+
+def test_descending_notes_still_take_the_reply_after_the_batch():
+    """GitLab Notes默认desc：不能把列表位置当成时间顺序。"""
+    request = request_for()
+    marker = comments.marker(request)
+    values = [
+        note(3, "返回空结果", "owner-login", "2026-10-27T00:03:00Z"),
+        note(2, f"{marker}\n## RepoPilot 第 1 批集中澄清", "repopilot-bot",
+             "2026-10-27T00:02:00Z", author_type="Bot"),
+        note(1, "旧讨论里的一句话：不要动这个接口。", "owner-login", "2026-10-27T00:01:00Z"),
+    ]
+    accepted, later = comments.select_reply(values, request, owner="owner-login",
+                                            batch_id=2, batch_created_at="2026-10-27T00:02:00Z")
+    assert accepted["comment_id"] == 3 and accepted["text"] == "返回空结果"
+    assert not any(item.get("comment_id") == 1 for item in later)
+
+
+def test_quoted_batch_reply_is_accepted_after_removing_the_quote():
+    request = request_for()
+    marker = comments.marker(request)
+    values = [
+        note(2, f"{marker}\n## RepoPilot 第 1 批集中澄清", "repopilot-bot",
+             "2026-10-27T00:02:00Z", author_type="Bot"),
+        note(4, f"> {marker}\n> 空输入返回什么？\n\n返回空列表。", "owner-login",
+             "2026-10-27T00:04:00Z"),
+        note(5, f"> {marker}\n> 空输入返回什么？", "owner-login", "2026-10-27T00:05:00Z"),
+    ]
+    accepted, later = comments.select_reply(values, request, owner="owner-login",
+                                            batch_id=2, batch_created_at="2026-10-27T00:02:00Z")
+    assert accepted["text"] == "返回空列表。"
+    assert any(item.get("ignored_reason") == "quoted_or_echo" for item in later)
+
+
+def test_planning_is_enabled_by_default_and_cli_can_turn_it_off(tmp_path):
+    assert RuntimeSettings(api_key="synthetic").plan_enabled is True
+    args = cli.build_parser().parse_args(["run", "task.yaml", "--no-plan"])
+    assert args.plan_enabled is False
+    task, _, root = setup(tmp_path)
+    settings = RuntimeSettings(api_key="synthetic-private-key", issue_comments_enabled=False)
+    result = workflow.start(task, settings, root, model=FakeModel(responses=[
+        plan_ready(), write(), implement_done(), review_approved()]))
+    assert result["status"] == "awaiting_approval"
+    assert result["plan"]["split"] == "none" and result["model_calls"] == 4
+
+
+def test_status_command_and_report_show_plan_progress(tmp_path):
+    task, settings, root = setup(tmp_path, plan_enabled=True)
+    result = workflow.start(task, settings, root, model=FakeModel(responses=[
+        plan_ready(), write(), implement_done(), review_approved()]))
+    args = cli.build_parser().parse_args(["status", result["run_id"], "--output", str(root)])
+    values = cli.execute_command(args)
+    assert values["plan_status"]["completed"] == 1 and values["plan_status"]["total"] == 1
+    html = build(JobStore(root).get(result["run_id"]), root / "runs" / result["run_id"], Path.cwd())
+    assert "完成 1/1" in html
+
+
+def test_answer_after_plan_replans_and_exposes_brief_versions(tmp_path, monkeypatch):
+    task, settings, root = setup(tmp_path, plan_enabled=True)
+    implement_question = turn("ImplementationReport", {"status": "needs_clarification",
+        "summary": "实现需要确认", "evidence": [], "questions": ["使用哪个字段？"], "next_steps": []})
+    payloads = {}
+    original = engine.run_phase
+    def capture(**kwargs):
+        payloads.setdefault(kwargs["phase"], []).append(kwargs["payload"])
+        return original(**kwargs)
+    monkeypatch.setattr(engine, "run_phase", capture)
+    result = workflow.start(task, settings, root, model=FakeModel(responses=[
+        plan_ready(), write(), implement_question]))
+    assert result["status"] == "needs_input"
+    old_plan = result["plan"]["version"]
+    answered = human.answer(result["run_id"], root, request_id=pending(result)["id"],
+                            version=pending(result)["version"], text="使用 old_field")
+    assert answered["plan_refresh_required"] is True
+    state = JobStore(root).get(result["run_id"])
+    assert state["phase"] == "plan" and state["plan_refresh_history"]
+    html = build(state, root / "runs" / result["run_id"], Path.cwd())
+    assert "计划基于旧版任务说明" in html
+    done = workflow.resume(result["run_id"], settings, root, model=FakeModel(responses=[
+        plan_ready(), write(3), implement_done(), review_approved()]))
+    assert done["status"] == "awaiting_approval", done
+    assert done["plan"]["version"] != old_plan
+    assert len(done["plan_refresh_history"]) == 1
+    assert payloads["implement"][-1]["plan"]["brief_revision"] == done["task_brief"]["revision"]
+    assert payloads["implement"][-1]["plan"]["stale"] is False
+    assert payloads["review"][-1]["plan"]["current_brief_revision"] == done["task_brief"]["revision"]
+    shown = mapping.show(result["run_id"], root)
+    assert len(shown["task_brief_versions"]) >= 2 and shown["plan_refresh_history"]
+    assert shown["task_brief_history"]
+
+
+def test_after_batch_limit_each_new_gap_keeps_its_own_final_record(tmp_path):
+    task, settings, root = setup(tmp_path, plan_enabled=True, max_question_batches=1)
+    model = FakeModel(responses=[plan_question("第一批问题"), plan_question("最终缺口一"),
+                                 plan_question("最终缺口二")])
+    result = workflow.start(task, settings, root, model=model)
+    assert result["status"] == "needs_input" and pending(result)["batch"] == 1
+    human.answer(result["run_id"], root, request_id=pending(result)["id"],
+                 version=pending(result)["version"], text="补充一")
+    result = workflow.resume(result["run_id"], settings, root, model=model)
+    assert result["status"] == "needs_input" and pending(result)["final"] is True
+    human.answer(result["run_id"], root, request_id=pending(result)["id"],
+                 version=pending(result)["version"], text="补充二")
+    result = workflow.resume(result["run_id"], settings, root, model=model)
+    assert result["status"] == "needs_input" and pending(result)["final"] is True
+    assert len(result["question_batches"]) == 1
+    assert len(result["question_handovers"]) == 2
+
+
+def test_blocked_subtask_is_visible_and_can_be_retried(tmp_path):
+    task, settings, root = setup(tmp_path, plan_enabled=True)
+    blocked = turn("ImplementationReport", {"status": "blocked", "summary": "缺少运行环境",
+        "evidence": [], "next_steps": [], "questions": []})
+    first = workflow.start(task, settings, root, model=FakeModel(responses=[plan_ready(), blocked]))
+    assert first["status"] == "completed", first
+    assert first["stop_reason"] == "subtask_blocked"
+    assert first["plan_status"]["state"] == "blocked"
+    assert "计划子任务报告阻塞" in next_action(JobStore(root).get(first["run_id"]))
+    plan_version = first["plan"]["version"]
+    second = workflow.retry(first["run_id"], settings, root, reason="补齐环境后继续",
+        model=FakeModel(responses=[write(), implement_done(), review_approved()]))
+    assert second["status"] == "awaiting_approval", second
+    state = JobStore(root).get(second["run_id"])
+    assert state["plan"]["version"] == plan_version
+    assert planner.status(state)["completed"] == 1
+
+
+def test_sync_after_local_answer_reports_already_answered(tmp_path, monkeypatch):
+    result, root = waiting_plan_question(tmp_path, monkeypatch)
+    forge = FakeCommentForge()
+    human.post_issue(result["run_id"], root, forge=forge)
+    request = pending(result)
+    human.answer(result["run_id"], root, request_id=request["id"],
+                 version=request["version"], text="本地先答复")
+    synced = human.sync_issue(result["run_id"], root, forge=forge)
+    assert synced["already_answered"] is True
+    assert synced["answered_channel"] == "cli"
+    assert synced["requirements_revision"] == 1
+    assert JobStore(root).get(result["run_id"])["requirements_revision"] == 1
+
+
+def test_subtask_issue_body_with_secret_is_rejected_before_creation(tmp_path):
+    task, settings, root = setup(tmp_path, plan_enabled=True)
+    subtasks = [subtask("first", goal="使用 sk-" + "a" * 30, track="issue",
+                        track_reason="需要独立跟踪"), subtask("second")]
+    first = workflow.start(task, settings, root, issue=ISSUE,
+        model=FakeModel(responses=[plan_ready(subtasks, split="sequential")]), stop_after="plan")
+    forge = FakeMappingForge()
+    with pytest.raises(StateError):
+        mapping.map_subtasks(first["run_id"], root, forge)
+    assert forge.created == []
+    state = JobStore(root).get(first["run_id"])
+    assert state["subtask_mappings"][0]["status"] == "failed"
+
+
+def test_multi_subtask_report_distinguishes_each_subtask(tmp_path):
+    task, settings, root = setup(tmp_path, plan_enabled=True)
+    subtasks = [subtask("first"), subtask("second", depends_on=["first"])]
+    result = workflow.start(task, settings, root, model=FakeModel(responses=[
+        plan_ready(subtasks, split="sequential"), write(), implement_done(), write(3),
+        implement_done(), review_approved()]))
+    assert result["status"] == "awaiting_approval"
+    html = build(JobStore(root).get(result["run_id"]), root / "runs" / result["run_id"], Path.cwd())
+    assert "子任务实现报告" in html and "只属于最后一个子任务" in html
+    assert "完成 2/2" in html
+
+
+def test_issue_waiting_run_auto_posts_and_watch_scans_it(tmp_path, monkeypatch):
+    monkeypatch.setenv("REPOPILOT_OWNER", "owner-login")
+    task, settings, root = setup(tmp_path, plan_enabled=True, issue_comments_enabled=True)
+    forge = FakeCommentForge()
+    monkeypatch.setattr("repopilot.delivery.forge.open_forge", lambda *_, **__: forge)
+    result = workflow.start(task, settings, root, issue=ISSUE,
+        model=FakeModel(responses=[plan_question("自动投递的问题")]))
+    assert result["status"] == "needs_input"
+    assert result["auto_comment"]["status"] == "posted"
+    assert forge.posts == 1
+    state = JobStore(root).get(result["run_id"])
+    assert state["human_requests"][0]["delivery"]["status"] == "delivered"
+    assert result["run_id"] in human.waiting_comment_runs(root)
+
+    calls = []
+    monkeypatch.setattr(watcher, "load_settings", lambda: settings)
+    monkeypatch.setattr(watcher.workflow, "resume",
+                        lambda *_, **__: calls.append("resume") or {"status": "needs_input"})
+    monkeypatch.setattr(watcher.human, "sync_issue",
+                        lambda *_, **__: calls.append("sync") or {"synced": True})
+    handled = watcher.run_waiting_job(root, result["run_id"])
+    assert calls == ["resume", "sync", "resume"]
+    assert handled["kind"] == "comment"
+
+
+def test_auto_comment_failure_keeps_the_run_waiting(tmp_path, monkeypatch):
+    monkeypatch.delenv("REPOPILOT_OWNER", raising=False)
+    monkeypatch.setattr(comments, "default_env_file", lambda: tmp_path / "missing.env")
+    monkeypatch.setattr("repopilot.delivery.forge.open_forge", lambda *_, **__: FakeCommentForge())
+    task, settings, root = setup(tmp_path, plan_enabled=True, issue_comments_enabled=True)
+    result = workflow.start(task, settings, root, issue=ISSUE,
+        model=FakeModel(responses=[plan_question("没有负责人时的问题")]))
+    assert result["status"] == "needs_input"
+    assert result["auto_comment"]["status"] == "failed"
+    assert result["auto_comment"]["reason"] == "registered_owner_required"
+    assert JobStore(root).get(result["run_id"])["human_requests"][0]["delivery"] is None
+    assert watcher.WatchConfig(targets=[watcher.WatchTarget(task=tmp_path / "task.yaml")]).poll_comments is True

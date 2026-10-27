@@ -101,10 +101,12 @@ class RuntimeSettings(Contract):
     request_timeout_seconds: float = Field(default=30, gt=0, le=120)
     max_run_cost_cny: float = Field(default=2, gt=0)
     budget_cny: float = Field(default=200, gt=0)
-    # M3：先规划再顺序执行；不拆分的小任务只多一次规划报告。
-    plan_enabled: bool = False
+    # M3：新任务默认先规划；--no-plan保留单Agent小任务路径。
+    plan_enabled: bool = True
     max_plan_subtasks: int = Field(default=6, ge=1, le=8)
     max_question_batches: int = Field(default=3, ge=1, le=5)
+    # Issue任务等待Clarification时自动发父Issue评论；本地任务仍用CLI。
+    issue_comments_enabled: bool = True
     # 保守估算参数，不代表供应商的实际账单单价。
     input_cny_per_million: float = Field(default=3, gt=0)
     output_cny_per_million: float = Field(default=12, gt=0)
@@ -161,6 +163,8 @@ def load_settings(env_file: Path | None = None) -> RuntimeSettings:
         reasoning_effort=get("DS_REASONING_EFFORT", "low") if legacy else "low",
         budget_cny=get("REPOPILOT_BUDGET_CNY", 200),
         memory_enabled=get("REPOPILOT_MEMORY_ENABLED", "false"),
+        plan_enabled=get("REPOPILOT_PLAN_ENABLED", "true"),
+        issue_comments_enabled=get("REPOPILOT_ISSUE_COMMENTS_ENABLED", "true"),
     )
     for key in ("input_cny_per_million", "output_cny_per_million"):
         value = get("REPOPILOT_" + key.upper(), None)
@@ -172,7 +176,7 @@ def load_settings(env_file: Path | None = None) -> RuntimeSettings:
 EXECUTION_OPTIONS = {"max_model_calls", "max_tool_calls", "max_edits", "max_rework", "max_output_tokens",
                      "max_context_bytes", "run_timeout_seconds", "request_timeout_seconds", "max_run_cost_cny",
                      "thinking", "reasoning_effort", "memory_enabled", "plan_enabled",
-                     "max_plan_subtasks", "max_question_batches"}
+                     "max_plan_subtasks", "max_question_batches", "issue_comments_enabled"}
 
 
 def execution_options(value):

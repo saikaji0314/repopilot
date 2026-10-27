@@ -185,8 +185,10 @@ class GitLab(Forge):
     def issue_comments(self, repository, number):
         result = []
         for page in range(1, 6):
+            # GitLab Notes默认desc；显式升序并保留created_at，边界判断仍会再核对时间。
             values = self.request("GET", f"/projects/{self.project(repository)}/issues/{number}/notes",
-                                  params={"per_page": 100, "page": page})
+                                  params={"per_page": 100, "page": page,
+                                          "sort": "asc", "order_by": "created_at"})
             if not isinstance(values, list):
                 raise GitLabError("gitlab_invalid_response")
             result.extend(self._comment(repository, number, item) for item in values)

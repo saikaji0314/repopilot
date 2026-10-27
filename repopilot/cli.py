@@ -20,6 +20,7 @@ STATUS_FIELDS = ('run_id', 'status', 'phase', 'in_flight', 'stop_reason', 'revie
                  'report', 'review_report', 'verified', 'issue', 'approval', 'pull_request',
                  'human_requests', 'requirements_revision', 'knowledge_snapshot', 'knowledge_history',
                  'decision_records', 'publication', 'task_brief', 'plan', 'plan_status', 'plan_progress',
+                 'plan_refresh_history', 'plan_refresh_required',
                  'subtask_mappings', 'question_batches', 'question_handovers', 'question_limit',
                  'platform_preflight')
 
@@ -45,6 +46,9 @@ def _execution_options(parser, name):
                         help='启用仓库事实检索；--no-memory关闭，新运行默认关闭')
     parser.add_argument('--plan', dest='plan_enabled', action=argparse.BooleanOptionalAction, default=None,
                         help='先整理任务说明与顺序子任务；--no-plan保持原单Agent流程')
+    parser.add_argument('--issue-comments', dest='issue_comments_enabled',
+                        action=argparse.BooleanOptionalAction, default=None,
+                        help='Issue任务等待澄清时自动发评论并轮询回复；--no-issue-comments只留本地答复')
 
 
 def _task_options(parser, name):
@@ -108,7 +112,7 @@ def _run_settings(args):
     overrides = load_profile(args.profile) if getattr(args, 'profile', None) else {}
     overrides.update({key: getattr(args, key) for key in
                       ('max_context_bytes', 'max_tool_calls', 'max_run_cost_cny', 'max_rework',
-                       'memory_enabled', 'plan_enabled')
+                       'memory_enabled', 'plan_enabled', 'issue_comments_enabled')
                       if getattr(args, key, None) is not None})
     return type(settings).model_validate({**settings.model_dump(), **overrides}), overrides
 
@@ -194,7 +198,11 @@ def execute_command(args):
         return {'status': 'ok', 'jobs': JobStore(args.output).list()}
     if args.command == 'status':
         state = JobStore(args.output).get(args.run_id)
-        return {key: state.get(key) for key in STATUS_FIELDS}
+        values = {key: state.get(key) for key in STATUS_FIELDS}
+        # plan_status是派生事实，不要求快照文件存在；与plan show、报告使用同一纯函数。
+        from repopilot.planning import planner
+        values["plan_status"] = planner.status(state)
+        return values
     if args.command == 'report':
         from repopilot.presentation import report as report_module
         state = JobStore(args.output).get(args.run_id)

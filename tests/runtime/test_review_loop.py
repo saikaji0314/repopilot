@@ -79,7 +79,10 @@ def setup(tmp_path, **overrides):
     repo = make_repo(tmp_path)
     task = Task(id="review", request="修改 app.py", repository=repo,
                 checks={"unit": Check(argv=["{python}", "-c", "print('checked')"])})
-    return task, RuntimeSettings(api_key="synthetic-private-key", **overrides), tmp_path / "runtime"
+    options = {"api_key": "synthetic-private-key", "plan_enabled": False,
+               "issue_comments_enabled": False}
+    options.update(overrides)
+    return task, RuntimeSettings(**options), tmp_path / "runtime"
 
 
 def write_change(path, value):

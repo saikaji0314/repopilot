@@ -72,7 +72,8 @@ class PhaseRunner:
         if self.workspace is not None and "knowledge_snapshot" not in self.state:
             knowledge.sync_answers(self.state, self.store_root, (self.settings.api_key.get_secret_value(),))
             knowledge.freeze(self.state, self.store_root, root)
-        self.state["phase"] = ("plan" if self.settings.plan_enabled and not self.state.get("plan")
+        self.state["phase"] = ("plan" if self.settings.plan_enabled and
+                               (not self.state.get("plan") or self.state.get("plan_refresh_required"))
                                else "implement")
 
     def _recovery_payload(self, payload):

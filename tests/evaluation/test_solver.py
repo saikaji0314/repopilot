@@ -29,7 +29,8 @@ def inputs(tmp_path):
     task = Task(id='benchmark', request=request, repository=repo,
                 checks={'unit': Check(argv=['{python}', '-c', 'print("checked")'])},
                 execution=ExecutionConfig(backend='docker', image='sha256:' + 'c' * 64))
-    settings = RuntimeSettings(api_key='synthetic-private-key', max_model_calls=10)
+    settings = RuntimeSettings(api_key='synthetic-private-key', max_model_calls=10,
+                               plan_enabled=False)
     return case, task, settings, tmp_path / 'runtime', tmp_path / 'attempt'
 
 

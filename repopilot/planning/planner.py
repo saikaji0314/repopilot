@@ -65,6 +65,7 @@ def record(state, plan, projected):
     state["plan"] = plan.model_dump(mode="json")
     state["plan_progress"] = {"order": list(plan.order), "current": None, "results": [],
                               "started_at": timestamp()}
+    state.pop("plan_refresh_required", None)
     brief_store.commit(state, projected)
     return state["plan"]
 
@@ -155,8 +156,14 @@ def payload(state):
     if not plan:
         return None
     results = result_map(state)
+    brief = state.get("task_brief") or {}
+    current_revision = int(brief.get("revision") or 0)
     return {"version": plan["version"], "split": plan["split"], "reason": plan["split_reason"],
             "summary": plan["summary"], "order": plan["order"],
+            "brief_revision": plan.get("brief_revision"),
+            "brief_sha256": plan.get("brief_sha256"),
+            "current_brief_revision": current_revision,
+            "stale": current_revision != int(plan.get("brief_revision") or 0),
             "subtasks": [{"id": item["id"], "title": item["title"], "goal": item["goal"],
                           "acceptance": item["acceptance"], "boundaries": item["boundaries"],
                           "depends_on": item["depends_on"],

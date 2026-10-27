@@ -1,5 +1,6 @@
 """内部计划到外部子Issue的映射：按需创建、标记去重、能力不支持时保留本地计划。"""
 
+from repopilot.knowledge.documents import checked_body
 from repopilot.storage.jobs import JobStore, StateError, job_lock, timestamp
 from repopilot.planning.contracts import PlanFault
 from . import planner
@@ -102,14 +103,24 @@ def map_subtasks(run_id, root, forge):
                 store.save(state)
                 continue
             try:
-                value = forge.create_issue(issue["repository"],
-                                           title=_title(state, subtask),
-                                           body=_body(state, subtask, marker_text))
+                # 子Issue正文同样会发到公开平台，按评论渠道的凭证形态检查。
+                try:
+                    title = checked_body(_title(state, subtask))
+                    body = checked_body(_body(state, subtask, marker_text))
+                except Exception as exc:
+                    _record(state, subtask, status="failed", kind=None, marker=marker_text,
+                            plan_version=plan["version"], parent_issue=issue["url"],
+                            error_type=type(exc).__name__, note=str(exc))
+                    store.save(state)
+                    raise
+                value = forge.create_issue(issue["repository"], title=title, body=body)
             except Exception as exc:
-                _record(state, subtask, status="failed", kind=None, marker=marker_text,
-                        plan_version=plan["version"], parent_issue=issue["url"],
-                        error_type=type(exc).__name__)
-                store.save(state)
+                current = existing(state, subtask["id"]) or {}
+                if current.get("status") != "failed":
+                    _record(state, subtask, status="failed", kind=None, marker=marker_text,
+                            plan_version=plan["version"], parent_issue=issue["url"],
+                            error_type=type(exc).__name__)
+                    store.save(state)
                 raise
             relationship = {"native": False,
                             "reason": (preflight.get("native_sub_issues") or {}).get("evidence")
@@ -135,11 +146,19 @@ def map_subtasks(run_id, root, forge):
 
 
 def show(run_id, root):
-    """本地只读查看计划、进度与映射；不加载平台凭证。"""
+    """本地只读查看计划、历史任务说明与映射；不加载平台凭证。"""
     state = JobStore(root).get(run_id)
+    history = state.get("task_brief_history") or {}
+    versions = sorted(
+        ({"revision": item.get("revision"), "sha256": identifier,
+          "goal": item.get("goal"), "acceptance": item.get("acceptance"),
+          "resolved": item.get("resolved")} for identifier, item in history.items()),
+        key=lambda item: int(item.get("revision") or 0))
     return {"status": "ok", "run_id": run_id, "task_brief": state.get("task_brief"),
+            "task_brief_history": history, "task_brief_versions": versions,
             "plan": state.get("plan"), "plan_status": planner.status(state),
             "plan_progress": state.get("plan_progress"),
             "plan_history": state.get("plan_history") or [],
+            "plan_refresh_history": state.get("plan_refresh_history") or [],
             "subtask_mappings": state.get("subtask_mappings") or [],
             "platform_preflight": state.get("platform_preflight")}

@@ -1,6 +1,6 @@
 # 任务说明、计划与子Issue
 
-更新：2026-10-27。范围：单仓库父任务可选先整理任务说明与顺序子任务，集中提问计数，以及按需把子任务映射到父Issue评论／子Issue。当前只验证本地机制和模拟平台协议；没有真实模型规划效果或真实平台写入结论。
+更新：2026-10-27。范围：单仓库父任务默认先整理任务说明与顺序子任务，集中提问计数，以及按需把子任务映射到父Issue评论／子Issue。当前只验证本地机制和模拟平台协议；没有真实模型规划效果或真实平台写入结论。
 
 ## 为什么先加这一层
 
@@ -11,7 +11,7 @@
 - 计划必须写成有验收、依赖和修改边界的子任务；有环或缺少前置产物就不执行；
 - 只有需要独立外部跟踪的子任务才创建或复用子Issue，内部步骤不建工单。
 
-`--plan`是显式选项，默认关闭。关闭时仍是原来的单Agent流程，避免小任务被强制多一次规划调用。
+新任务默认先规划，每个新运行多一次规划调用；`--no-plan`或`REPOPILOT_PLAN_ENABLED=false`保留原来的单Agent小任务路径。只读调查没有worktree时自动跳过规划，不报错。
 
 ## 一次计划怎么形成
 
@@ -30,10 +30,13 @@ flowchart LR
 ```
 
 ```powershell
-repopilot run task.yaml --plan --output .local/runtime
-repopilot issue https://github.com/OWNER/REPO/issues/1 --task task.yaml --plan
+repopilot run task.yaml --output .local/runtime          # 默认规划
+repopilot run task.yaml --no-plan --output .local/runtime # 保留单Agent路径
+repopilot issue https://github.com/OWNER/REPO/issues/1 --task task.yaml
 repopilot plan show RUN_ID --output .local/runtime
 ```
+
+`plan show`同时返回`plan_history`、`plan_refresh_history`和按版本排序的`task_brief_versions`，可回查任务说明历史，不需要直接读SQLite。
 
 规划角色只能读文件、检索和读取固定资料，不能编辑。它返回`PlanReport`：
 
@@ -41,7 +44,7 @@ repopilot plan show RUN_ID --output .local/runtime
 - `split=none`：一个子任务，不拆分；
 - `split=sequential`：至少两个子任务，按依赖声明顺序候选；
 - `split_reason`：必须说明不拆或顺序拆分的理由；
-- 每个子任务必须有`goal`、`inputs`、`outputs`、`acceptance`、`depends_on`、`boundaries`；跨任务共享接口写`interfaces`；
+- 每个子任务必须有`goal`、`inputs`、`outputs`、`acceptance`、`boundaries`；`depends_on`可空，跨任务共享接口写`interfaces`；
 - 只有独立可跟踪的子任务才写`track=issue`并说明`track_reason`。`split=none`时禁止创建子Issue。
 
 程序不采用模型自报的执行顺序，而是重新做稳定拓扑排序；未知依赖、重复ID、环和超过子任务上限都会拒绝。记录后的`plan`、`brief`和后续每个子任务结果都进入运行状态与报告，不能被实现方改写计划来让自己通过。
@@ -62,8 +65,9 @@ repopilot plan show RUN_ID --output .local/runtime
 - 同一上下文重复进入等待不新增请求、不重复计数；
 - 每批问题去重、编号，并记录阻塞的阶段／子任务；问题为空时才用摘要作为一条请求；
 - 前一批没答复时不会继续跑模型追问；
-- 达到上限后只生成一份“最终缺口说明”，不开启第四批；负责人补齐后可以恢复，原批次计数和记录保留；
+- 达到上限后生成“最终缺口说明”，不开启新的自动批次；负责人补齐后可以恢复，原批次计数和记录保留。补齐后再次出现新缺口时，会再生成一份最终缺口，批次计数不再增加；每次生成都保留请求和答复记录；
 - 答复会把新版本写进任务说明`task_brief`（目标和验收等由规划整理，已答复问题进入`resolved`），并使旧检查、审核和批准失效；之后显式`resume`。
+- 已固定计划时，答复使任务说明版本前进会在恢复时自动回到规划阶段重算计划；旧计划、旧进度和版本关系保存在`plan_history`／`plan_refresh_history`，实现和审核载荷会标明计划基于哪个任务说明版本。重算可能重跑已开始的子任务，这是当前明确的取舍。
 
 本机答复：
 
@@ -95,8 +99,9 @@ REPOPILOT_OWNER=owner-login
 
 - `human preflight`只读，探查令牌身份、评论读取能力、原生子Issue能力和建单权限；任何写入前都先做这一步或由`post`/`plan map`自动做。
 - `human post`先保存发送意图和稳定标记，再发评论；同一请求的标记已存在时复用，不重复发送。响应丢失后重试也先查标记。
-- `human sync`按发送时保存的评论ID定位批次评论，只读它之后的评论；批次评论被删除时不拿别人复制的标记当替代边界。
-- `human sync`只采纳批次评论之后、作者等于`REPOPILOT_OWNER`、非机器人、非系统、非Repopilot标记评论的文本；纯引用、空文本和问题原文回声不算答复。
+- `human sync`按发送时保存的评论ID定位批次评论，并按`created_at`核对评论确实晚于批次；GitLab默认倒序也会先统一升序。批次评论被删除时不拿别人复制的标记当替代边界。
+- `human sync`只采纳批次评论之后、作者等于`REPOPILOT_OWNER`、非机器人、非系统评论的文本；负责人“引用批次 + 回答”会先剥掉引用再采纳，纯引用、空文本和问题原文回声不算答复。被跳过的候选尽量记录原因，便于操作者解释。
+- Issue任务进入`needs_input`时，程序按已保存的批次自动发评论；失败会记录`auto_comment`原因但保持等待。监听器每轮按`poll_seconds`有节制地扫描等待中的批次，读取负责人回复后自动`resume`；同一运行不会在没有新状态时重复创建模型工作。
 - 其他人的评论只作线索，不推进任务；普通业务评论不能批准交付，批准仍使用绑定完整SHA的`approve`。
 - 评论被删除、批次评论找不到、作者不符或正文只有引用时，任务保持等待，不把“没有答复”当成同意。
 - 同一批次的第二遍`sync`只返回已答复记录，不重复增加版本或证据失效次数。
@@ -116,6 +121,7 @@ repopilot plan map RUN_ID --output .local/runtime
 - GitLab没有可依赖的原生子Issue层级，创建普通Issue并明确标为`linked`，不声称原生子项；
 - 平台不支持建单时保留`local_only`映射，不破坏本地计划；
 - 每个子任务带稳定标记；重试或重复执行先查标记和已保存映射，不重复创建；
+- 子Issue正文和标题按评论渠道同样的常见凭证形态检查；不合格时不创建并保留失败映射原因；
 - 映射记录保留父Issue、计划版本、外部工单和说明；程序不删除外部工单；
 - 不做子Issue状态回写、关闭父Issue或自动合并。
 
@@ -147,8 +153,8 @@ repopilot plan map RUN_ID --output .local/runtime
 - 没有真实GitHub／GitLab评论、子Issue或原生层级写入；GitLab子项一律按链接映射准备；
 - 没有并行执行、两个实现槽位、每个子任务独立worktree或内部整合；这些属于M4；
 - 没有按子任务双审、争议AB复核或发现合并；这些属于M5；
-- 没有自动发布评论的后台轮询；`post`/`sync`由操作者显式执行，监听器不负责评论往返；
-- 没有编辑／删除评论的增量同步；评论删除发生在答复导入后，已记录答复仍保留在运行状态；
+- 自动评论投递与轮询只在本地Fake／MockTransport机制中验证；没有真实平台端到端轮询，也没有评论编辑／删除的增量同步；答复导入后评论再被删除，已记录答复仍保留在运行状态；
+- 轮询按`poll_seconds`进行，不保证秒级响应；同一运行在已有等待结果时不会重复创建模型工作，但自动恢复仍可能因人工答复或新缺口产生新的模型调用；
 - 评论扫描最多5页×100条，超过会明确失败而不是把截断当完整答复；
 - 修改边界是文字证据，不是操作系统级编辑限制；计划仍可能漏需求或拆得不合理，需要人工在批准前核对。
 

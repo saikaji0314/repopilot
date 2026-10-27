@@ -26,8 +26,10 @@ def setup(tmp_path, **overrides):
     repo = tmp_path / "repo"
     repo.mkdir()
     (repo / "README.md").write_text("sample source", encoding="utf-8")
+    options = {"api_key": "synthetic-private-key", "plan_enabled": False}
+    options.update(overrides)
     return (Task(id="sample", request="inspect README", repository=repo),
-            RuntimeSettings(api_key="synthetic-private-key", **overrides), tmp_path / "runtime")
+            RuntimeSettings(**options), tmp_path / "runtime")
 
 
 def test_framework_tool_loop_returns_report_and_redacts_saved_artifacts(tmp_path):

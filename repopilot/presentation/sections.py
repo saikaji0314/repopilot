@@ -2,6 +2,7 @@
 
 from html import escape
 import json
+from repopilot.planning import planner
 from .formatting import safe_url, redact, tail, table
 from .layout import diff_view
 
@@ -63,6 +64,25 @@ def implementation(report, root):
     return "\n".join(parts)
 
 
+def subtask_reports(state, root):
+    """计划模式下列出每个子任务结果；最后一份实现报告不能代表全部子任务。"""
+    results = (state.get("plan_progress") or {}).get("results") or []
+    if not results or not state.get("plan"):
+        return ""
+    rows = []
+    for item in results:
+        commit = str(item.get("commit") or "")
+        evidence = item.get("evidence") or []
+        rows.append([escape(str(item.get("id"))), escape(redact(str(item.get("title") or ""), root)),
+                     escape(str(item.get("status"))),
+                     escape(redact(str(item.get("summary") or ""), root)),
+                     escape(str(len(evidence))),
+                     f"<code>{escape(commit[:10])}</code>" if commit else "-"])
+    note = '<p class="note">上方“实现报告”只属于最后一个子任务；按子任务结果与提交如下。</p>'
+    return "<h2>子任务实现报告</h2>" + note + table(
+        ["子任务", "标题", "状态", "摘要", "证据数", "提交"], rows)
+
+
 def human_requests(state, root):
     requests = state.get("human_requests") or []
     if not requests:
@@ -107,11 +127,18 @@ def plan(state, root):
         parts.append("<table><tbody>" + "".join(
             f"<tr><th>{escape(str(label))}</th><td>{value}</td></tr>" for label, value in rows) + "</tbody></table>")
     if plan_data:
-        status = state.get("plan_status") or {}
+        status = planner.status(state)
+        brief_revision = plan_data.get("brief_revision")
+        current_revision = brief.get("revision")
+        stale = current_revision is not None and brief_revision is not None and current_revision != brief_revision
         parts.append(f"<p class='meta'>计划 <code>{escape(str(plan_data.get('version')))}</code>"
                      f" · {escape(str(plan_data.get('split')))} · "
                      f"完成 {escape(str(status.get('completed', 0)))}/{escape(str(status.get('total', 0)))}"
+                     f" · 任务说明 r{escape(str(brief_revision))}（当前 r{escape(str(current_revision))}）"
                      f" · {escape(str(plan_data.get('split_reason') or ''))}</p>")
+        if stale:
+            parts.append('<p class="bad">计划基于旧版任务说明；答复后应由程序重新规划，'
+                         '未重规划前不能把旧计划当作当前验收。</p>')
         results = {item.get("id"): item for item in progress.get("results") or []}
         rows = []
         for subtask in plan_data.get("subtasks") or []:
