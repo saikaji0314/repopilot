@@ -1,6 +1,6 @@
 # 增量27：M3 澄清、计划与子Issue
 
-日期：2026-10-27。基线：dev/79b9b84；实现提交c7c6040，批次绑定加固794db06，独立复核修复0e0d92b（F1—F13）。对应原始规格第5、7、12节及A01／A02／A05／A06／A08。本文记录本地机制验证，不代替真实模型或真实平台写入验收。
+日期：2026-10-27。基线：dev/79b9b84；实现提交c7c6040，批次绑定加固794db06，独立复核修复0e0d92b，评论轮询槽位补丁84e7577（F1—F13）。对应原始规格第5、7、12节及A01／A02／A05／A06／A08。本文记录本地机制验证，不代替真实模型或真实平台写入验收。
 
 ## 本轮交付
 
@@ -26,7 +26,7 @@
 | 新增计划／提问／映射回归 | 33项通过（包含A01单任务、A02答复更新、A05三批到限、A06环／缺依赖／缺前置产物、A08凭据去重与本地映射、Issue评论问答、自动投递/轮询、默认规划、自动重规划和知识导出） |
 | 新增平台协议回归 | 6项通过（GitHub／GitLab身份、评论、子Issue能力预检与写接口；全部为模拟HTTP） |
 | 复审前完整回归 | 637通过／16跳过，424.06秒；复审修复新增/修改用例后不再是最终结果 |
-| 完整回归（复审后最终代码） | **649通过／16跳过，471.69秒** |
+| 完整回归（复审后最终代码） | **649通过／16跳过，478.77秒** |
 | 编译与空白检查 | `compileall`通过；`git diff --check`无输出 |
 
 最终完整命令：
@@ -34,7 +34,7 @@
 ```powershell
 $t = (Resolve-Path .local).Path + '\tmp\m3-system-temp'
 $env:TEMP=$t; $env:TMP=$t; $env:TMPDIR=$t; $env:GIT_CEILING_DIRECTORIES=$t
-python -m pytest tests -q -p no:cacheprovider --basetemp .local/tmp/m3-review-final --tb=short
+python -m pytest tests -q -p no:cacheprovider --basetemp .local/tmp/m3-review-final2 --tb=short
 ```
 
 过程说明：第一次完整运行在本地同时启动另一个pytest时长时间无输出，已终止且不计为任何结果；随后先分别跑运行／非运行目录，再单独跑完整套件。所有失败与修正过程不删减：新增用例首轮出现7项失败，原因是测试对“计划必须拆分才能创建子Issue”的期望写错、`sync`重复答复返回值缺少版本字段和映射说明沿用了内部占位；修正实现或测试后重跑通过。另将审核阶段工具改为真正的只读集合，并让批次评论按发送时保存的评论ID定位、避免删除后复制标记绕过边界。
@@ -50,7 +50,7 @@ python -m pytest tests -q -p no:cacheprovider --basetemp .local/tmp/m3-review-fi
 
 ## 复审补充（M3独立审核）
 
-日期：2026-10-27。依据：M3独立审核的F1—F13。用户确认F4“默认开启规划，保留--no-plan”、F5“自动投递并加有节制轮询”、F6“答复后自动重新规划”。本轮只修M3边界，不扩展到M4/M5，不改M1/M2的请求、批准、恢复和知识刷新语义。复审修复提交为0e0d92b。
+日期：2026-10-27。依据：M3独立审核的F1—F13。用户确认F4“默认开启规划，保留--no-plan”、F5“自动投递并加有节制轮询”、F6“答复后自动重新规划”。本轮只修M3边界，不扩展到M4/M5，不改M1/M2的请求、批准、恢复和知识刷新语义。复审修复提交为0e0d92b，评论轮询槽位补丁为84e7577。
 
 | 编号 | 处理 |
 | --- | --- |
@@ -77,4 +77,4 @@ python -m pytest tests -q -p no:cacheprovider --basetemp .local/tmp/m3-review-fi
 - `test_after_batch_limit_each_new_gap_keeps_its_own_final_record`、`test_blocked_subtask_is_visible_and_can_be_retried`、`test_sync_after_local_answer_reports_already_answered`、`test_subtask_issue_body_with_secret_is_rejected_before_creation`：F7—F10。
 - 平台协议测试补GitLab升序参数；`test_planning.py`同时覆盖纯引用、机器人、非负责人和已删除批次评论。
 
-验证边界与上一节相同：FakeModel、真实本地Git／SQLite／CLI、`httpx.MockTransport`；自动投递/轮询只有本地队列和模拟平台协议，没有真实GitHub／GitLab评论往返、真实模型规划效果或Docker。复审后最终完整回归为**649通过／16跳过，471.69秒**；M3专项39项通过，完整套件已包含既有回归。实现自测不代替独立复核。
+验证边界与上一节相同：FakeModel、真实本地Git／SQLite／CLI、`httpx.MockTransport`；自动投递/轮询只有本地队列和模拟平台协议，没有真实GitHub／GitLab评论往返、真实模型规划效果或Docker。复审后最终完整回归为**649通过／16跳过，478.77秒**；M3专项39项通过，完整套件已包含既有回归。实现自测不代替独立复核。
