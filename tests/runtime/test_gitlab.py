@@ -153,12 +153,17 @@ class FakeGitLab:
         self.state, self.merge_requests, self.posts, self.pushes = state, [], 0, 0
         self.lose_response = False
         self.current_issue = ISSUE
+        self.remote_head = None
 
     def issue(self, url):
         return self.current_issue
 
     def push(self, path, repo, branch, commit):
         self.pushes += 1
+        self.remote_head = commit
+
+    def branch_head(self, path, repo, branch):
+        return self.remote_head
 
     def fail(self, code, *, retry_after=0):
         return GitLabError(code, retry_after=retry_after)

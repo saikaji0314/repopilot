@@ -213,12 +213,20 @@ def publish(run_id, root, forge, *, note=None):
                           f"{publication.get('public_note') or ''}\n\n{marker}"))
             if not forge.pull_matches(pull, repository, approval["commit"]):
                 raise forge.fail("published_head_mismatch")
+            # PR/MR可能仍返回旧提交，复用时也必须独立读取当前分支，不能靠push间接检查。
+            current_head = forge.branch_head(workspace.repository(), repository, publication["branch"])
+            if current_head is None:
+                raise forge.fail("remote_branch_missing")
+            if current_head != approval["commit"]:
+                raise forge.fail("remote_branch_conflict")
             state["pull_request"] = {"url": pull["url"], "number": pull["number"],
                                      "commit": approval["commit"], "at": timestamp()}
             state["status"], state["in_flight"], state["stop_reason"] = "published", None, "draft_pr_created"
             store.save(state)
-        except Exception:
+        except Exception as exc:
             state["status"], state["in_flight"] = "publication_failed", None
+            if isinstance(exc, ForgeError):
+                state["stop_reason"] = str(exc)
             store.save(state)
             raise
         return {"run_id": run_id, "status": "published", "pull_request": state["pull_request"]}

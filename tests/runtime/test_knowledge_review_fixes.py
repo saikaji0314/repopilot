@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from repopilot.delivery.forge import publish
+from repopilot.delivery.forge import ForgeError, publish
 from repopilot.execution.workspace import head_commit, run_git
 from repopilot.knowledge.retrieval import search
 from repopilot.orchestration import knowledge, workflow
@@ -210,3 +210,48 @@ def test_cli_history_can_find_old_confirmation_after_deletion(tmp_path, capsys):
     events = json.loads(capsys.readouterr().out)["knowledge"]
     assert [event["event"] for event in events] == ["confirmed", "invalidated"]
     assert events[-1]["reason"] == "source_deleted"
+
+
+@pytest.mark.parametrize("provider", ["github", "gitlab"])
+@pytest.mark.parametrize("current", ["conflict", "missing", "approved"])
+def test_reapproved_draft_requires_current_branch_head(tmp_path, provider, current):
+    task, settings, root, store, original, api = interrupted_candidate(tmp_path, provider=provider)
+    approved = original["reviewed_commit"]
+    conflicting = original["base_commit"]
+    reads = []
+    # 故意让旧观察与当前现场相反，证明发布不信任缓存的匹配／冲突结论。
+    remote = {"head": conflicting if current == "approved" else approved}
+    def branch_head(*_):
+        reads.append(remote["head"])
+        return remote["head"]
+    api.branch_head = branch_head
+    assert publish(original["run_id"], root, api)["status"] == "needs_input"
+    state = JobStore(root).get(original["run_id"])
+    observation = state["publication"]["reconciliations"][-1]
+    assert observation["matches_approved_commit"] is (current != "approved")
+    request = next(r for r in state["human_requests"] if r["status"] == "pending")
+    record = store.inspect(task.repository, "compatibility")
+    store.confirm(task.repository, record["id"], version=record["version"], reason="new material")
+    knowledge.refresh(original["run_id"], root, request_id=request["id"], version=request["version"],
+        commit=head_commit(attach(state, root).path), reason="recheck current material")
+    result = workflow.resume(original["run_id"], settings, root,
+        model=FakeModel(responses=[implement_done(), review_approved()]))
+    assert result["status"] == "awaiting_approval", result
+    approve(JobStore(root).get(original["run_id"]), root)
+    remote["head"] = {"conflict": conflicting, "missing": None, "approved": approved}[current]
+    if current == "approved":
+        assert publish(original["run_id"], root, api)["status"] == "published"
+    else:
+        code = "remote_branch_conflict" if current == "conflict" else "remote_branch_missing"
+        with pytest.raises(ForgeError, match=code):
+            publish(original["run_id"], root, api)
+        failed = JobStore(root).get(original["run_id"])
+        assert failed["status"] == "publication_failed" and failed.get("pull_request") is None
+        assert failed["stop_reason"] == code
+        assert failed["publication"]["branch"] == state["publication"]["branch"]
+        # 人工修复远端后同一个运行可以重试；不把旧的失败观察当永久结论。
+        remote["head"] = approved
+        assert publish(original["run_id"], root, api)["status"] == "published"
+    assert reads[:2] == [observation["branch_head"],
+        {"conflict": conflicting, "missing": None, "approved": approved}[current]]
+    assert api.posts == 1 and api.pushes == 1
