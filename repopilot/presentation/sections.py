@@ -156,6 +156,19 @@ def plan(state, root):
                          escape(redact("；".join(subtask.get("acceptance") or []), root)),
                          outcome_cell])
         parts.append(table(["子任务", "目标", "依赖", "修改边界", "验收", "进度"], rows))
+    refreshes = state.get("plan_refresh_history") or []
+    if refreshes:
+        rows = []
+        for item in refreshes:
+            old_progress = item.get("old_progress") or {}
+            completed = sum(1 for result in old_progress.get("results") or []
+                            if result.get("status") == "completed")
+            rows.append([escape(str(item.get("old_plan"))),
+                         f"r{escape(str(item.get('old_brief_revision')))}",
+                         f"r{escape(str(item.get('new_brief_revision')))}",
+                         escape(str(completed)), escape(str(item.get("at") or ""))])
+        parts.append('<h3>重规划记录</h3>' + table(
+            ["旧计划", "旧任务说明", "新任务说明", "旧已完成子任务", "时间"], rows))
     if mappings:
         rows = [[escape(str(item.get("subtask"))), escape(str(item.get("status"))),
                  escape(str(item.get("kind") or "")),

@@ -733,3 +733,75 @@ def test_auto_comment_failure_keeps_the_run_waiting(tmp_path, monkeypatch):
     assert result["auto_comment"]["reason"] == "registered_owner_required"
     assert JobStore(root).get(result["run_id"])["human_requests"][0]["delivery"] is None
     assert watcher.WatchConfig(targets=[watcher.WatchTarget(task=tmp_path / "task.yaml")]).poll_comments is True
+
+
+def test_legacy_settings_do_not_gain_new_planning_or_comment_defaults():
+    old = RuntimeSettings(api_key="synthetic-old", plan_enabled=False,
+                          issue_comments_enabled=False).model_dump(exclude={"api_key"})
+    old.pop("plan_enabled")
+    old.pop("issue_comments_enabled")
+    current = RuntimeSettings(api_key="synthetic-new")
+    frozen = workflow.frozen_settings(old, current)
+    assert frozen.plan_enabled is False and frozen.issue_comments_enabled is False
+    explicit = workflow.frozen_settings(old, current, {"plan_enabled": True})
+    assert explicit.plan_enabled is True
+
+
+def test_legacy_run_resume_and_retry_do_not_gain_a_plan_phase(tmp_path):
+    task, settings, root = setup(tmp_path)
+    state = workflow.create_job(task, settings, root)
+    saved = JobStore(root).get(state["run_id"])
+    saved["settings"].pop("plan_enabled")
+    saved["settings"].pop("issue_comments_enabled")
+    JobStore(root).save(saved)
+    resumed = workflow.resume(state["run_id"], settings, root,
+        model=FakeModel(responses=[write(), implement_done(), review_approved()]))
+    assert resumed["status"] == "awaiting_approval"
+    assert resumed["plan"] is None and resumed["model_calls"] == 3
+
+    limited_settings = settings.model_copy(update={"max_model_calls": 1})
+    limited = workflow.start(task, limited_settings, root,
+        model=FakeModel(responses=[write(), implement_done()]))
+    assert limited["status"] == "limit_reached"
+    old = JobStore(root).get(limited["run_id"])
+    old["settings"].pop("plan_enabled")
+    old["settings"].pop("issue_comments_enabled")
+    JobStore(root).save(old)
+    retried = workflow.retry(limited["run_id"], limited_settings, root, reason="旧运行继续",
+        overrides={"max_model_calls": 5},
+        model=FakeModel(responses=[write(3), implement_done(), review_approved()]))
+    assert retried["status"] == "awaiting_approval"
+    assert retried["plan"] is None and retried["model_calls"] == 3
+
+
+def test_replan_passes_previous_plan_and_progress_to_planner_and_implementer(tmp_path, monkeypatch):
+    task, settings, root = setup(tmp_path, plan_enabled=True)
+    subtasks = [subtask("first"), subtask("second", depends_on=["first"])]
+    implement_question = turn("ImplementationReport", {"status": "needs_clarification",
+        "summary": "第二步需要确认", "evidence": [], "questions": ["第二步如何做？"], "next_steps": []})
+    payloads = {}
+    original = engine.run_phase
+    def capture(**kwargs):
+        payloads.setdefault(kwargs["phase"], []).append(kwargs["payload"])
+        return original(**kwargs)
+    monkeypatch.setattr(engine, "run_phase", capture)
+    first = workflow.start(task, settings, root, model=FakeModel(responses=[
+        plan_ready(subtasks, split="sequential"), write(), implement_done(), implement_question]))
+    assert first["status"] == "needs_input"
+    old_progress = JobStore(root).get(first["run_id"])["plan_progress"]
+    assert old_progress["results"][0]["status"] == "completed"
+    human.answer(first["run_id"], root, request_id=pending(first)["id"],
+                 version=pending(first)["version"], text="按旧字段实现")
+    done = workflow.resume(first["run_id"], settings, root, model=FakeModel(responses=[
+        plan_ready(subtasks, split="sequential"), write(3), implement_done(),
+        write(4), implement_done(), review_approved()]))
+    assert done["status"] == "awaiting_approval", done
+    assert payloads["plan"][-1]["previous_plan"]["old_progress"]["results"][0]["status"] == "completed"
+    assert payloads["plan"][-1]["previous_plan"]["old_progress"]["results"][0]["commit"] == old_progress["results"][0]["commit"]
+    refresh = payloads["implement"][-1]["plan_refresh"]
+    assert refresh["old_plan"] and refresh["old_progress"]["results"][0]["commit"]
+    assert "先核对旧实现" in refresh["note"]
+    latest = done["plan_refresh_history"][-1]
+    assert latest["new_plan"] == done["plan"]["version"]
+    html = build(JobStore(root).get(first["run_id"]), root / "runs" / first["run_id"], Path.cwd())
+    assert "重规划记录" in html

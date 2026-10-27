@@ -89,6 +89,9 @@ class PhaseRunner:
                    "question_limit": self.settings.max_question_batches}
         if self.state.get("human_answers"):
             payload["human_answers"] = self.state["human_answers"]
+        refresh = planning.refresh_context(self.state)
+        if refresh:
+            payload["previous_plan"] = refresh
         self._recovery_payload(payload)
         self._attach_memory(payload, "plan")
         return payload
@@ -132,6 +135,9 @@ class PhaseRunner:
         plan_view = planning.payload(self.state)
         if plan_view:
             payload["plan"] = plan_view
+        refresh = planning.refresh_context(self.state)
+        if refresh:
+            payload["plan_refresh"] = refresh
         if phase == "rework":
             if self.state["rework_pending"]:
                 self.state["reworks"] += 1

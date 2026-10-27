@@ -23,10 +23,10 @@
 
 | 检查 | 结果 |
 | --- | --- |
-| 新增计划／提问／映射回归 | 33项通过（包含A01单任务、A02答复更新、A05三批到限、A06环／缺依赖／缺前置产物、A08凭据去重与本地映射、Issue评论问答、自动投递/轮询、默认规划、自动重规划和知识导出） |
+| 新增计划／提问／映射回归 | 36项通过（包含A01单任务、A02答复更新、A05三批到限、A06环／缺依赖／缺前置产物、A08凭据去重与本地映射、Issue评论问答、自动投递/轮询、默认规划、自动重规划和知识导出） |
 | 新增平台协议回归 | 6项通过（GitHub／GitLab身份、评论、子Issue能力预检与写接口；全部为模拟HTTP） |
 | 复审前完整回归 | 637通过／16跳过，424.06秒；复审修复新增/修改用例后不再是最终结果 |
-| 完整回归（复审后最终代码） | **649通过／16跳过，478.77秒** |
+| 完整回归（复审后最终代码） | **653通过／16跳过，479.59秒** |
 | 编译与空白检查 | `compileall`通过；`git diff --check`无输出 |
 
 最终完整命令：
@@ -34,7 +34,7 @@
 ```powershell
 $t = (Resolve-Path .local).Path + '\tmp\m3-system-temp'
 $env:TEMP=$t; $env:TMP=$t; $env:TMPDIR=$t; $env:GIT_CEILING_DIRECTORIES=$t
-python -m pytest tests -q -p no:cacheprovider --basetemp .local/tmp/m3-review-final2 --tb=short
+python -m pytest tests -q -p no:cacheprovider --basetemp .local/tmp/m3-r3-full --tb=short
 ```
 
 过程说明：第一次完整运行在本地同时启动另一个pytest时长时间无输出，已终止且不计为任何结果；随后先分别跑运行／非运行目录，再单独跑完整套件。所有失败与修正过程不删减：新增用例首轮出现7项失败，原因是测试对“计划必须拆分才能创建子Issue”的期望写错、`sync`重复答复返回值缺少版本字段和映射说明沿用了内部占位；修正实现或测试后重跑通过。另将审核阶段工具改为真正的只读集合，并让批次评论按发送时保存的评论ID定位、避免删除后复制标记绕过边界。
@@ -77,4 +77,24 @@ python -m pytest tests -q -p no:cacheprovider --basetemp .local/tmp/m3-review-fi
 - `test_after_batch_limit_each_new_gap_keeps_its_own_final_record`、`test_blocked_subtask_is_visible_and_can_be_retried`、`test_sync_after_local_answer_reports_already_answered`、`test_subtask_issue_body_with_secret_is_rejected_before_creation`：F7—F10。
 - 平台协议测试补GitLab升序参数；`test_planning.py`同时覆盖纯引用、机器人、非负责人和已删除批次评论。
 
-验证边界与上一节相同：FakeModel、真实本地Git／SQLite／CLI、`httpx.MockTransport`；自动投递/轮询只有本地队列和模拟平台协议，没有真实GitHub／GitLab评论往返、真实模型规划效果或Docker。复审后最终完整回归为**649通过／16跳过，478.77秒**；M3专项39项通过，完整套件已包含既有回归。实现自测不代替独立复核。
+验证边界与上一节相同：FakeModel、真实本地Git／SQLite／CLI、`httpx.MockTransport`；自动投递/轮询只有本地队列和模拟平台协议，没有真实GitHub／GitLab评论往返、真实模型规划效果或Docker。第一轮复审修复后的完整回归为**649通过／16跳过，478.77秒**；第二轮复审补充见下节。实现自测不代替独立复核。
+
+## 第二轮复审补充（R1—R3）
+
+日期：2026-10-27。针对第二轮复核的R1—R3，继续只修M3范围。
+
+| 编号 | 处理 |
+| --- | --- |
+| R1 旧运行兼容 | `frozen_settings`在旧`settings`缺少`plan_enabled`／`issue_comments_enabled`且没有显式override时注入`false`；旧resume/retry保持原行为，`retry --plan`仍可显式开启。新增旧resume、旧retry和显式override回归 |
+| R2 同仓库并发 | `IssueQueue.begin_comment()`在评论恢复前把对应队列行临时标为`running`并检查同仓库running数；`watch`派发前调用，失败时`restore_comment`归还`needs_input`，子进程正常结束后写回实际状态。新增“同仓库两个等待run最多一个执行／queued Issue同时不认领”的队列回归 |
+| R3 重规划上下文 | 保留“全量重跑”的已确认取舍，但给规划和实现载荷增加`previous_plan`／`plan_refresh`：旧计划、旧进度、每个完成子任务的提交和“工作区已包含上一版实现，先核对再改”的说明；`plan_refresh_history`关联`new_plan`，报告新增“重规划记录”。新增2子任务重规划载荷回归 |
+| P3 | 本轮未改：子任务证据只显示数量；自动评论轮询未做per-run退避；自动resume只写watcher事件，未写入run state；计划blocked仍为`completed`但`next_action`已说明并可retry。`84e7577`的watcher动态逻辑已在本机完整649项套件中覆盖，审核环境沙箱限制另列 |
+
+新增回归：
+
+- `test_legacy_settings_do_not_gain_new_planning_or_comment_defaults`
+- `test_legacy_run_resume_and_retry_do_not_gain_a_plan_phase`
+- `test_comment_resume_occupies_the_repository_slot`
+- `test_replan_passes_previous_plan_and_progress_to_planner_and_implementer`
+
+验证：相关专项57项（计划36＋监听/队列＋平台协议）通过；第二轮复审修复后完整回归为**653通过／16跳过，479.59秒**。仍无真实模型、真实评论／子Issue、Docker或推送；实现自测不代替独立复核。

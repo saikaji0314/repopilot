@@ -183,11 +183,26 @@ def watch(config, root, *, once=False):
                                     emit("worker_interrupted", issue_key=item["issue_key"], error=type(exc).__name__)
                         for future in list(comment_futures):
                             if future.done():
-                                run_id = comment_futures.pop(future)
+                                info = comment_futures.pop(future)
+                                run_id = info["run_id"]
                                 try:
-                                    emit("comment_job_finished", **future.result())
+                                    result = future.result()
                                 except Exception as exc:
-                                    emit("comment_job_failed", run_id=run_id, error=type(exc).__name__)
+                                    result = {"status": "failed", "error": type(exc).__name__}
+                                event = ("comment_job_finished" if result.get("status") != "failed"
+                                         else "comment_job_failed")
+                                emit(event, **({"run_id": run_id} | result))
+                                if result.get("status") == "failed" and info.get("key"):
+                                    try:
+                                        state = JobStore(queue.root).get(run_id)
+                                    except StateError:
+                                        state = {}
+                                    if state.get("status") == "needs_input":
+                                        queue.restore_comment(info["key"], "needs_input",
+                                                              str(result.get("error") or "comment_resume_failed"))
+                                    else:
+                                        queue.finish(info["key"], state.get("status") or "failed",
+                                                     str(result.get("error") or "comment_resume_failed"))
                         while len(futures) + len(comment_futures) < config.max_workers:
                             item = queue.claim(config.max_per_repository)
                             if item is None:
@@ -197,7 +212,7 @@ def watch(config, root, *, once=False):
                         if config.poll_comments and now >= next_comment_poll:
                             slots = config.max_workers - len(futures) - len(comment_futures)
                             if slots > 0:
-                                busy = set(comment_futures.values())
+                                busy = {item["run_id"] for item in comment_futures.values()}
                                 try:
                                     waiting = human.waiting_comment_runs(queue.root)
                                 except Exception as exc:
@@ -208,8 +223,21 @@ def watch(config, root, *, once=False):
                                         break
                                     if run_id in busy:
                                         continue
+                                    state = JobStore(queue.root).get(run_id)
+                                    issue = state.get("issue") or {}
+                                    key = (f"{issue['repository'].lower()}#{issue['number']}"
+                                           if issue.get("repository") and issue.get("number") else None)
+                                    if key:
+                                        try:
+                                            allowed = queue.begin_comment(key, config.max_per_repository)
+                                        except Exception as exc:
+                                            emit("comment_poll_failed", error=type(exc).__name__)
+                                            continue
+                                        if not allowed:
+                                            continue
                                     comment_futures[pool.submit(
-                                        run_waiting_job, str(queue.root), run_id)] = run_id
+                                        run_waiting_job, str(queue.root), run_id)] = {
+                                            "run_id": run_id, "key": key}
                                     busy.add(run_id)
                                     slots -= 1
                                     emit("comment_job_dispatched", run_id=run_id)

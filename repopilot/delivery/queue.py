@@ -71,6 +71,34 @@ class IssueQueue:
         with closing(self.store.connect()) as db, db:
             db.execute("UPDATE issue_queue SET run_id=? WHERE issue_key=?", (run_id, key))
 
+    def begin_comment(self, key, max_per_repository):
+        """把等待中的队列行临时标为running，让评论恢复也占同仓库槽位。
+
+        队列里没有该行时（手工接入的运行）返回True，交由调用方执行；
+        有行但不是needs_input，或同仓库running已达上限时返回False。
+        """
+        with closing(self.store.connect()) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT repository,status FROM issue_queue WHERE issue_key=?", (key,)).fetchone()
+            if row is None:
+                return True
+            repository, status = row
+            if status != "needs_input":
+                return False
+            active = db.execute("SELECT count(*) FROM issue_queue "
+                                "WHERE repository=? AND status='running'", (repository,)).fetchone()[0]
+            if active >= max_per_repository:
+                return False
+            db.execute("UPDATE issue_queue SET status='running', error=NULL WHERE issue_key=?", (key,))
+            return True
+
+    def restore_comment(self, key, status="needs_input", error=None):
+        """评论恢复失败时归还队列槽位；不删除队列行，保留失败原因。"""
+        if not key:
+            return
+        with closing(self.store.connect()) as db, db:
+            db.execute("UPDATE issue_queue SET status=?, error=? WHERE issue_key=?", (status, error, key))
+
     def finish(self, key, status, error=None):
         with closing(self.store.connect()) as db, db:
             db.execute("UPDATE issue_queue SET status=?, error=? WHERE issue_key=?", (status, error, key))

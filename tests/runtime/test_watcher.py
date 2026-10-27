@@ -1,6 +1,8 @@
 """监听准入、持久化去重与有界调度；模拟 HTTP 不等同真实监听演示。"""
 
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
+import json
 from pathlib import Path
 
 import httpx
@@ -186,6 +188,30 @@ def test_dispatcher_uses_two_real_spawn_processes_for_two_repositories(tmp_path,
     assert {row['status'] for row in result['queue']} == {'completed'}
     with closing(queue.store.connect()) as db:
         assert db.execute('SELECT count(DISTINCT pid) FROM worker_probes').fetchone()[0] == 2
+
+
+def test_comment_resume_occupies_the_repository_slot(tmp_path):
+    task, settings, root, config = watch_setup(tmp_path)
+    queue = watcher.IssueQueue(root)
+    now = datetime.now(timezone.utc).isoformat()
+
+    def insert(key, repository, status):
+        with closing(queue.store.connect()) as db, db:
+            db.execute("INSERT INTO issue_queue VALUES (?,?,?,?,?,?,?,?)",
+                       (key, repository, f"https://github.com/{key.replace('#', '/issues/')}",
+                        json.dumps({}), status, None, None, now))
+
+    insert("owner/repo#1", "owner/repo", "needs_input")
+    insert("owner/repo#2", "owner/repo", "needs_input")
+    insert("owner/repo#3", "owner/repo", "queued")
+    assert queue.begin_comment("owner/repo#1", 1) is True
+    assert queue.begin_comment("owner/repo#2", 1) is False, "评论恢复不能绕过同仓库上限"
+    assert queue.claim(1) is None, "评论恢复占用的仓库不能同时认领新Issue"
+    queue.restore_comment("owner/repo#1")
+    assert queue.begin_comment("owner/repo#2", 1) is True
+    queue.restore_comment("owner/repo#2")
+    claimed = queue.claim(1)
+    assert claimed and claimed["issue_key"] == "owner/repo#3"
 
 
 def test_stop_signal_does_not_dispatch_pending_issues(tmp_path, monkeypatch):

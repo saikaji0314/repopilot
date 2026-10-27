@@ -65,9 +65,44 @@ def record(state, plan, projected):
     state["plan"] = plan.model_dump(mode="json")
     state["plan_progress"] = {"order": list(plan.order), "current": None, "results": [],
                               "started_at": timestamp()}
+    # 重规划后把新计划版本关联到触发它的旧计划记录，实现载荷可判断旧工作上下文。
+    if state.get("plan_refresh_required") and state.get("plan_refresh_history"):
+        latest = state["plan_refresh_history"][-1]
+        latest["new_plan"] = plan.version
+        latest["replanned_at"] = timestamp()
     state.pop("plan_refresh_required", None)
     brief_store.commit(state, projected)
     return state["plan"]
+
+
+def _result_view(item):
+    return {"id": item.get("id"), "title": item.get("title"), "status": item.get("status"),
+            "summary": str(item.get("summary") or "")[:500], "commit": item.get("commit")}
+
+
+def refresh_context(state):
+    """返回当前计划对应的旧计划／旧进度上下文；没有重规划时返回None。"""
+    history = state.get("plan_refresh_history") or []
+    if not history:
+        return None
+    latest = history[-1]
+    current = (state.get("plan") or {}).get("version")
+    if not state.get("plan_refresh_required") and latest.get("new_plan") != current:
+        return None
+    old_plan = next((item for item in state.get("plan_history") or []
+                     if item.get("version") == latest.get("old_plan")), None)
+    progress = latest.get("old_progress") or {}
+    old_progress = {"order": progress.get("order"), "current": progress.get("current"),
+                    "started_at": progress.get("started_at"),
+                    "results": [_result_view(item) for item in progress.get("results") or []]}
+    return {"old_plan_version": latest.get("old_plan"),
+            "old_plan": old_plan,
+            "old_progress": old_progress,
+            "old_brief_revision": latest.get("old_brief_revision"),
+            "new_brief_revision": latest.get("new_brief_revision"),
+            "request_id": latest.get("request_id"),
+            "note": ("任务说明在上一版计划执行后发生变化。工作区仍保留上一版计划已提交的改动；"
+                     "先核对旧实现和完成项，只修改受影响部分，不要静默回退旧工作。")}
 
 
 def result_map(state):

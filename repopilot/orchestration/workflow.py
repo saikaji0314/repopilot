@@ -74,11 +74,19 @@ def create_job(task, settings, output_root, *, workspace=True, review=True,
 
 
 def frozen_settings(saved, current, overrides=None):
-    """恢复旧模型配置；只从匹配供应商端点取得当前凭证，允许同端点轮换密钥。"""
+    """恢复旧模型配置；只从匹配供应商端点取得当前凭证，允许同端点轮换密钥。
+
+    旧运行没有M3开关字段时按关闭处理，避免升级后自动多一次规划或外部评论；
+    显式override（例如retry --plan）仍可开启。
+    """
     if (saved.get("provider", "deepseek"), saved["base_url"]) != (current.provider, current.base_url):
         raise StateError("model_credentials_endpoint_mismatch")
-    return RuntimeSettings.model_validate({**saved, **execution_options(overrides or {}),
-                                          "api_key": current.api_key})
+    overrides = execution_options(overrides or {})
+    merged = {**saved, **overrides}
+    for key in ("plan_enabled", "issue_comments_enabled"):
+        if key not in saved and key not in overrides:
+            merged[key] = False
+    return RuntimeSettings.model_validate({**merged, "api_key": current.api_key})
 
 
 def retry(run_id, settings, root, *, reason, overrides=None, model=None, stop_after=None, base_commit=None):
