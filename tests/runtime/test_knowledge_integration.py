@@ -46,13 +46,13 @@ def test_same_fixed_materials_and_read_tool_reach_both_roles(tmp_path, monkeypat
     monkeypatch.setattr(engine, "run_phase", record)
     read = lambda: turn("read_material", {"material_id": material["id"], "version": material["version"]})
     result = workflow.start(task, settings, root,
-        model=FakeModel(responses=[read(), write(), implement_done(), read(), review_approved()]))
+        model=FakeModel(responses=[read(), write(), implement_done(), read(), *review_approved()]))
     assert result["status"] == "awaiting_approval", result
     implementation, review = (payloads[p]["project_materials"] for p in ("implement", "review"))
     assert implementation["snapshot_id"] == review["snapshot_id"]
     assert implementation["catalog"] == review["catalog"]
     assert "保留旧接口" in implementation["required"][0]["text"]
-    assert result["model_calls"] == 5
+    assert result["model_calls"] == 6
     events = (root / "runs" / result["run_id"] / "events.jsonl").read_text(encoding="utf-8")
     assert '"name": "read_material"' in events and "保留旧接口" in events
 
@@ -66,7 +66,7 @@ def test_model_decisions_are_versioned_proposals_not_review_authority(tmp_path, 
         seen[kwargs["phase"]] = kwargs["payload"]
         return original(**kwargs)
     monkeypatch.setattr(engine, "run_phase", capture)
-    result = workflow.start(task, settings, root, model=FakeModel(responses=[write(), response, review_approved()]))
+    result = workflow.start(task, settings, root, model=FakeModel(responses=[write(), response, *review_approved()]))
     assert result["status"] == "awaiting_approval", result
     reference = result["decision_records"][0]
     store = KnowledgeStore(root)
@@ -87,7 +87,7 @@ def test_human_answer_becomes_traceable_task_document_without_duplicate_body(tmp
         return original(**kwargs)
     monkeypatch.setattr(engine, "run_phase", capture)
     result = workflow.resume(first["run_id"], settings, root,
-        model=FakeModel(responses=[write(), implement_done(), review_approved()]))
+        model=FakeModel(responses=[write(), implement_done(), *review_approved()]))
     assert result["status"] == "awaiting_approval", result
     state = JobStore(root).get(result["run_id"])
     identifier = next(iter(state["knowledge_answers"].values()))
@@ -138,16 +138,16 @@ def test_source_changes_stop_resume_and_explicit_refresh_preserves_usage(tmp_pat
     assert refreshed["status"] == "paused"
     assert JobStore(root).get(first["run_id"])["control"]["model_calls"] == 2
     done = workflow.resume(first["run_id"], settings, root,
-        model=FakeModel(responses=[implement_done(), review_approved()]))
+        model=FakeModel(responses=[implement_done(), *review_approved()]))
     assert done["status"] == "awaiting_approval", done
-    assert done["model_calls"] == 4
+    assert done["model_calls"] == 5
     assert done["knowledge_snapshot_id"] != first["knowledge_snapshot_id"]
 
 
 def test_changes_after_review_block_approval_and_remote_access(tmp_path):
     task, settings, root, store, _ = policy(tmp_path)
     done = workflow.start(task, settings, root,
-        model=FakeModel(responses=[write(), implement_done(), review_approved()]))
+        model=FakeModel(responses=[write(), implement_done(), *review_approved()]))
     (task.repository / "docs/policy.md").unlink()
     with pytest.raises(KnowledgeFault):
         workflow.decide(done["run_id"], root, commit=done["review"]["reviewed_commit"], approved=True, reason="approve")
@@ -237,7 +237,7 @@ def test_report_displays_material_versions_and_pending_context_update(tmp_path):
 def test_refresh_keeps_pending_rework_as_the_same_modification_round(tmp_path):
     task, settings, root, store, _ = policy(tmp_path)
     first = workflow.start(task, settings, root,
-        model=FakeModel(responses=[write(), implement_done(), review_changes()]), stop_after="review")
+        model=FakeModel(responses=[write(), implement_done(), *review_changes()]), stop_after="review")
     assert JobStore(root).get(first["run_id"])["rework_pending"] is True
     (task.repository / "docs/policy.md").write_text("# Updated\n\n保留旧接口并补充回归。\n", encoding="utf-8")
     stopped = workflow.resume(first["run_id"], settings, root, model=FakeModel(responses=[]))
@@ -249,7 +249,7 @@ def test_refresh_keeps_pending_rework_as_the_same_modification_round(tmp_path):
         commit=knowledge.head_commit(attach(state, root).path), reason="check updated policy")
     assert JobStore(root).get(first["run_id"])["phase"] == "rework"
     done = workflow.resume(first["run_id"], settings, root,
-        model=FakeModel(responses=[write(3), implement_done(), review_approved()]))
+        model=FakeModel(responses=[write(3), implement_done(), *review_approved()]))
     assert done["status"] == "awaiting_approval" and done["review"]["rework_attempts"] == 1
 
 
@@ -287,7 +287,7 @@ def test_material_read_observation_keeps_version_and_source():
 def test_missing_archived_body_after_review_cannot_be_approved(tmp_path):
     task, settings, root, _, _ = policy(tmp_path)
     done = workflow.start(task, settings, root,
-        model=FakeModel(responses=[write(), implement_done(), review_approved()]))
+        model=FakeModel(responses=[write(), implement_done(), *review_approved()]))
     assert done["status"] == "awaiting_approval"
     next(root.glob("knowledge/**/versions/*.md")).unlink()
     with pytest.raises(KnowledgeFault, match="snapshot_unavailable"):
@@ -300,7 +300,7 @@ def test_missing_archived_body_after_review_cannot_be_approved(tmp_path):
 def test_large_optional_material_does_not_force_context_overflow(tmp_path):
     task, settings, root, _, _ = policy(tmp_path, required=False, body="optional " * 1200)
     result = workflow.start(task, settings, root,
-        model=FakeModel(responses=[write(), implement_done(), review_approved()]))
+        model=FakeModel(responses=[write(), implement_done(), *review_approved()]))
     assert result["status"] == "awaiting_approval", result
 
 
@@ -313,7 +313,7 @@ def test_resume_repairs_answer_export_interrupted_before_job_checkpoint(tmp_path
     # 模拟资料文件和索引已保存，但任务检查点尚未提交就退出。
     assert not JobStore(root).get(first["run_id"]).get("knowledge_answers")
     done = workflow.resume(first["run_id"], settings, root,
-        model=FakeModel(responses=[write(), implement_done(), review_approved()]))
+        model=FakeModel(responses=[write(), implement_done(), *review_approved()]))
     assert done["status"] == "awaiting_approval", done
     state = JobStore(root).get(first["run_id"])
     assert len(state["knowledge_answers"]) == 1
@@ -322,7 +322,7 @@ def test_resume_repairs_answer_export_interrupted_before_job_checkpoint(tmp_path
 
 def test_refresh_retains_old_manifest_and_review_binding(tmp_path):
     task, settings, root, store, old = policy(tmp_path)
-    done = workflow.start(task, settings, root, model=FakeModel(responses=[write(), implement_done(), review_approved()]))
+    done = workflow.start(task, settings, root, model=FakeModel(responses=[write(), implement_done(), *review_approved()]))
     original = JobStore(root).get(done["run_id"])
     old_snapshot = original["knowledge_snapshot"]
     assert original["history"][-1]["knowledge_snapshot_id"] == old_snapshot["snapshot_id"]
@@ -344,7 +344,7 @@ def test_machine_decision_records_actual_code_and_material_snapshot(tmp_path):
     task, settings, root, _, _ = policy(tmp_path)
     report = implement_done()
     report.tool_calls[0]["args"]["decisions"] = [{"summary": "保留旧接口", "reason": "按已确认约束实现", "sources": ["docs/policy.md:3"]}]
-    done = workflow.start(task, settings, root, model=FakeModel(responses=[write(), report, review_approved()]))
+    done = workflow.start(task, settings, root, model=FakeModel(responses=[write(), report, *review_approved()]))
     reference = done["decision_records"][0]
     state = JobStore(root).get(done["run_id"])
     assert reference["knowledge_snapshot_id"] in state["knowledge_history"]

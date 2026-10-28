@@ -38,4 +38,14 @@ def approval_digest(state):
         evidence["integrations"] = state["integrations"]
     if (state.get("knowledge_snapshot") or {}).get("entries"):
         evidence["knowledge_snapshot"] = state["knowledge_snapshot"]
+    # M5：审核依据和具体争议结论进入批准摘要；不存在这些字段的旧运行保持原摘要。
+    if state.get("review_basis"):
+        evidence["review_basis"] = state["review_basis"]
+    if state.get("disputes"):
+        evidence["disputes"] = [
+            {key: item.get(key) for key in ("id", "key", "commit", "outcome", "decided_at", "reason")}
+            for item in state["disputes"]]
+    if state.get("rework_limit") is not None:
+        evidence["rework_limit"] = state["rework_limit"]
+        evidence["rework_extensions"] = state.get("rework_extensions") or []
     return canonical_hash(evidence)

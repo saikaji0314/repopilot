@@ -82,7 +82,7 @@ def test_workflow_and_candidate_are_bound_but_not_called_solved(inputs, monkeypa
     case, task, settings, runtime, output = inputs
     monkeypatch.setattr(phases, 'repository_session', simulated_docker)
     model = FakeModel(responses=[turn('write_file', {'path': 'app.py', 'content': 'value = 2\n'}),
-                                 implement_done(), review_approved()])
+                                 implement_done(), *review_approved()])
     result = solver.solve(case, task, settings, runtime, output, label='fixture', model=model)
     assert result['status'] == 'not_evaluated' and result['workflow_status'] == 'awaiting_approval'
     assert b'+value = 2' in (output / 'candidate.patch').read_bytes()
@@ -127,7 +127,7 @@ def test_declared_source_memory_is_frozen_and_bound_without_exposing_answers(inp
     seed, _ = source_seed(inputs)
     monkeypatch.setattr(phases, 'repository_session', simulated_docker)
     model = FakeModel(responses=[turn('write_file', {'path': 'app.py', 'content': 'value = 2\n'}),
-                                 implement_done(), review_approved()])
+                                 implement_done(), *review_approved()])
     result = solver.solve(case, task, settings.model_copy(update={'memory_enabled': True}), runtime,
                           output, label='declared-memory', model=model, memory_seed=seed)
     state = JobStore(runtime).get(result['run_id'])

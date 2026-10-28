@@ -215,7 +215,7 @@ def test_real_docker_tools_verify_and_checkpoint_resume(tmp_path, language, monk
     model = FakeModel(responses=[turn('read_file', {'path': filename}),
         turn('write_file', {'path': filename, 'content': content}),
         turn('run_registered_check', {'name': 'unit'}), implementation,
-        turn('read_file', {'path': filename}), review_approved()])
+        turn('read_file', {'path': filename}), *review_approved()])
     first = workflow.start(task, settings, root, model=model, stop_after='implement')
     assert first['status'] == 'paused', first
     result = workflow.resume(first['run_id'], settings, root, model=model)

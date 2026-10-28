@@ -15,20 +15,20 @@ def implementation():
 @pytest.mark.parametrize("boundary", ["prepare", "implement", "anchor", "verify"])
 def test_resume_completed_stage_does_not_replay_model(tmp_path, boundary):
     task, settings, root = setup(tmp_path)
-    model = FakeModel(responses=[*implementation(), review_approved()])
+    model = FakeModel(responses=[*implementation(), *review_approved()])
     paused = workflow.start(task, settings, root, model=model, stop_after=boundary)
     assert paused["status"] == "paused", paused
     resumed = workflow.resume(paused["run_id"], settings, root, model=model)
     assert resumed["status"] == "awaiting_approval", resumed
-    assert resumed["model_calls"] == 3
+    assert resumed["model_calls"] == 4
     again = workflow.resume(paused["run_id"], settings, root, model=model)
-    assert again["model_calls"] == 3
+    assert again["model_calls"] == 4
     assert again["review"]["reviewed_commit"] == resumed["review"]["reviewed_commit"]
 
 
 def candidate(tmp_path):
     task, settings, root = setup(tmp_path)
-    result = workflow.start(task, settings, root, model=FakeModel(responses=[*implementation(), review_approved()]))
+    result = workflow.start(task, settings, root, model=FakeModel(responses=[*implementation(), *review_approved()]))
     assert result["status"] == "awaiting_approval", result
     return result, root
 
@@ -62,9 +62,9 @@ def test_in_flight_phase_requires_explicit_recovery(tmp_path):
     commit = head_commit(workflow.attach(state, root).path)
     workflow.recover(first["run_id"], root, commit=commit, reason="现场核对无改动")
     result = workflow.resume(first["run_id"], settings, root,
-        model=FakeModel(responses=[*implementation(), review_approved()]))
+        model=FakeModel(responses=[*implementation(), *review_approved()]))
     assert result["status"] == "awaiting_approval", result
-    assert result["model_calls"] == 7
+    assert result["model_calls"] == 8
 
 
 def test_resume_rejects_changes_since_checkpoint(tmp_path):
@@ -94,13 +94,13 @@ def test_explicit_retry_preserves_old_attempt_and_shared_cost(tmp_path):
     first = workflow.start(task, settings, root, model=FakeModel(responses=implementation()))
     assert first["status"] == "limit_reached"
     second = workflow.retry(first["run_id"], settings, root, reason="只验证新尝试，不抹去失败",
-        overrides={"max_model_calls": 4}, model=FakeModel(responses=[*implementation(), review_approved()]))
+        overrides={"max_model_calls": 4}, model=FakeModel(responses=[*implementation(), *review_approved()]))
     assert second["status"] == "awaiting_approval", second
     assert second["run_id"] != first["run_id"]
     store = JobStore(root)
     assert store.get(first["run_id"])["status"] == "limit_reached"
     assert store.get(second["run_id"])["retry_of"] == first["run_id"]
-    assert second["budget"]["calls"] == 4
+    assert second["budget"]["calls"] == 5
     assert second["budget"]["accounted_cny"] > second["cost"]["accounted_cny"]
 
 
@@ -116,7 +116,7 @@ def test_recover_interrupted_worktree_creation(tmp_path, monkeypatch):
     monkeypatch.setattr(Workspace, "prepare", original)
     workflow.recover(result["run_id"], root, commit=head_commit(task.repository), reason="创建前中断，核对基线")
     resumed = workflow.resume(result["run_id"], settings, root,
-        model=FakeModel(responses=[*implementation(), review_approved()]))
+        model=FakeModel(responses=[*implementation(), *review_approved()]))
     assert resumed["status"] == "awaiting_approval", resumed
 
 
@@ -124,7 +124,7 @@ def test_independent_check_must_not_mutate_reviewed_tree(tmp_path):
     from repopilot.core.config import Check
     task, settings, root = setup(tmp_path)
     task.checks['unit'] = Check(argv=['{python}', '-c', "from pathlib import Path;Path('app.py').write_text('mutated\\n')"])
-    result = workflow.start(task, settings, root, model=FakeModel(responses=[*implementation(), review_approved()]))
+    result = workflow.start(task, settings, root, model=FakeModel(responses=[*implementation(), *review_approved()]))
     assert result["status"] == "workspace_error", result
     assert result["stop_reason"] == "reviewed_tree_changed"
     assert result["review"]["verdict"] is None
@@ -145,7 +145,7 @@ def test_remote_pinned_base_can_resume_without_moving_source_head(tmp_path, monk
     monkeypatch.setattr(Workspace, 'prepare', original)
     workflow.recover(state['run_id'], root, commit=commit, reason='remote base 创建前中断')
     result = workflow.resume(state['run_id'], settings, root,
-        model=FakeModel(responses=[*implementation(), review_approved()]))
+        model=FakeModel(responses=[*implementation(), *review_approved()]))
     assert result['status'] == 'awaiting_approval', result
     assert source_snapshot(task.repository) == before
     assert (workflow.attach(JobStore(root).get(state['run_id']), root).path / 'remote.txt').exists()

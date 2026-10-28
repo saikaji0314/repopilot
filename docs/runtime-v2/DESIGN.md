@@ -22,9 +22,14 @@ flowchart TD
     IMPL2 --> ANCHOR
     IMPL --> ANCHOR[phases.anchor：把候选固定为提交]
     ANCHOR --> VERIFY[phases.verify：编排层重跑登记检查]
-    VERIFY --> REVIEW[phases.review：审核Agent判断当前提交]
-    REVIEW -->|要求修改且未超限| IMPL
-    REVIEW -->|通过且独立检查通过| WAIT[awaiting_approval：等待人决定]
+    VERIFY --> REVIEW[phases.review：两个只读视角审同一固定提交]
+    REVIEW --> MERGE[review.merge：合并去重、证据与阻断判定]
+    MERGE -->|要求修改且未超限| IMPL
+    MERGE -->|具体争议| ABC[review.disputes：A／B独立复核＋C核对]
+    ABC -->|问题成立| IMPL
+    ABC -->|排除该发现| MERGE
+    ABC -->|无法判断| NEED[needs_input：负责人判断具体争议]
+    MERGE -->|通过且独立检查通过| WAIT
     WAIT --> APPROVE[workflow.decide：绑定SHA与证据摘要]
     APPROVE --> PUB[delivery.github.publish：核对版本、推分支、创建草稿PR]
     SESSION --> DB[storage：状态、锁、预算]
@@ -59,6 +64,11 @@ flowchart TD
 | 每次运行独立 Git worktree | 固定提交并共享对象库，不直接改用户工作目录；便于采集差异和绑定候选 SHA | clone 隔离 Git 配置更彻底但成本更高；worktree 共享对象与配置，不能当 OS 沙箱 |
 | 登记检查 argv | 操作者决定命令与工作目录，模型只能按名称请求；避免Issue文本直接改执行配置 | 任意 shell 更灵活，但扩大权限和审核范围；即使命令已登记，仓库检查代码仍需受信或进入隔离环境 |
 | 独立重跑检查与审核角色 | 不以实现方的自评代替真实退出结果；审核围绕需求、差异、固定提交与检查事实提出返工 | 同一模型分角色不保证判断独立；当前登记测试也不是隐藏验收。真实效果仍需独立题集和实验 |
+| 双视角审核固定快照 | 正确性与需求上下文并行读取同一提交、基线、检查、资料和任务说明，首轮互不看结论；发现带依据位置、触发条件、影响和证据状态，程序按规则合并和判定阻断 | 两个视角同模型时仍可能共同遗漏；顺序或单视角审核成本更低但遗漏面更窄。真实双审收益没有对照实验 |
+| 合并与阻断放在程序侧 | 去重、严重程度、证据状态、阻断和修改计数由规则决定，模型只产出报告；非阻断建议和信息不足分开处理 | 纯模型综合会更容易“看人下菜”；固定规则可能把措辞差异大的同一问题分成两条。仍由人核对最终证据 |
+| 争议才启动A／B＋C | 只有复审回应给出有依据的相反判断才增加独立复核，同一发现键最多一次；C无法判断交人，不按票数放行 | 更激进的争议检测会误触发并增加费用；只在复审冲突上触发意味着首轮两个视角的隐含矛盾不会自动升级为人判断 |
+| 审核依据快照与复用 | 依据变化产生新哈希并撤销旧结论／批准；同提交同依据可直接复用已完成结果，不重复调用模型 | 复用减少费用但要求依据字段完整；依据记录过粗会在证据变化后错误复用，因此提交、检查、资料、说明、计划和返工次数都入哈希 |
+| 审核失败不改验收 | 到限或无法判断保留现场和证据，由负责人补充需求、明确延长修改额度或开始新尝试 | 自动放宽上限或把“自检通过”当审核会绕过三次修改约束；人工决定必须留理由和历史 |
 | 可选普通 Docker | 文件工具与检查统一进入容器，凭证留控制面，停止后校验普通文件再导入 | 裸进程不能提供同等OS边界；microVM／更强隔离可能适合不可信worker，但当前本机Sandboxes前提失败。磁盘配额和硬杀回收仍缺失 |
 | SHA 与证据摘要绑定审批 | “同意发布”只对具体需求、基线、提交与审核证据有效，避免批准后静默更换内容 | 简单 approved 布尔值无法说明批准了哪个版本；新的审批／变更策略需要同时定义失效规则 |
 | 文件事实记忆 | 用提交、文件指纹、来源和人工生命周期提高可追溯性；先解决事实失效，再讨论召回规模 | 向量或混合检索适合更大知识量，但不替代来源验证；当前无真实模型收益对照结论 |
@@ -87,6 +97,7 @@ flowchart TD
 | 11 | [presentation/report.py](../../repopilot/presentation/report.py)、[sections.py](../../repopilot/presentation/sections.py)、[layout.py](../../repopilot/presentation/layout.py) | 展示从哪里读取事实，如何避免把缺失、历史或模拟结果展示为成功？ | [report](../../tests/runtime/test_report.py) |
 | 12 | [planning/planner.py](../../repopilot/planning/planner.py)、[planning/brief.py](../../repopilot/planning/brief.py)、[collaboration/questions.py](../../repopilot/collaboration/questions.py) | 计划为什么不能由模型自报顺序；批次计数和任务说明版本如何跨阶段、跨重试保留？ | [planning](../../tests/runtime/test_planning.py) |
 | 13 | [orchestration/parallel.py](../../repopilot/orchestration/parallel.py)、[orchestration/slots.py](../../repopilot/orchestration/slots.py)、[phases.py](../../repopilot/orchestration/phases.py) | 并行worker为什么不能直接改父状态；依赖基线、槽位租约和冲突回滚分别由谁保证？ | [parallel](../../tests/runtime/test_parallel.py) |
+| 14 | [review/rounds.py](../../repopilot/review/rounds.py)、[review/merge.py](../../repopilot/review/merge.py)、[review/basis.py](../../repopilot/review/basis.py)、[review/disputes.py](../../repopilot/review/disputes.py) | 两个审核为何共享固定快照却首轮独立；程序如何判定阻断；什么情况才启动A／B＋C；依据何时复用或失效？ | [dual_review](../../tests/runtime/test_dual_review.py) |
 | 13 | [runtime/__init__.py](../../repopilot/runtime/__init__.py)、[历史实现](../legacy/README.md) | 为什么保留旧导入，但新代码不能依赖legacy？ | [architecture](../../tests/runtime/test_architecture.py) |
 
 阅读文档、运行已有测试和能独立解释／修改是不同程度的掌握，不能混为一项已完成记录。

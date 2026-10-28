@@ -120,7 +120,8 @@ def human_requests(state, root):
     requests = state.get("human_requests") or []
     if not requests:
         return ""
-    kinds = {"clarification": "需求澄清", "approval": "交付批准", "recovery": "现场恢复", "context_update": "资料依据更新"}
+    kinds = {"clarification": "需求澄清", "approval": "交付批准", "recovery": "现场恢复",
+             "context_update": "资料依据更新", "dispute": "争议判断", "handover": "返工交接"}
     statuses = {"pending": "等待答复", "answered": "已答复", "superseded": "版本已替代"}
     rows = []
     for item in requests:
@@ -281,37 +282,103 @@ def checks(verified, root):
     return "\n".join(parts)
 
 
+def _finding_location(item):
+    if item.get("basis", "code") == "code" and item.get("path"):
+        return f"<code>{escape(str(item.get('path')))}:{escape(str(item.get('start_line')))}</code>"
+    basis = str(item.get("basis") or "reference")
+    reference = escape(str(item.get("reference") or item.get("requirement") or ""))
+    return f"<span>{escape(basis)}</span> {reference}"
+
+
+def _dispute_rows(disputes):
+    rows = []
+    labels = {"pending": "待复核", "confirmed": "问题成立", "refuted": "问题不成立",
+              "undetermined": "无法判断，待人工", "human_confirmed": "人工确认成立",
+              "human_refuted": "人工排除", "reused_confirmed": "复用成立结论",
+              "reused_refuted": "复用排除结论"}
+    for item in disputes or []:
+        finding = item.get("finding") or {}
+        ab = "；".join(
+            f"{side}：{escape(str((item.get(side) or {}).get('judgement') or '未记录'))}"
+            for side in ("a", "b"))
+        c = item.get("c") or {}
+        rows.append([
+            escape(str(item.get("id"))),
+            escape(str(finding.get("observation") or "")[:120]),
+            escape(labels.get(item.get("outcome"), str(item.get("outcome")))),
+            ab,
+            escape(redact(str(c.get("summary") or item.get("reason") or ""), None)),
+            escape(str(item.get("commit") or "")[:10]),
+        ])
+    return rows
+
+
 def reviews(history, review, root):
     parts = []
     if history or review.get("verdict"):
         parts.append("<h2>审核与返工</h2>")
+        parts.append('<p class="note">正确性与需求上下文两个视角读取同一固定提交与依据；'
+                     '发现合并后由程序判定是否阻断，具体争议才进入 A／B＋C 复核。</p>')
         review_rows = []
         for round_number, item in enumerate(history, 1):
             findings = item.get("findings") or []
+            perspectives = item.get("perspectives") or {}
+            if not perspectives and item.get("dual") is False:
+                perspectives = {"single": item.get("verdict")}
+            labels = {"approved": "通过", "changes_requested": "要求返工",
+                      "unable_to_review": "无法确认", "undetermined": "待争议判断"}
+            view = "；".join(f"{escape(str(name))}={escape(str(value))}"
+                            for name, value in perspectives.items())
             review_rows.append([
                 str(round_number),
                 f"<code>{escape(str(item.get('commit'))[:10])}</code>",
-                f"<span class='tag' title='{escape(str(item.get('verdict')))}'>"
-                + {"approved": "已通过", "changes_requested": "要求返工", "unable_to_review": "无法确认"}.get(item.get("verdict"), "未记录") + "</span>",
+                escape(labels.get(item.get("verdict"), "未记录")),
                 escape(str(len(findings))),
+                view or "-",
                 '<details class="review-summary"><summary>' + escape(redact(str(item.get("summary") or ""), root))[:65]
                 + '…</summary><p>' + escape(redact(str(item.get("summary") or ""), root)) + "</p></details>",
             ])
-        parts.append(table(["轮次", "审核锚点", "结论", "发现数", "说明"], review_rows, nowrap_first=True))
+        parts.append(table(["轮次", "审核锚点", "合并结论", "发现数", "视角结论", "说明"],
+                           review_rows, nowrap_first=True))
+        rework = review.get("rework")
+        limit = review.get("rework_limit")
+        if rework is not None or limit is not None:
+            parts.append(f"<p class='meta'>修改次数 <b>{escape(str(rework if rework is not None else 0))}"
+                         f"</b> / 上限 {escape(str(limit if limit is not None else '-'))}</p>")
         findings = (review.get("findings") or [])
         if not findings and history:
             # 审核最终通过时 review_report 没有发现，结论来自最后一轮之前的那一轮。
             findings = next((item.get("findings") or [] for item in reversed(history[:-1] or history)
                              if item.get("findings")), [])
         if findings:
-            parts.append("<h3>历史审核发现</h3>" if review.get("verdict") == "approved" else "<h3>审核发现</h3>")
+            parts.append("<h3>审核发现</h3>" if review.get("verdict") != "approved"
+                         else "<h3>历史审核发现</h3>")
             if review.get("verdict") == "approved":
                 parts.append('<p class="note">以下来自此前轮次；最后一轮审核结论为通过。</p>')
-            parts.append(table(["严重程度", "位置", "观察", "建议"],
-                               [[escape(str(item.get("severity"))),
-                                 f"<code>{escape(str(item.get('path')))}:{escape(str(item.get('start_line')))}</code>",
-                                 escape(redact(str(item.get("observation") or ""), root)),
-                                 escape(redact(str(item.get("suggestion") or ""), root))] for item in findings]))
+            if review.get("non_blocking"):
+                parts.append('<p class="note">标记为非阻断的建议不单独阻止批准，仍需人工判断是否采纳。</p>')
+            rows = []
+            for item in findings:
+                status = {"open": "待处理", "unverified": "证据不足", "disputed": "争议中",
+                          "closed": "已解决", "invalid": "已排除"}.get(item.get("status"), "")
+                rows.append([
+                    escape(str(item.get("severity"))),
+                    _finding_location(item),
+                    escape(str(item.get("evidence_status") or "")),
+                    escape(str(item.get("observation") or "")),
+                    escape(redact(str(item.get("suggestion") or ""), root)),
+                    escape(status),
+                    escape("；".join(str((source or {}).get("perspective"))
+                                     for source in item.get("sources") or [])),
+                ])
+            parts.append(table(["严重程度", "依据位置", "证据状态", "观察", "建议", "状态", "来源"], rows))
+        disputes = review.get("disputes") or []
+        if disputes:
+            parts.append('<h3>A／B＋C 争议复核</h3>'
+                         '<p class="note">仅具体争议触发；A／B 独立查证，C 比较证据；'
+                         '无法判断时交负责人，不按票数放行。</p>')
+            parts.append(table(["争议", "发现", "结论", "A／B 判断", "理由", "提交"],
+                               _dispute_rows(disputes)))
 
     return "\n".join(parts)
 

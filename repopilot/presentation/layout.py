@@ -26,12 +26,20 @@ def delivery_steps(state, changes):
     approved = approval.get('approved') is True
     stale = bool(approval.get('commit') and state.get('reviewed_commit')
                  and approval['commit'] != state['reviewed_commit'])
+    perspectives = review.get('perspectives') or {}
+    review_detail = {'approved': '已通过', 'changes_requested': '要求返工',
+                     'unable_to_review': '无法确认', 'undetermined': '待争议判断'}.get(
+                         review.get('verdict'), '尚无审核结论')
+    if perspectives:
+        review_detail = "两视角 " + "／".join(
+            f"{'正确性' if name == 'correctness' else '上下文'}：{value.get('verdict')}"
+            for name, value in perspectives.items()) + f" · 合并 {review_detail}"
     steps = [
         ('需求', 'done' if state.get('issue') or (state.get('task') or {}).get('request') else 'pending', '工单或本地需求'),
         ('实现', 'done' if changes.get('files') and report.get('status') == 'implemented' else 'pending', '候选文件改动'),
         ('独立复核', 'done' if checked else 'failed' if check_failed else 'pending', f'{len(checks)} 项登记检查' if checks else '尚无检查记录'),
         ('Agent 审核', 'done' if review.get('verdict') == 'approved' else 'failed' if review.get('verdict') else 'pending',
-         {'approved': '已通过', 'changes_requested': '要求返工', 'unable_to_review': '无法确认'}.get(review.get('verdict'), '尚无审核结论')),
+         review_detail),
         ('人工审批', 'failed' if stale or approval.get('approved') is False else 'done' if approved else 'pending',
          '批准版本已变化' if stale else '已批准' if approved else '已拒绝' if approval.get('approved') is False else '等待人工决定'),
         ('草稿 PR', 'done' if pull.get('url') else 'pending', '已创建 · 尚未合并' if pull.get('url') else '尚未创建'),

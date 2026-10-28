@@ -32,6 +32,10 @@ def capture_context(state, root):
         context["knowledge_snapshot_id"] = state["knowledge_snapshot"]["snapshot_id"]
     if state.get("plan"):
         context["plan_version"] = state["plan"]["version"]
+    if (state.get("review_basis") or {}).get("hash"):
+        context["review_basis_hash"] = state["review_basis"]["hash"]
+    if state.get("review_rounds"):
+        context["review_rounds"] = len(state["review_rounds"])
     return context
 
 
@@ -68,6 +72,56 @@ def recovery_request(state, root):
     return open_request(state, kind="recovery", summary="阶段中断，需要核对实际工作区后显式恢复。",
         questions=["现场是否可从当前提交继续？请使用 recover 指定提交与核对理由。"],
         context=capture_context(state, root))
+
+
+def wait_for_handover(state, root, *, summary, findings, limit):
+    """返工次数到限时保存未解决发现和证据，交人决定补充、继续或重试。"""
+
+    if not findings:
+        lines = ["审核仍有未解决的问题，但当前没有可列出的阻断发现；请核对审核记录。"]
+    else:
+        lines = [f"{item.id}（{item.severity}，{item.evidence_status}）：{item.observation}"
+                 for item in findings[:6]]
+    questions = [
+        "以下审核发现仍未解决：\n- " + "\n- ".join(lines) +
+        f"\n已用满 {limit} 次修改。请选择：补充需求或资料后 resume（会重新规划）；"
+        "用 repopilot review continue RUN_ID --extra 1 --reason \"...\" 明确增加修改额度；"
+        "或使用 retry 开始新尝试。以上都不会自动批准或推送。"
+    ]
+    context = capture_context(state, root)
+    for request in all_requests(state):
+        if request.kind == "handover" and request.status == "pending" and request.version == canonical_hash(context):
+            return request
+    return open_request(state, kind="handover", summary=summary, questions=questions,
+        context=context, blocking=[{"phase": "review", "reason": "rework_limit_reached",
+                                     "reworks": state.get("reworks", 0), "limit": limit}])
+
+
+def wait_for_dispute(state, root, *, dispute):
+    """争议复核仍无法判断时，把具体争议和双方证据交负责人明确判断。"""
+
+    finding = dispute.get("finding") or {}
+    detail = "；".join(
+        f"{item.get('perspective')}：{item.get('status')}（{item.get('evidence_status')}）"
+        for item in dispute.get("positions") or [])
+    question = (f"争议 {dispute['id']} 未能在 A／B＋C 复核中得出结论。"
+                f"发现：{str(finding.get('observation') or '')[:400]}。"
+                f"双方意见：{detail or '未记录'}。"
+                f"请用 repopilot review decide RUN_ID --dispute {dispute['id']} "
+                "--decision confirmed|refuted --reason \"...\" 明确该发现是否成立；"
+                "confirmed 表示继续按审核发现处理，refuted 表示排除该发现。")
+    context = {**capture_context(state, root), "dispute": dispute["id"]}
+    key = canonical_hash(context)
+    state["status"], state["stop_reason"] = "needs_input", "review_dispute_requires_decision"
+    for request in all_requests(state):
+        if (request.kind == "dispute" and request.status == "pending"
+                and request.version == key):
+            return request
+    request = open_request(state, kind="dispute",
+        summary=f"争议 {dispute['id']} 需要负责人判断：{str(finding.get('observation') or '')[:120]}",
+        questions=[question], context=context,
+        blocking=[{"phase": "review", "dispute": dispute["id"]}])
+    return request
 
 
 def list_requests(run_id, root):
@@ -107,11 +161,14 @@ def _pending_clarification(state):
 def _apply_answer(state, root, request, *, text, actor, channel, source=None):
     """本地答复与Issue评论共用同一套版本更新和证据失效规则。"""
     from repopilot.orchestration.knowledge import validate
+    from repopilot.review import basis as review_basis
     if request.kind == "context_update":
         raise StateError("use_knowledge_refresh")
-    if request.kind != "clarification":
+    if request.kind == "dispute":
+        raise StateError("use_review_decide")
+    if request.kind not in {"clarification", "handover"}:
         raise StateError("use_approve_reject_or_recover")
-    if (request.status != "pending" or state["status"] != "needs_input"
+    if (request.status != "pending" or state["status"] not in {"needs_input", "rework_limit_reached"}
             or state.get("in_flight") or capture_context(state, root) != request.context):
         raise StateError("stale_human_request")
     validate(state, root)
@@ -149,9 +206,8 @@ def _apply_answer(state, root, request, *, text, actor, channel, source=None):
     state.setdefault("human_answers", []).append(answer_record)
     question_batches.mark_answered(state, resolved)
     # 业务答复会改变审核依据；保留历史，但不沿用旧结论／批准。
-    state["verified"], state["review_report"], state["approval"] = [], None, None
-    state.pop("approval_digest", None)
-    if state["phase"] == "review":
+    review_basis.invalidate(state, f"human_{request.kind}")
+    if state["phase"] == "review" or request.kind == "handover":
         state["phase"] = "verify"
     if refresh is not None:
         # 任务说明已前进：旧计划保留在plan_history/plan_refresh_history，下一阶段先重规划。
@@ -176,7 +232,9 @@ def answer(run_id, root, *, request_id, version, text):
         request = find_request(state, request_id)
         if request.kind == "context_update":
             raise StateError("use_knowledge_refresh")
-        if request.kind != "clarification":
+        if request.kind == "dispute":
+            raise StateError("use_review_decide")
+        if request.kind not in {"clarification", "handover"}:
             raise StateError("use_approve_reject_or_recover")
         if version != request.version:
             raise StateError("human_request_version_mismatch")

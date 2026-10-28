@@ -140,7 +140,7 @@ def gitlab_candidate(tmp_path):
     task, settings, root = setup(tmp_path)
     run_git(task.repository, "remote", "add", "origin", "https://gitlab.com/group/project.git")
     result = workflow.start(task, settings, root, issue=ISSUE,
-        model=FakeModel(responses=[*implementation(), review_approved()]))
+        model=FakeModel(responses=[*implementation(), *review_approved()]))
     assert result["status"] == "awaiting_approval", result
     state = JobStore(root).get(result["run_id"])
     return state, root, FakeGitLab(state)

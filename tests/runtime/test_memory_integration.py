@@ -12,7 +12,7 @@ from tests.runtime.test_review_loop import setup, FakeModel, turn, implement_don
 
 
 def responses():
-    return [turn('write_file', {'path': 'app.py', 'content': 'value = 2\n'}), implement_done(), review_approved()]
+    return [turn('write_file', {'path': 'app.py', 'content': 'value = 2\n'}), implement_done(), *review_approved()]
 
 
 def test_frozen_memory_reaches_both_roles_but_changed_source_is_filtered(tmp_path, monkeypatch):
@@ -108,8 +108,8 @@ def test_rework_does_not_reuse_changed_file_facts(tmp_path, monkeypatch):
         seen[kwargs['phase']] = kwargs['payload']
         return original(**kwargs)
     monkeypatch.setattr(engine, 'run_phase', capture)
-    model = FakeModel(responses=[*responses()[:2], review_changes(),
-        turn('write_file', {'path': 'app.py', 'content': 'value = 3\n'}), implement_done(), review_approved()])
+    model = FakeModel(responses=[*responses()[:2], *review_changes(),
+        turn('write_file', {'path': 'app.py', 'content': 'value = 3\n'}), implement_done(), *review_approved()])
     result = workflow.start(task, settings, root, model=model)
     assert result['status'] == 'awaiting_approval'
     assert seen['implement']['repository_memory']['entries'][0]['id'] == record['id']

@@ -14,7 +14,7 @@ from repopilot.orchestration.state import approval_digest, attach
 from repopilot.presentation.report import build
 from repopilot.storage.jobs import JobStore, StateError
 from tests.runtime.test_review_loop import (
-    FakeModel, implement_done, review_approved, review_changes, setup, turn,
+    FakeModel, implement_done, review_approved, review_changes, review_unable, setup, turn,
 )
 
 
@@ -68,9 +68,9 @@ def test_partial_implementation_waits_without_replaying_and_resumes_with_answer(
         return original(**kwargs)
     monkeypatch.setattr(engine, "run_phase", record)
     resumed = workflow.resume(run_id, settings, root,
-        model=FakeModel(responses=[write(3), implement_done(), review_approved()]))
+        model=FakeModel(responses=[write(3), implement_done(), *review_approved()]))
     assert resumed["status"] == "awaiting_approval", resumed
-    assert resumed["model_calls"] == 5 and resumed["edits"]["edits"] == 2
+    assert resumed["model_calls"] == 6 and resumed["edits"]["edits"] == 2
     assert resumed["review"]["rework_attempts"] == 0
     assert resumed["requirements_revision"] == 1
     assert all(p["human_answers"][0]["answer"] == "空输入返回空结果" for p in payloads)
@@ -144,16 +144,16 @@ def test_identical_tasks_have_distinct_request_identities(tmp_path):
 
 def test_review_question_reverifies_and_does_not_consume_extra_rework_round(tmp_path):
     task, settings, root = setup(tmp_path, max_rework=1)
-    question = turn("ReviewReport", {"verdict": "unable_to_review", "summary": "需要确认行为",
-                                    "findings": [], "questions": ["空输入如何处理？"]})
+    question = review_unable("需要确认行为", ["空输入如何处理？"])
     first = workflow.start(task, settings, root,
-        model=FakeModel(responses=[write(), implement_done(), question]))
+        model=FakeModel(responses=[write(), implement_done(), *question]))
     assert first["status"] == "needs_input" and first["phase"] == "review"
     reply(first, root)
     assert JobStore(root).get(first["run_id"])["phase"] == "verify"
     assert JobStore(root).get(first["run_id"])["verified"] == []
     done = workflow.resume(first["run_id"], settings, root,
-        model=FakeModel(responses=[review_changes(), write(3), implement_done(), review_approved()]))
+        model=FakeModel(responses=[*review_changes(), write(3), implement_done(),
+                                   *review_approved(("r2-f1",))]))
     assert done["status"] == "awaiting_approval", done
     assert done["review"]["rework_attempts"] == 1
     assert done["review"]["review_rounds"] == 3  # 澄清一次、正式初审、一次返工复审。
@@ -164,12 +164,12 @@ def test_review_question_reverifies_and_does_not_consume_extra_rework_round(tmp_
 def test_clarification_inside_rework_does_not_increment_attempt_again(tmp_path):
     task, settings, root = setup(tmp_path, max_rework=1)
     first = workflow.start(task, settings, root,
-        model=FakeModel(responses=[write(), implement_done(), review_changes(), clarification()]))
+        model=FakeModel(responses=[write(), implement_done(), *review_changes(), clarification()]))
     assert first["status"] == "needs_input" and first["phase"] == "rework"
     assert first["review"]["rework_attempts"] == 1
     reply(first, root)
     done = workflow.resume(first["run_id"], settings, root,
-        model=FakeModel(responses=[write(3), implement_done(), review_approved()]))
+        model=FakeModel(responses=[write(3), implement_done(), *review_approved()]))
     assert done["status"] == "awaiting_approval", done
     assert done["review"]["rework_attempts"] == 1
 
@@ -177,7 +177,7 @@ def test_clarification_inside_rework_does_not_increment_attempt_again(tmp_path):
 def test_business_answer_cannot_approve_or_recover(tmp_path):
     task, settings, root = setup(tmp_path)
     result = workflow.start(task, settings, root,
-        model=FakeModel(responses=[write(), implement_done(), review_approved()]))
+        model=FakeModel(responses=[write(), implement_done(), *review_approved()]))
     request = result["human_requests"][0]
     assert request["kind"] == "approval"
     with pytest.raises(StateError, match="use_approve_reject_or_recover"):
@@ -194,7 +194,7 @@ def test_changed_human_answer_invalidates_approval_digest(tmp_path):
     first, settings, root = waiting(tmp_path)
     reply(first, root)
     done = workflow.resume(first["run_id"], settings, root,
-        model=FakeModel(responses=[implement_done(), review_approved()]))
+        model=FakeModel(responses=[implement_done(), *review_approved()]))
     store = JobStore(root)
     state = store.get(first["run_id"])
     assert done["status"] == "awaiting_approval"
@@ -209,7 +209,7 @@ def test_changed_human_answer_invalidates_approval_digest(tmp_path):
 def test_legacy_approval_and_new_request_are_saved_together(tmp_path):
     task, settings, root = setup(tmp_path)
     done = workflow.start(task, settings, root,
-        model=FakeModel(responses=[write(), implement_done(), review_approved()]))
+        model=FakeModel(responses=[write(), implement_done(), *review_approved()]))
     store = JobStore(root)
     state = store.get(done["run_id"])
     for name in ("human_requests", "human_answers", "requirements_revision"):
@@ -253,7 +253,7 @@ def test_explicit_retry_keeps_confirmed_answers_and_their_original_run(tmp_path)
     limited = workflow.resume(first["run_id"], settings, root, model=FakeModel(responses=[write(3)]))
     assert limited["status"] == "limit_reached", limited
     retried = workflow.retry(first["run_id"], settings, root, reason="给足后续额度",
-        overrides={"max_model_calls": 6}, model=FakeModel(responses=[write(3), implement_done(), review_approved()]))
+        overrides={"max_model_calls": 6}, model=FakeModel(responses=[write(3), implement_done(), *review_approved()]))
     assert retried["status"] == "awaiting_approval", retried
     saved = JobStore(root).get(retried["run_id"])
     assert saved["human_answers"][0]["run_id"] == first["run_id"]

@@ -17,6 +17,8 @@ from repopilot.collaboration.requests import resolve_request
 from repopilot.orchestration.state import TERMINAL, approval_digest, attach, canonical_hash
 from repopilot.planning import brief as task_brief
 from repopilot.planning import planner as planning
+from repopilot.review import basis as review_basis_store
+from repopilot.review.merge import approval_problems
 from repopilot.storage.jobs import JobStore, StateError, job_lock, timestamp
 from repopilot.execution.workspace import head_commit, source_snapshot
 
@@ -69,6 +71,11 @@ def create_job(task, settings, output_root, *, workspace=True, review=True,
         "subtask_mappings": list(carried.get("subtask_mappings") or []) if prior_plan else [],
         "parallel_runs": [], "integrations": [], "parallel_blocked": [], "pending_integration": None,
         "platform_preflight": None,
+        "review_rounds": [], "review_basis": None, "review_reuse": [],
+        "review_invalidations": [], "review_pending": None, "review_draft": None,
+        "disputes": [], "review_dispute_decisions": [],
+        "rework_limit": settings.max_rework, "rework_extensions": [],
+        "prior_attempt": carried.get("prior_attempt"),
     }, issue_key=None if issue is None else f"{issue['repository']}#{issue['number']}", retry_of=retry_of)
     if issue and canonical_hash(issue) != canonical_hash(state["issue"]):
         raise StateError("issue_changed_since_intake")
@@ -89,6 +96,13 @@ def frozen_settings(saved, current, overrides=None):
         if key not in saved and key not in overrides:
             merged[key] = False
     return RuntimeSettings.model_validate({**merged, "api_key": current.api_key})
+
+
+def review_limit(state, settings):
+    """M5 运行可经人工决定延长修改上限；旧运行回落到冻结配置。"""
+
+    stored = state.get("rework_limit")
+    return int(stored) if stored is not None else settings.max_rework
 
 
 def retry(run_id, settings, root, *, reason, overrides=None, model=None, stop_after=None, base_commit=None):
@@ -118,6 +132,14 @@ def retry(run_id, settings, root, *, reason, overrides=None, model=None, stop_af
             "plan_refresh_history": state.get("plan_refresh_history"),
             "plan_refresh_required": state.get("plan_refresh_required"),
             "subtask_mappings": state.get("subtask_mappings"),
+            # 旧尝试的计数只作交接背景；新尝试的修改上限仍由本次配置决定，不能静默重置。
+            "prior_attempt": {
+                "run_id": state["run_id"], "status": state.get("status"),
+                "reworks": state.get("reworks", 0),
+                "review_rounds": len(state.get("history") or []),
+                "review_verdict": (state.get("review_report") or {}).get("verdict"),
+                "disputes": len(state.get("disputes") or []),
+            },
         }
         return start(Task.model_validate(state["task"]), frozen, root, model=model,
             workspace=state["workspace_enabled"], review=state["review_enabled"],
@@ -129,6 +151,7 @@ def resume(run_id, settings, output_root, *, model=None, stop_after=None):
     store = JobStore(output_root)
     with job_lock(store.root, run_id):
         state = store.get(run_id)
+        review_basis_store.ensure(state)
         settings = frozen_settings(state["settings"], settings)
         if state["in_flight"] == "publish":
             result = snapshot(store, state, settings)
@@ -201,6 +224,9 @@ def decide(run_id, root, *, commit, approved, reason):
             raise StateError("not_waiting_for_approval")
         if commit != state["reviewed_commit"] or approval_digest(state) != state["approval_digest"]:
             raise StateError("stale_approval")
+        problems = approval_problems(state)
+        if problems:
+            raise StateError("review_evidence_incomplete")
         attach(state, store.root).assert_clean(commit)
         knowledge.validate(state, store.root)
         request = human.approval_request(state, store.root)
@@ -294,8 +320,30 @@ def snapshot(store, state, settings):
         "review": {"enabled": state["review_enabled"] and state["workspace_enabled"],
             "review_rounds": len(state["history"]), "rework_attempts": state["reworks"],
             "reviewed_commit": state["reviewed_commit"], "verdict": None if review is None else review["verdict"],
-            "findings": 0 if review is None else len(review["findings"]), "limit": settings.max_rework,
-            "final_commit": None if changes is None else changes["head_commit"]},
+            "findings": 0 if review is None else len(review["findings"]), "limit": review_limit(state, settings),
+            "final_commit": None if changes is None else changes["head_commit"],
+            "perspectives": {} if review is None else {
+                name: value.get("verdict")
+                for name, value in (review.get("perspectives") or {}).items()},
+            "blocking_findings": 0 if review is None else sum(
+                1 for item in review.get("findings") or []
+                if item.get("blocking") and item.get("status") in {"open", "unverified", "disputed"}),
+            "non_blocking_findings": 0 if review is None else sum(
+                1 for item in review.get("findings") or [] if not item.get("blocking")),
+            "disputes": len(state.get("disputes") or []),
+            "open_disputes": sum(1 for item in state.get("disputes") or []
+                                 if item.get("outcome") in {"pending", "undetermined"}),
+            "rework_limit": review_limit(state, settings),
+            "rework_extensions": len(state.get("rework_extensions") or []),
+            "basis": (state.get("review_basis") or {}).get("hash"),
+            "reused": list(state.get("review_reuse") or [])[-1:]},
+        "review_rounds": state.get("review_rounds") or [],
+        "review_basis": state.get("review_basis"),
+        "review_invalidations": state.get("review_invalidations") or [],
+        "disputes": state.get("disputes") or [],
+        "rework_limit": review_limit(state, settings),
+        "rework_extensions": state.get("rework_extensions") or [],
+        "prior_attempt": state.get("prior_attempt"),
     }
     trace.save("summary.json", summary)
     return json.loads(trace.encode(summary))

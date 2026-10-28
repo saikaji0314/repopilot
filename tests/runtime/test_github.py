@@ -106,7 +106,7 @@ def github_candidate(tmp_path):
     task, settings, root = setup(tmp_path)
     run_git(task.repository, "remote", "add", "origin", "https://github.com/owner/repo.git")
     result = workflow.start(task, settings, root, issue=ISSUE,
-        model=FakeModel(responses=[*implementation(), review_approved()]))
+        model=FakeModel(responses=[*implementation(), *review_approved()]))
     assert result["status"] == "awaiting_approval", result
     state = JobStore(root).get(result["run_id"])
     return state, root, FakeGitHub(state)
@@ -154,7 +154,7 @@ def test_issue_deduplication_avoids_second_model_run(tmp_path):
     result = workflow.start(Task.model_validate(state["task"]), RuntimeSettings(api_key="synthetic",
         plan_enabled=False), root, issue=ISSUE, model=FakeModel(responses=[]))
     assert result["run_id"] == state["run_id"]
-    assert result["model_calls"] == 3
+    assert result["model_calls"] == 4
 
 
 def test_git_push_reuses_exact_head_and_rejects_conflicting_branch(tmp_path, monkeypatch):

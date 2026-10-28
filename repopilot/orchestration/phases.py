@@ -9,17 +9,19 @@ from uuid import uuid4
 
 from repopilot.agents import loop as engine
 from repopilot.agents.trace import Trace
-from repopilot.agents.prompts import SYSTEM_PROMPT, REVIEW_PROMPT, PLANNER_PROMPT
-from repopilot.agents.reports import Decision, ImplementationReport, ReviewReport
+from repopilot.agents.prompts import SYSTEM_PROMPT, PLANNER_PROMPT
+from repopilot.agents.reports import Decision, ImplementationReport
 from repopilot.memory import context as memory_context
 from repopilot.core.config import RuntimeSettings, Task
-from repopilot.orchestration.state import approval_digest, attach
+from repopilot.orchestration.state import attach
 from repopilot.orchestration import human
 from repopilot.orchestration import knowledge
 from repopilot.orchestration import parallel
 from repopilot.orchestration.slots import SlotFault, SlotManager
 from repopilot.planning import planner as planning
 from repopilot.planning.contracts import PlanFault, PlanReport
+from repopilot.review import outcome as review_outcome
+from repopilot.review import rounds as review_rounds
 from repopilot.storage.budget import RunLimit
 from repopilot.storage.jobs import StateError, timestamp
 from repopilot.execution.repository import Repository
@@ -148,9 +150,14 @@ class PhaseRunner:
             if self.state["rework_pending"]:
                 self.state["reworks"] += 1
                 self.state["rework_pending"] = False
-            payload.update(review_feedback=self.state["history"][-1]["findings"],
-                           reviewed_commit=self.state["reviewed_commit"])
-            self.trace.event("rework_started", attempt=self.state["reworks"], findings=len(self.state["history"][-1]["findings"]))
+            feedback = self._rework_feedback()
+            payload.update(review_feedback=feedback,
+                           reviewed_commit=self.state["reviewed_commit"],
+                           review_round=len(self.state.get("review_rounds") or []),
+                           rework_attempt=self.state["reworks"],
+                           rework_limit=review_outcome.limit(self.state))
+            self.trace.event("rework_started", attempt=self.state["reworks"],
+                             findings=len(feedback), limit=review_outcome.limit(self.state))
         self._recovery_payload(payload)
         self._attach_memory(payload, phase)
         return payload
@@ -768,12 +775,18 @@ class PhaseRunner:
         self.trace.save("verification.json", self.state["verified"])
         self.state["phase"] = "review"
 
-    def _review_payload(self):
+    def _review_shared_payload(self):
         diff = self.workspace.diff()
         payload = {"request": self.task.request, "available_checks": list(self.task.checks),
             "review_target": {"commit": self.state["reviewed_commit"], "base_commit": self.state["base_commit"]},
             "changed_files": [change["path"] for change in self.workspace.changes()["files"]],
             "verified_checks": self.state["verified"], "diff": diff["diff"], "diff_truncated": diff["truncated"]}
+        issue = self.state.get("issue") or {}
+        if issue:
+            payload["issue"] = {key: value for key, value in
+                {"title": issue.get("title"), "body": str(issue.get("body") or "")[:4000],
+                 "url": issue.get("url"), "number": issue.get("number")}.items()
+                if value is not None}
         if self.state.get("human_answers"):
             payload["human_answers"] = self.state["human_answers"]
         if self.state.get("task_brief"):
@@ -783,58 +796,49 @@ class PhaseRunner:
             payload["plan"] = plan_view
         if self.state.get("integrations"):
             payload["integrations"] = self.state["integrations"][-8:]
-        if self.state["history"]:
-            payload["previous_findings"] = self.state["history"][-1]["findings"]
         self._attach_memory(payload, 'review')
         return payload
 
+    def _rework_feedback(self):
+        """返工只带程序认定的待修发现；正式审核的原始报告仍可回查。"""
+
+        report = self.state.get("review_report") or {}
+        findings = [item for item in report.get("findings") or []
+                    if item.get("blocking") and item.get("status") in {"open", "unverified"}]
+        if findings:
+            return findings
+        if report.get("findings"):
+            return report["findings"]
+        return (self.state["history"][-1].get("findings") or []) if self.state["history"] else []
+
     def review(self):
         self.workspace.assert_clean(self.state["reviewed_commit"])
-        payload = self._review_payload()
-        self.trace.event("review_started", commit=self.state["reviewed_commit"])
-        with repository_session(self.task, self.workspace.repository(), writable=False,
-                                deadline=self.control.remaining, trace=self.trace) as session:
-            repository = Repository(self.workspace.path) if session is None else session
-            tools = engine.build_tools(self.task, self.control.remaining, workspace=None,
-                repository=repository,
-                **({} if session is None else {"checker": session.run_check}))
-            report = engine.run_phase(prompt=REVIEW_PROMPT, schema=ReviewReport,
-                payload=payload, tools=tools + self._material_tools(),
-                settings=self.settings, control=self.control, model=self.model, phase="review")
+        self.trace.event("review_started", commit=self.state["reviewed_commit"],
+                         round=len(self.state.get("review_rounds") or []) + 1)
+        result = review_rounds.run(state=self.state, task=self.task, settings=self.settings,
+            control=self.control, trace=self.trace, workspace=self.workspace,
+            store_root=self.store_root, model=self.model,
+            materials=self._material_tools(), shared_payload=self._review_shared_payload(),
+            checkpoint=self.checkpoint, session_factory=repository_session)
         self.workspace.assert_clean(self.state["reviewed_commit"])
-        if report.verdict == "approved" and not engine.verification_passed(self.task, self.state["verified"]):
-            report = report.model_copy(update={"verdict": "unable_to_review", "summary": "本地复核未全部通过，拒绝模型批准。"})
-        self.state["review_report"] = report.model_dump(mode="json")
-        self.trace.save("review.json", self.state["review_report"])
-        knowledge.record_decisions(self.state, self.store_root, "review", report.decisions,
+        report = self.state.get("review_report") or {}
+        decisions = [Decision.model_validate(item) for item in report.get("decisions") or []]
+        knowledge.record_decisions(self.state, self.store_root, "review", decisions,
                                    (self.settings.api_key.get_secret_value(),))
-        self.state["history"].append({"attempt": len(self.state["history"]), "commit": self.state["reviewed_commit"],
-            "knowledge_snapshot_id": (self.state.get("knowledge_snapshot") or {}).get("snapshot_id"),
-            "plan_version": (self.state.get("plan") or {}).get("version"),
-            "verdict": report.verdict, "summary": report.summary, "findings": engine.findings_brief(report.findings)})
-        self.trace.save("review-history.json", self.state["history"])
-        self.trace.event("review_finished", verdict=report.verdict, commit=self.state["reviewed_commit"])
-        if report.verdict == "unable_to_review" and report.questions:
-            human.wait_for_clarification(self.state, self.store_root, summary=report.summary,
-                questions=report.questions, limit=self.settings.max_question_batches,
-                blocking={"phase": "review"})
-        else:
-            self._review_outcome(report.verdict)
-        if report.verdict == 'approved':
-            memory_context.collect_candidates(self.state, self.settings, self.store_root, self.workspace.repository(), self.trace)
+        if result["verdict"] == "undetermined":
+            if self.state["status"] not in {"needs_input"}:
+                # 兜底：争议未形成人工请求时也不能让驱动的阶段循环空转。
+                self.state["status"] = "needs_input"
+                self.state["stop_reason"] = "review_dispute_requires_decision"
+            return
+        self._review_outcome(result["verdict"], summary=result.get("summary"),
+                             questions=result.get("questions") or [])
+        if result["verdict"] == "approved":
+            memory_context.collect_candidates(self.state, self.settings, self.store_root,
+                                              self.workspace.repository(), self.trace)
 
-    def _review_outcome(self, verdict):
-        if verdict == "unable_to_review":
-            self.state["status"], self.state["stop_reason"] = "review_inconclusive", "review_unable_to_review"
-        elif verdict == "changes_requested":
-            if self.state["reworks"] >= self.settings.max_rework:
-                self.state["status"], self.state["stop_reason"] = "rework_limit_reached", "max_rework"
-            else:
-                self.state["phase"], self.state["rework_pending"] = "rework", True
-        else:
-            self.state["status"] = "awaiting_approval" if self.state["require_approval"] else "completed"
-            self.state["stop_reason"] = self.state["status"] if self.state["require_approval"] else "report"
-            self.state["phase"] = "approval"
-            self.state["approval_digest"] = approval_digest(self.state)
-            if self.state["require_approval"]:
-                human.approval_request(self.state, self.store_root)
+    def _review_outcome(self, verdict, *, summary=None, questions=None):
+        report = self.state.get("review_report") or {}
+        review_outcome.apply(self.state, self.store_root, self.task, verdict,
+            summary=summary or str(report.get("summary") or ""),
+            questions=questions if questions is not None else report.get("questions") or [])

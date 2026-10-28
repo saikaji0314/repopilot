@@ -1,6 +1,6 @@
 # 本地人工请求、集中提问与继续执行
 
-更新：2026-10-27。范围：单机工作区任务的需求补充、固定提交批准、中断现场恢复，以及默认开启的父Issue评论问答与提问批次计数。M3的任务规划、任务说明与子Issue映射见[计划](PLANNING.md)；双视角审核尚未接入。
+更新：2026-10-28。范围：单机工作区任务的需求补充、固定提交批准、中断现场恢复、默认开启的父Issue评论问答与提问批次计数，以及M5的双视角审核争议判断和返工交接请求。M3的任务规划、任务说明与子Issue映射见[计划](PLANNING.md)；M5的双审、发现与争议复核见[双审与争议](REVIEW.md)。
 
 ## 什么时候等待人
 
@@ -55,13 +55,17 @@ Issue评论答复同样不能批准或推送：交付批准仍使用绑定完整
 | `approval` | 审核及检查通过后的请求记录 | 原有`approve`或`reject`，绑定完整SHA |
 | `recovery` | 检测到未完成阶段后创建的现场核对请求 | 原有`recover`，核对当前SHA和理由后再`resume` |
 | `context_update` | 已登记项目资料失效／变化产生的请求 | [资料刷新](KNOWLEDGE.md)，确认材料并核对当前SHA后重新验证 |
+| `dispute` | 审核具体争议经A／B＋C仍无法判断 | `review decide`指定争议ID和confirmed／refuted判断，记录理由后显式`resume`；普通`human answer`不能代替 |
+| `handover` | 审核返工达到修改上限 | 补充需求后`human answer`／`resume`，或`review continue`明确增加修改额度，或用`retry`开始新尝试；不会自动批准或重置计数 |
 
 ```powershell
 repopilot approve RUN_ID --commit FULL_SHA --reason "已核对需求、差异与证据" --output .local/runtime
 repopilot recover RUN_ID --commit FULL_SHA --reason "已检查中断现场，可从当前文件继续" --output .local/runtime
+repopilot review decide RUN_ID --dispute d-1 --decision refuted --reason "核对证据后该发现不成立" --output .local/runtime
+repopilot review continue RUN_ID --extra 1 --reason "负责人同意再改一次" --output .local/runtime
 ```
 
-`human answer`不能回答批准／恢复请求。业务答案不能更改工具权限、检查配置、额度或推送权限。批准也不会自动推送；创建草稿仍需原有`publish`。需求补充纳入批准摘要，批准后改写答案会使发布校验失败。
+`human answer`不能回答批准／恢复／争议请求。业务答案不能更改工具权限、检查配置、额度或推送权限。批准也不会自动推送；创建草稿仍需原有`publish`。需求补充纳入批准摘要，批准后改写答案会使发布校验失败。返工交接的`human answer`仍是业务补充，不会延长修改上限；延长必须用`review continue`明确留理由。
 
 `recover`继续保留原有现场核对规则；它可由操作者明确接纳当前文件，不能替代未完成发布动作的远端核对。恢复请求的现场版本改变时，保留被替代的请求并记录本次实际确认的现场。
 
@@ -73,7 +77,7 @@ repopilot recover RUN_ID --commit FULL_SHA --reason "已检查中断现场，可
 
 Issue评论发送前先在状态里保存标记和发送意图，写入成功后保存评论ID与链接；重试先按标记查重。读取回复只使用发送时保存的批次评论ID，并按`created_at`过滤早于批次的内容；批次评论缺失时不接受复制标记的替代边界。`platform_preflight`保存最近一次只读能力探查，可用`status`或`plan show`回查，HTML报告不单独渲染。
 
-CLI遵循现有本机操作者信任边界，不提供账号认证或远端身份校验；`actor=local-operator/channel=cli`和`actor=registered-owner/channel=issue`是来源标识，不是企业身份认证。业务答复和证据保存在本地受控运行目录，不应填写密钥。Issue评论渠道只登记一位负责人，不做企业RBAC；评论写入依赖平台令牌，`preflight`能证明身份和读取能力，但不能在不写入时证明写权限。双视角审核和修改上限的完整接入留到后续增量。
+CLI遵循现有本机操作者信任边界，不提供账号认证或远端身份校验；`actor=local-operator/channel=cli`和`actor=registered-owner/channel=issue`是来源标识，不是企业身份认证。业务答复和证据保存在本地受控运行目录，不应填写密钥。Issue评论渠道只登记一位负责人，不做企业RBAC；评论写入依赖平台令牌，`preflight`能证明身份和读取能力，但不能在不写入时证明写权限。M5的双视角审核、争议判断和修改上限已按[双审与争议](REVIEW.md)接入；争议／交接当前只走本地CLI，不自动发Issue评论。
 
 ## 设计取舍与验证
 

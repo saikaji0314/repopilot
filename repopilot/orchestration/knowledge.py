@@ -178,11 +178,11 @@ def record_decisions(state, root, phase, decisions, secrets=()):
 
 def pause(state, root, reason):
     from repopilot.orchestration.human import capture_context
+    from repopilot.review import basis as review_basis
     for request in state.get("human_requests", []):
         if request["status"] == "pending" and request["kind"] != "context_update":
             request["status"] = "superseded"
-    state["approval"], state["review_report"], state["verified"] = None, None, []
-    state.pop("approval_digest", None)
+    review_basis.invalidate(state, f"knowledge_{reason}")
     state["in_flight"] = None
     workspace = attach(state, Path(root))
     if workspace and workspace.path.exists():

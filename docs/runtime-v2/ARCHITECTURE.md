@@ -4,7 +4,9 @@
 
 2026-10-27新增：工作区任务可以本地等待需求补充，使用CLI记录版本绑定的答复后恢复；批准和现场恢复进入同一请求记录。详见[人工协作](HUMAN.md)。M3进一步加入默认规划阶段、任务说明版本、集中提问批次、Issue评论自动投递／有节制轮询与按需子Issue映射，见[计划](PLANNING.md)。
 
-2026-10-28 M4新增[并行实现与内部整合](PARALLEL.md)：可并行计划最多2个全局实现槽位，每个子任务独立worktree、依赖从已整合父HEAD开始，完成后串行合入父临时工作区并做组合检查。双视角审核、AB争议复核和真实平台写入仍未接入，不能从本地线程并行或模拟平台能力推断已具备。
+2026-10-28 M4新增[并行实现与内部整合](PARALLEL.md)：可并行计划最多2个全局实现槽位，每个子任务独立worktree、依赖从已整合父HEAD开始，完成后串行合入父临时工作区并做组合检查。
+
+同日M5新增[双视角审核、发现合并与争议复核](REVIEW.md)：正确性与需求上下文两个只读视角并行审核同一固定提交和依据，首轮上下文独立；程序合并去重发现、区分阻断与偏好、判定证据状态，复审逐条回应固定ID；只有复审回应冲突才启动 A／B＋C，仍无法判断时交负责人；同一提交同一依据可复用已有结论，需求和证据变化会使旧审核与批准失效。真实模型双审效果、Docker 双审和真实平台争议往返仍未验证。
 
 同日M2新增[项目资料与决定管理](KNOWLEDGE.md)：正文版本文件、SQLite增量索引、版本确认和固定清单，现有实现／审核可分段读取原文，资料变化触发人工刷新。结构化机器决定是提议，人工答复带来源导出为任务资料；尚无真实模型收益结论。
 
@@ -16,10 +18,10 @@ M3本地机制验证见[增量27](VALIDATION-27.md)：确定性模型与模拟�
 | --- | --- | --- |
 | 以 Issue 触发 | 手动 URL 接入；按登记仓库、标签和创建时间轮询；队列去重 | 真实 Issue #1 手动接入，#3 自动接入；使用轮询，没有 webhook |
 | 验证问题、确认需求 | 实现／审核可提出问题，工作区任务保存现场等待CLI答复，恢复时传递业务补充并更新证据；新任务默认先规划，Issue任务等待时自动发问题批次到父Issue评论并由监听器有节制地读取负责人回复 | 平台评论只能采纳登记负责人，只有模拟协议和本地队列验证；没有真实平台评论往返结论，其他评论仅作线索 |
-| 规划与子任务 | 默认规划Agent只读资料和源码，生成带验收／依赖／修改边界的计划；程序校验无环、按拓扑排序，支持顺序或最多2路独立worktree并行；结果串行整合到父临时工作区并做组合检查；按需映射子Issue，重试不重复创建 | 真实模型并行效果和Docker并行未验证；没有按子任务双审或争议复核（M5）；暂停后不自动续用未提交的并行编辑 |
+| 规划与子任务 | 默认规划Agent只读资料和源码，生成带验收／依赖／修改边界的计划；程序校验无环、按拓扑排序，支持顺序或最多2路独立worktree并行；结果串行整合到父临时工作区并做组合检查；组合候选再交双视角审核与按需争议复核；按需映射子Issue，重试不重复创建 | 真实模型并行效果和Docker并行未验证；双审只有本地确定性替身；暂停后不自动续用未提交的并行编辑 |
 | 开独立工作区 | 固定基线提交，每次运行独立 Git worktree，核对原仓库与远端身份 | 本机 Git；不自动为各语言安装环境或依赖 |
 | 写代码、测试 | 通用 UTF-8 文件工具、精确替换与写入、命名检查；限制编辑与调用次数 | 工具不依赖 Python AST；Python、JavaScript 小样例已验证，不代表所有语言生态都已验证 |
-| 审核与返工循环 | 编排层独立重跑全部登记检查；只读审核 Agent；有限次返工并重新提交、检查和审核 | Docker 模式使用新容器复核，默认模式仍在本机；审核绑定提交，检查失败可否决模型批准；仍需要人判断需求和测试是否充分 |
+| 审核与返工循环 | 编排层独立重跑全部登记检查；正确性／需求上下文两个只读视角并行审同一固定提交和依据，程序合并发现、只对具体争议启动A／B＋C，最多三次修改后交接 | Docker 模式使用新容器复核，默认模式仍在本机；双审与A／B＋C只有确定性替身和本地机制验证，真实模型发现效果、Docker双审与真实平台争议往返未验证 |
 | 中断后继续 | SQLite 状态、阶段检查点、显式恢复、重试留档、累计费用账本 | 阶段内部中断需要操作者核查；不逐条恢复模型会话，不提供跨机器恢复 |
 | 人工审批 | CLI 批准或拒绝，绑定完整 SHA 及需求、验证、审核摘要 | 审批后版本变化失效；没有用户身份、RBAC 或审批网页 |
 | PR 交付 | 批准后推送 feature 分支、创建草稿 PR；重复发布核对远端结果 | 真实 PR #2 已创建；审核通过本身不会自动推送 |
@@ -34,7 +36,7 @@ M3本地机制验证见[增量27](VALIDATION-27.md)：确定性模型与模拟�
 | --- | --- | --- |
 | Harness／轻量 AI 基础设施 | 宿主控制工具、状态、检查、预算、审批和发布；模型只提出受限动作与报告 | 面向不可信租户的隔离执行平台、分布式调度及服务运维体系 |
 | LangChain／LangGraph | `create_agent` 承载单个角色内部的模型与工具循环；Pydantic 校验报告；DeepSeek 适配 | 外层业务流程是自定义 Python 状态机与 SQLite，未采用 LangGraph StateGraph／checkpointer |
-| Multi-agent | 实现与审核两个角色，提示、工具权限、输出协议不同；默认使用同一可配置模型，顺序执行 | 角色独立不等于判断独立；没有多模型委员会或自由协商网络。多 Issue worker 并发属于任务调度 |
+| Multi-agent | 实现与两个审核视角、按需的争议复核A／B／C角色；提示、工具权限、输出协议不同；默认使用同一可配置模型 | 角色独立不等于判断独立；没有多模型委员会或自由协商网络。多 Issue worker 并发属于任务调度；双审和A／B＋C效果未用真实模型验证 |
 | Memory／上下文 | 当前上下文清理、宿主进度与状态持久化；可选跨运行文件事实书签，带提交来源、依赖指纹和人工生命周期 | 尚无任务经验归纳、长期语义检索、向量库或真实模型收益结论；检查点与文件事实分别管理 |
 | 项目资料与决定 | 文档正文／历史版本在文件中，SQLite保存位置、来源、关系与FTS5词项；确认绑定版本，实现／审核共用固定清单，变更／丢失需刷新再验证 | 关键词检索不等于语义检索；决定完整性依赖报告，尚未做真实任务效果／记忆收益对照；不提供多机资料同步 |
 | 评测 | Fake／Mock协议验证、真实GitHub交付、官方SWE-bench评分及冻结的上下文／记忆开关开发对照，见[增量22](VALIDATION-22.md) | 尚无独立留出集和统计成功率；小样本组件收益不稳定，执行故障另列，不将命中或正确补丁当完整交付 |
@@ -80,6 +82,9 @@ flowchart TD
 | [collaboration/requests.py](../../repopilot/collaboration/requests.py)、[orchestration/human.py](../../repopilot/orchestration/human.py) | 人工请求协议、去重与版本绑定，答复后保留用量恢复，复用审批和现场核对 |
 | [collaboration/questions.py](../../repopilot/collaboration/questions.py)、[collaboration/comments.py](../../repopilot/collaboration/comments.py) | 批次编号／去重与上限、最终缺口；Issue评论正文、负责人过滤和引用剔除，不做网络请求 |
 | [planning/contracts.py](../../repopilot/planning/contracts.py)、[planner.py](../../repopilot/planning/planner.py)、[brief.py](../../repopilot/planning/brief.py) | 计划报告契约、依赖校验与拓扑顺序、子任务进度、任务说明版本；不直接执行模型 |
+| [review/contracts.py](../../repopilot/review/contracts.py)、[merge.py](../../repopilot/review/merge.py)、[basis.py](../../repopilot/review/basis.py) | 合并发现与争议记录、去重和阻断判定、审核依据快照与失效；纯规则，不调用模型 |
+| [review/rounds.py](../../repopilot/review/rounds.py)、[runner.py](../../repopilot/review/runner.py)、[disputes.py](../../repopilot/review/disputes.py) | 一轮双审的并行执行与落盘、A／B／C争议复核、恢复与同版本复用；模型只产出报告 |
+| [review/outcome.py](../../repopilot/review/outcome.py)、[review/gate.py](../../repopilot/review/gate.py)、[review/cli.py](../../repopilot/review/cli.py) | 审核结论到返工／批准／交接的状态推进、争议人工判断与修改额度延长、只读查看命令 |
 | [planning/mapping.py](../../repopilot/planning/mapping.py)、[planning/cli.py](../../repopilot/planning/cli.py) | 计划到子Issue的幂等映射、平台不支持时保留本地映射；计划查看命令 |
 | [knowledge/store.py](../../repopilot/knowledge/store.py)、[retrieval.py](../../repopilot/knowledge/retrieval.py)、[orchestration/knowledge.py](../../repopilot/orchestration/knowledge.py) | 正文与增量索引、来源关联与任务范围检索、固定清单和失效／刷新；代码事实仍由memory管理 |
 | [delivery/forge.py](../../repopilot/delivery/forge.py)、[delivery/github.py](../../repopilot/delivery/github.py)、[delivery/gitlab.py](../../repopilot/delivery/gitlab.py) | 平台识别、凭证路由与唯一的发布流程；GitHub／GitLab 各自的 REST 与 Git 差异，见[平台接入](FORGES.md) |
@@ -98,6 +103,7 @@ repopilot/
   orchestration/         workflow生命周期、session检查点、phases业务阶段、parallel并行整合、slots槽位、state版本规则
   collaboration/         人工请求、提问批次与Issue评论正文，不承载模型循环
   planning/              任务说明、计划校验与顺序执行辅助、子Issue映射
+  review/                双视角审核、发现合并、A／B＋C争议复核、依据与人工判断入口
   agents/                loop循环与限额、models适配、reports契约、prompts角色提示、trace证据
   execution/             文件工具、Git工作区、容器会话、传输和归档校验
   storage/               jobs状态与锁、budget累计费用

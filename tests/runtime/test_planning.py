@@ -18,7 +18,7 @@ from repopilot.presentation.formatting import next_action
 from repopilot.presentation.report import build
 from repopilot.storage.jobs import JobStore, StateError
 from tests.runtime.test_human import reply
-from tests.runtime.test_review_loop import FakeModel, implement_done, review_approved, setup, turn
+from tests.runtime.test_review_loop import FakeModel, implement_done, review_approved, review_unable, setup, turn
 
 
 ISSUE = {"repository": "owner/repo", "number": 1, "url": "https://github.com/owner/repo/issues/1",
@@ -81,13 +81,13 @@ def test_clear_small_task_needs_no_question_and_reaches_approval(tmp_path, monke
         return original(**kwargs)
     monkeypatch.setattr(engine, "run_phase", capture)
     result = workflow.start(task, settings, root, model=FakeModel(responses=[
-        plan_ready(), write(), implement_done(), review_approved()]))
+        plan_ready(), write(), implement_done(), *review_approved()]))
     assert result["status"] == "awaiting_approval", result
     assert result["plan"]["split"] == "none" and len(result["plan"]["subtasks"]) == 1
     assert result["plan_status"]["state"] == "completed"
     assert result["question_batches"] == []
     assert result["task_brief"]["revision"] == 1
-    assert result["model_calls"] == 4
+    assert result["model_calls"] == 5
     assert seen["implement"]["plan"]["version"] == result["plan"]["version"]
     assert seen["implement"]["task_brief"]["revision"] == 1
     assert seen["review"]["plan"]["subtasks"][0]["result"]["status"] == "completed"
@@ -111,7 +111,7 @@ def test_plan_question_counts_once_and_answer_updates_brief_then_continues(tmp_p
     answered = reply(first, root, "返回空结果")
     assert answered["status"] == "paused" and answered["task_brief_revision"] == 1
     done = workflow.resume(first["run_id"], settings, root, model=FakeModel(responses=[
-        plan_ready(), write(), implement_done(), review_approved()]))
+        plan_ready(), write(), implement_done(), *review_approved()]))
     assert done["status"] == "awaiting_approval", done
     assert done["requirements_revision"] == 1
     assert done["question_batches"][0]["answered_at"]
@@ -124,7 +124,7 @@ def test_three_batches_then_final_gap_keeps_counts_and_resumes(tmp_path):
     task, settings, root = setup(tmp_path, plan_enabled=True)
     model = FakeModel(responses=[
         plan_question("第一批问题"), plan_question("第二批问题"), plan_question("第三批问题"),
-        plan_question("第四批问题"), plan_ready(), write(), implement_done(), review_approved()])
+        plan_question("第四批问题"), plan_ready(), write(), implement_done(), *review_approved()])
     result = workflow.start(task, settings, root, model=model)
     for expected_batch in (1, 2, 3):
         assert result["status"] == "needs_input", result
@@ -169,7 +169,7 @@ def test_multiple_subtasks_run_in_dependency_order_and_commit_each(tmp_path):
     subtasks = [subtask("first"), subtask("second", depends_on=["first"], title="第二步")]
     result = workflow.start(task, settings, root, model=FakeModel(responses=[
         plan_ready(subtasks, split="sequential"), write(), implement_done(), write(3), implement_done(),
-        review_approved()]))
+        *review_approved()]))
     assert result["status"] == "awaiting_approval", result
     results = result["plan_progress"]["results"]
     assert [item["id"] for item in results] == ["first", "second"]
@@ -198,8 +198,7 @@ def test_question_limit_is_shared_across_plan_implement_and_review(tmp_path):
     task, settings, root = setup(tmp_path, plan_enabled=True)
     implement_question = turn("ImplementationReport", {"status": "needs_clarification",
         "summary": "实现需要确认", "evidence": [], "questions": ["选择哪种返回格式？"], "next_steps": []})
-    review_question = turn("ReviewReport", {"verdict": "unable_to_review", "summary": "审核需要确认",
-        "findings": [], "questions": ["是否保留旧字段？"]})
+    review_question = review_unable("审核需要确认", ["是否保留旧字段？"])
     result = workflow.start(task, settings, root, model=FakeModel(responses=[
         plan_ready(), write(), implement_question]))
     assert result["status"] == "needs_input"
@@ -208,7 +207,7 @@ def test_question_limit_is_shared_across_plan_implement_and_review(tmp_path):
                  version=pending(result)["version"], text="返回 JSON")
     # 答复改变任务说明后先自动重规划，再重新执行计划；不会沿用旧计划的子任务进度。
     result = workflow.resume(result["run_id"], settings, root,
-        model=FakeModel(responses=[plan_ready(), write(3), implement_done(), review_question]))
+        model=FakeModel(responses=[plan_ready(), write(3), implement_done(), *review_question]))
     assert result["status"] == "needs_input"
     request = pending(result)
     assert request["batch"] == 2 and request["phase"] == "review"
@@ -217,7 +216,7 @@ def test_question_limit_is_shared_across_plan_implement_and_review(tmp_path):
     human.answer(result["run_id"], root, request_id=request["id"],
                  version=request["version"], text="保留旧字段")
     done = workflow.resume(result["run_id"], settings, root,
-        model=FakeModel(responses=[plan_ready(), write(4), implement_done(), review_approved()]))
+        model=FakeModel(responses=[plan_ready(), write(4), implement_done(), *review_approved()]))
     assert done["status"] == "awaiting_approval", done
     assert len(done["question_batches"]) == 2
     assert len(done["plan_refresh_history"]) == 2
@@ -450,7 +449,7 @@ def test_comment_reply_resume_exports_material_with_comment_source(tmp_path, mon
     synced = human.sync_issue(first["run_id"], root, forge=forge)
     assert synced["synced"] is True
     done = workflow.resume(first["run_id"], settings, root, model=FakeModel(responses=[
-        plan_ready(), write(), implement_done(), review_approved()]))
+        plan_ready(), write(), implement_done(), *review_approved()]))
     assert done["status"] == "awaiting_approval", done
     state = JobStore(root).get(first["run_id"])
     identifier = next(iter(state["knowledge_answers"].values()))
@@ -483,19 +482,19 @@ def test_retry_reuses_recorded_plan_without_calling_planner_again(tmp_path):
     plan_version = JobStore(root).get(first["run_id"])["plan"]["version"]
     second = workflow.retry(first["run_id"], settings, root, reason="给足实现额度",
         overrides={"max_model_calls": 6},
-        model=FakeModel(responses=[write(), implement_done(), review_approved()]))
+        model=FakeModel(responses=[write(), implement_done(), *review_approved()]))
     assert second["status"] == "awaiting_approval", second
     state = JobStore(root).get(second["run_id"])
     assert state["plan"]["version"] == plan_version
     assert state["plan_progress"]["reused"] is True
     assert planner.status(state)["completed"] == 1
-    assert second["model_calls"] == 3
+    assert second["model_calls"] == 4
 
 
 def test_report_shows_brief_plan_modules_and_question_batches(tmp_path):
     task, settings, root = setup(tmp_path, plan_enabled=True)
     result = workflow.start(task, settings, root, model=FakeModel(responses=[
-        plan_ready(), write(), implement_done(), review_approved()]))
+        plan_ready(), write(), implement_done(), *review_approved()]))
     state = JobStore(root).get(result["run_id"])
     html = build(state, root / "runs" / result["run_id"], Path.cwd())
     assert "任务说明与计划" in html and "子任务" in html
@@ -570,15 +569,15 @@ def test_planning_is_enabled_by_default_and_cli_can_turn_it_off(tmp_path):
     task, _, root = setup(tmp_path)
     settings = RuntimeSettings(api_key="synthetic-private-key", issue_comments_enabled=False)
     result = workflow.start(task, settings, root, model=FakeModel(responses=[
-        plan_ready(), write(), implement_done(), review_approved()]))
+        plan_ready(), write(), implement_done(), *review_approved()]))
     assert result["status"] == "awaiting_approval"
-    assert result["plan"]["split"] == "none" and result["model_calls"] == 4
+    assert result["plan"]["split"] == "none" and result["model_calls"] == 5
 
 
 def test_status_command_and_report_show_plan_progress(tmp_path):
     task, settings, root = setup(tmp_path, plan_enabled=True)
     result = workflow.start(task, settings, root, model=FakeModel(responses=[
-        plan_ready(), write(), implement_done(), review_approved()]))
+        plan_ready(), write(), implement_done(), *review_approved()]))
     args = cli.build_parser().parse_args(["status", result["run_id"], "--output", str(root)])
     values = cli.execute_command(args)
     assert values["plan_status"]["completed"] == 1 and values["plan_status"]["total"] == 1
@@ -608,7 +607,7 @@ def test_answer_after_plan_replans_and_exposes_brief_versions(tmp_path, monkeypa
     html = build(state, root / "runs" / result["run_id"], Path.cwd())
     assert "计划基于旧版任务说明" in html
     done = workflow.resume(result["run_id"], settings, root, model=FakeModel(responses=[
-        plan_ready(), write(3), implement_done(), review_approved()]))
+        plan_ready(), write(3), implement_done(), *review_approved()]))
     assert done["status"] == "awaiting_approval", done
     assert done["plan"]["version"] != old_plan
     assert len(done["plan_refresh_history"]) == 1
@@ -649,7 +648,7 @@ def test_blocked_subtask_is_visible_and_can_be_retried(tmp_path):
     assert "计划子任务报告阻塞" in next_action(JobStore(root).get(first["run_id"]))
     plan_version = first["plan"]["version"]
     second = workflow.retry(first["run_id"], settings, root, reason="补齐环境后继续",
-        model=FakeModel(responses=[write(), implement_done(), review_approved()]))
+        model=FakeModel(responses=[write(), implement_done(), *review_approved()]))
     assert second["status"] == "awaiting_approval", second
     state = JobStore(root).get(second["run_id"])
     assert state["plan"]["version"] == plan_version
@@ -689,7 +688,7 @@ def test_multi_subtask_report_distinguishes_each_subtask(tmp_path):
     subtasks = [subtask("first"), subtask("second", depends_on=["first"])]
     result = workflow.start(task, settings, root, model=FakeModel(responses=[
         plan_ready(subtasks, split="sequential"), write(), implement_done(), write(3),
-        implement_done(), review_approved()]))
+        implement_done(), *review_approved()]))
     assert result["status"] == "awaiting_approval"
     html = build(JobStore(root).get(result["run_id"]), root / "runs" / result["run_id"], Path.cwd())
     assert "子任务实现报告" in html and "只属于最后一个子任务" in html
@@ -755,9 +754,9 @@ def test_legacy_run_resume_and_retry_do_not_gain_a_plan_phase(tmp_path):
     saved["settings"].pop("issue_comments_enabled")
     JobStore(root).save(saved)
     resumed = workflow.resume(state["run_id"], settings, root,
-        model=FakeModel(responses=[write(), implement_done(), review_approved()]))
+        model=FakeModel(responses=[write(), implement_done(), *review_approved()]))
     assert resumed["status"] == "awaiting_approval"
-    assert resumed["plan"] is None and resumed["model_calls"] == 3
+    assert resumed["plan"] is None and resumed["model_calls"] == 4
 
     limited_settings = settings.model_copy(update={"max_model_calls": 1})
     limited = workflow.start(task, limited_settings, root,
@@ -769,9 +768,9 @@ def test_legacy_run_resume_and_retry_do_not_gain_a_plan_phase(tmp_path):
     JobStore(root).save(old)
     retried = workflow.retry(limited["run_id"], limited_settings, root, reason="旧运行继续",
         overrides={"max_model_calls": 5},
-        model=FakeModel(responses=[write(3), implement_done(), review_approved()]))
+        model=FakeModel(responses=[write(3), implement_done(), *review_approved()]))
     assert retried["status"] == "awaiting_approval"
-    assert retried["plan"] is None and retried["model_calls"] == 3
+    assert retried["plan"] is None and retried["model_calls"] == 4
 
 
 def test_replan_passes_previous_plan_and_progress_to_planner_and_implementer(tmp_path, monkeypatch):
@@ -794,7 +793,7 @@ def test_replan_passes_previous_plan_and_progress_to_planner_and_implementer(tmp
                  version=pending(first)["version"], text="按旧字段实现")
     done = workflow.resume(first["run_id"], settings, root, model=FakeModel(responses=[
         plan_ready(subtasks, split="sequential"), write(3), implement_done(),
-        write(4), implement_done(), review_approved()]))
+        write(4), implement_done(), *review_approved()]))
     assert done["status"] == "awaiting_approval", done
     assert payloads["plan"][-1]["previous_plan"]["old_progress"]["results"][0]["status"] == "completed"
     assert payloads["plan"][-1]["previous_plan"]["old_progress"]["results"][0]["commit"] == old_progress["results"][0]["commit"]

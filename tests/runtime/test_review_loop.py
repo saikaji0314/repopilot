@@ -46,17 +46,41 @@ def implement_fix_report():
                                         "next_steps": [], "questions": []})
 
 
-def review_changes():
-    return turn("ReviewReport", {
+def _responses(finding_ids, status):
+    return [{"finding_id": identifier, "status": status, "evidence_status": "reproduced",
+             "observation": "复读当前实现并核对登记检查"} for identifier in finding_ids]
+
+
+def review_changes(observation="只改了实现，没有覆盖空标题", finding_ids=("r1-f1",)):
+    """两个视角给出同一条发现；程序应按同一问题合并为一条。"""
+
+    payload = {
         "verdict": "changes_requested", "summary": "缺少边界用例",
         "findings": [{"path": "app.py", "start_line": 1, "severity": "major",
-                      "observation": "只改了实现，没有覆盖空标题", "suggestion": "补一条空标题断言"}],
-        "questions": []})
+                      "evidence_status": "source_inference",
+                      "requirement": "空标题必须有明确行为",
+                      "trigger": "标题为空字符串", "impact": "行为未定义",
+                      "observation": observation, "suggestion": "补一条空标题断言"}],
+        "responses": _responses(finding_ids, "still_open"),
+        "questions": []}
+    return [turn("ReviewReport", payload), turn("ReviewReport", payload)]
 
 
-def review_approved():
-    return turn("ReviewReport", {"verdict": "approved", "summary": "改动满足工单且检查通过",
-                                "findings": [], "questions": []})
+def review_approved(finding_ids=("r1-f1",)):
+    payload = {"verdict": "approved", "summary": "改动满足工单且检查通过",
+               "findings": [], "responses": _responses(finding_ids, "resolved"),
+               "questions": []}
+    return [turn("ReviewReport", payload), turn("ReviewReport", payload)]
+
+
+def review_unable(summary="审核无法判断", questions=None):
+    payload = {"verdict": "unable_to_review", "summary": summary,
+               "findings": [], "questions": [] if questions is None else questions}
+    return [turn("ReviewReport", payload), turn("ReviewReport", payload)]
+
+
+def review_bad(payload):
+    return [turn("ReviewReport", payload), turn("ReviewReport", payload)]
 
 
 def make_repo(tmp_path):
@@ -104,7 +128,7 @@ def test_review_anchors_on_a_commit_and_records_approval(tmp_path):
     task, settings, output = setup(tmp_path)
     model = FakeModel(responses=[turn("write_file", {"path": "app.py", "content": "value = 2\n"}),
                                  implement_done(), turn("read_file", {"path": "app.py"}),
-                                 review_approved()])
+                                 *review_approved()])
     summary = investigate(task, settings, output, model=model)
     assert summary["status"] == "completed", summary
     assert summary["review"]["verdict"] == "approved"
@@ -125,8 +149,8 @@ def test_review_anchors_on_a_commit_and_records_approval(tmp_path):
 def test_review_findings_trigger_one_rework_then_approval(tmp_path):
     task, settings, output = setup(tmp_path)
     model = FakeModel(responses=[turn("write_file", {"path": "app.py", "content": "value = 2\n"}),
-                                 implement_done(), review_changes(),
-                                 *implement_fix(tmp_path), review_approved()])
+                                 implement_done(), *review_changes(),
+                                 *implement_fix(tmp_path), *review_approved()])
     summary = investigate(task, settings, output, model=model)
     assert summary["status"] == "completed", summary
     assert summary["review"]["verdict"] == "approved"
@@ -145,8 +169,8 @@ def test_rework_that_changes_nothing_keeps_the_same_review_anchor(tmp_path):
 
     task, settings, output = setup(tmp_path)
     model = FakeModel(responses=[turn("write_file", {"path": "app.py", "content": "value = 2\n"}),
-                                 implement_done(), review_changes(),
-                                 implement_fix_report(), review_approved()])
+                                 implement_done(), *review_changes(),
+                                 implement_fix_report(), *review_approved()])
     summary = investigate(task, settings, output, model=model)
     history = json.loads((run_dir_of(output) / "review-history.json").read_text(encoding="utf-8"))
     assert history[0]["commit"] == history[1]["commit"]
@@ -156,8 +180,8 @@ def test_rework_that_changes_nothing_keeps_the_same_review_anchor(tmp_path):
 def test_rework_stops_at_the_limit_and_marks_the_run_for_humans(tmp_path):
     task, settings, output = setup(tmp_path, max_rework=1)
     model = FakeModel(responses=[turn("write_file", {"path": "app.py", "content": "value = 2\n"}),
-                                 implement_done(), review_changes(),
-                                 *implement_fix(tmp_path), review_changes()])
+                                 implement_done(), *review_changes(),
+                                 *implement_fix(tmp_path), *review_changes()])
     summary = investigate(task, settings, output, model=model)
     assert summary["status"] == "rework_limit_reached", summary
     assert summary["stop_reason"] == "max_rework"
@@ -171,7 +195,7 @@ def test_reviewer_only_gets_read_only_tools(tmp_path):
     task, settings, output = setup(tmp_path)
     model = FakeModel(responses=[turn("write_file", {"path": "app.py", "content": "value = 2\n"}),
                                  implement_done(), turn("read_file", {"path": "app.py"}),
-                                 review_approved()])
+                                 *review_approved()])
     investigate(task, settings, output, model=model)
     used = {}
     for item in events(run_dir_of(output)):
@@ -225,9 +249,7 @@ def test_unable_to_review_with_questions_waits_for_input(tmp_path):
     task, settings, output = setup(tmp_path)
     model = FakeModel(responses=[turn("write_file", {"path": "app.py", "content": "value = 2\n"}),
                                  implement_done(),
-                                 turn("ReviewReport", {"verdict": "unable_to_review",
-                                                       "summary": "登记检查缺失，无法判断",
-                                                       "findings": [], "questions": ["lint 检查指向哪个文件？"]})])
+                                 *review_unable("登记检查缺失，无法判断", ["lint 检查指向哪个文件？"])])
     summary = investigate(task, settings, output, model=model)
     assert summary["status"] == "needs_input", summary
     assert summary["stop_reason"] == "human_clarification_required"
@@ -240,7 +262,7 @@ def test_verified_checks_are_independently_rerun_before_review(tmp_path):
     task, settings, output = setup(tmp_path)
     model = FakeModel(responses=[turn("write_file", {"path": "app.py", "content": "value = 2\n"}),
                                  implement_done(), turn("read_file", {"path": "app.py"}),
-                                 review_approved()])
+                                 *review_approved()])
     investigate(task, settings, output, model=model)
     run_dir = run_dir_of(output)
     verified = json.loads((run_dir / "verification.json").read_text(encoding="utf-8"))
@@ -256,7 +278,7 @@ def test_rework_that_reports_not_implemented_stops_without_another_review(tmp_pa
 
     task, settings, output = setup(tmp_path, max_rework=1)
     model = FakeModel(responses=[turn("write_file", {"path": "app.py", "content": "value = 2\n"}),
-                                 implement_done(), review_changes(),
+                                 implement_done(), *review_changes(),
                                  turn("ImplementationReport", {"status": "blocked", "summary": "改不动",
                                                                "evidence": [], "next_steps": [],
                                                                "questions": ["需求需要澄清"]})])
@@ -274,7 +296,7 @@ def test_malformed_rework_report_is_recorded_instead_of_crashing(tmp_path):
     task, settings, output = setup(tmp_path)
     bad = turn("ImplementationReport", {"status": "finished", "summary": "非法状态"})
     model = FakeModel(responses=[turn("write_file", {"path": "app.py", "content": "value = 2\n"}),
-                                 implement_done(), review_changes(), bad])
+                                 implement_done(), *review_changes(), bad])
     summary = investigate(task, settings, output, model=model)
     assert summary["status"] == "phase_error", summary
     assert summary["stop_reason"] == "invalid_rework_report"
@@ -286,9 +308,9 @@ def test_malformed_rework_report_is_recorded_instead_of_crashing(tmp_path):
 
 def test_malformed_review_report_is_recorded_as_inconclusive(tmp_path):
     task, settings, output = setup(tmp_path)
-    bad = turn("ReviewReport", {"verdict": "maybe", "summary": "非法结论"})
+    bad = review_bad({"verdict": "maybe", "summary": "非法结论"})
     model = FakeModel(responses=[turn("write_file", {"path": "app.py", "content": "value = 2\n"}),
-                                 implement_done(), bad])
+                                 implement_done(), *bad])
     summary = investigate(task, settings, output, model=model)
     assert summary["status"] == "review_inconclusive", summary
     assert summary["stop_reason"] == "invalid_review_report"
@@ -302,7 +324,7 @@ def test_model_cannot_approve_a_failed_independent_check(tmp_path):
     task, settings, output = setup(tmp_path)
     task = task.model_copy(update={"checks": {"unit": Check(argv=["{python}", "-c", "raise SystemExit(1)"])}})
     model = FakeModel(responses=[turn("write_file", {"path": "app.py", "content": "value = 2\n"}),
-                                 implement_done(), review_approved()])
+                                 implement_done(), *review_approved()])
     summary = investigate(task, settings, output, model=model)
     assert summary["status"] == "review_inconclusive", summary
     assert summary["review"]["verdict"] != "approved"

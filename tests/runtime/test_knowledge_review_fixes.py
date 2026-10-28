@@ -30,7 +30,7 @@ def test_short_dense_optional_material_search_and_runtime(tmp_path):
     assert max(r["end_line"] for r in result["entries"]) == 301
     task = task.model_copy(update={"request": "Change value to 2"})
     done = workflow.start(task, settings, root,
-        model=FakeModel(responses=[write(), implement_done(), review_approved()]))
+        model=FakeModel(responses=[write(), implement_done(), *review_approved()]))
     assert done["status"] == "awaiting_approval", done
 
 
@@ -78,7 +78,7 @@ def interrupted_candidate(tmp_path, *, create=True, provider="github"):
     remote = "https://github.com/owner/repo.git" if provider == "github" else "https://gitlab.com/group/project.git"
     run_git(task.repository, "remote", "add", "origin", remote)
     done = workflow.start(task, settings, root, issue=issue,
-        model=FakeModel(responses=[write(), implement_done(), review_approved()]))
+        model=FakeModel(responses=[write(), implement_done(), *review_approved()]))
     state = JobStore(root).get(done["run_id"])
     approve(state, root)
     api = (InterruptedGitHub if provider == "github" else InterruptedGitLab)(state)
@@ -117,9 +117,9 @@ def test_interrupted_publish_reconciles_before_context_refresh_without_new_write
     knowledge.refresh(initial["run_id"], root, request_id=request["id"], version=request["version"],
         commit=head_commit(attach(paused, root).path), reason="recheck using current rule")
     done = workflow.resume(initial["run_id"], settings, root,
-        model=FakeModel(responses=[implement_done(), review_approved()]))
+        model=FakeModel(responses=[implement_done(), *review_approved()]))
     assert done["status"] == "awaiting_approval", done
-    assert done["model_calls"] == initial["control"]["model_calls"] + 2
+    assert done["model_calls"] == initial["control"]["model_calls"] + 3
     with pytest.raises(StateError, match="matching_human_approval_required"):
         publish(initial["run_id"], root, api)
     if create:
@@ -235,7 +235,7 @@ def test_reapproved_draft_requires_current_branch_head(tmp_path, provider, curre
     knowledge.refresh(original["run_id"], root, request_id=request["id"], version=request["version"],
         commit=head_commit(attach(state, root).path), reason="recheck current material")
     result = workflow.resume(original["run_id"], settings, root,
-        model=FakeModel(responses=[implement_done(), review_approved()]))
+        model=FakeModel(responses=[implement_done(), *review_approved()]))
     assert result["status"] == "awaiting_approval", result
     approve(JobStore(root).get(original["run_id"]), root)
     remote["head"] = {"conflict": conflicting, "missing": None, "approved": approved}[current]

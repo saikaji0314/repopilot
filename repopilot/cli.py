@@ -14,7 +14,7 @@ from repopilot.delivery.forge import ForgeError, open_forge, publish as forge_pu
 from repopilot.storage.jobs import JobStore, StateError
 
 COMMANDS = {'run', 'issue', 'resume', 'retry', 'status', 'jobs', 'report', 'approve', 'reject',
-            'recover', 'publish', 'watch', 'memory', 'human', 'knowledge', 'plan'}
+            'recover', 'publish', 'watch', 'memory', 'human', 'knowledge', 'plan', 'review'}
 SUCCESS_STATUSES = {'ok', 'completed', 'paused', 'needs_input', 'awaiting_approval', 'approved', 'published', 'rejected'}
 STATUS_FIELDS = ('run_id', 'status', 'phase', 'in_flight', 'stop_reason', 'reviewed_commit',
                  'report', 'review_report', 'verified', 'issue', 'approval', 'pull_request',
@@ -23,7 +23,9 @@ STATUS_FIELDS = ('run_id', 'status', 'phase', 'in_flight', 'stop_reason', 'revie
                  'plan_refresh_history', 'plan_refresh_required',
                  'subtask_mappings', 'question_batches', 'question_handovers', 'question_limit',
                  'platform_preflight', 'parallel_runs', 'integrations', 'parallel_blocked',
-                 'pending_integration', 'implementation_slots')
+                 'pending_integration', 'implementation_slots',
+                 'review_rounds', 'review_basis', 'disputes', 'rework_limit', 'rework_extensions',
+                 'review_invalidations', 'review_reuse')
 
 
 def _watch_options(parser):
@@ -87,6 +89,10 @@ def build_parser():
             continue
         if name == 'plan':
             from repopilot.planning.cli import configure
+            configure(command)
+            continue
+        if name == 'review':
+            from repopilot.review.cli import configure
             configure(command)
             continue
         if name == 'watch':
@@ -184,6 +190,9 @@ def execute_command(args):
         return execute(args)
     if args.command == 'plan':
         from repopilot.planning.cli import execute
+        return execute(args)
+    if args.command == 'review':
+        from repopilot.review.cli import execute
         return execute(args)
     if args.command == 'memory':
         from repopilot.memory.cli import execute

@@ -61,7 +61,7 @@ def test_two_independent_subtasks_start_in_parallel_and_integrate(tmp_path, monk
         return result
     monkeypatch.setattr(parallel, "run_subtask", fake)
     result = workflow.start(task, settings, root, model=FakeModel(responses=[
-        plan_ready(subtasks, split="parallel"), review_approved()]))
+        plan_ready(subtasks, split="parallel"), *review_approved()]))
     assert result["status"] == "awaiting_approval", result
     assert peak == 2, "两个独立子任务应真正并行启动"
     assert result["plan_status"]["completed"] == 2
@@ -90,7 +90,7 @@ def test_dependent_subtask_waits_for_integrated_predecessor(tmp_path, monkeypatc
         return worker_result(kwargs["workspace"], subtask_id, base)
     monkeypatch.setattr(parallel, "run_subtask", fake)
     result = workflow.start(task, settings, root, model=FakeModel(responses=[
-        plan_ready(subtasks, split="parallel"), review_approved()]))
+        plan_ready(subtasks, split="parallel"), *review_approved()]))
     assert result["status"] == "awaiting_approval", result
     third = next(item for item in starts if item["id"] == "third")
     integrated = {item["integrated_commit"] for item in result["integrations"]}
@@ -121,7 +121,7 @@ def test_conflict_is_resolved_by_controlled_integration_step(tmp_path, monkeypat
     monkeypatch.setattr(parallel, "run_subtask", fake)
     monkeypatch.setattr(parallel, "resolve_conflict", resolve)
     result = workflow.start(task, settings, root, model=FakeModel(responses=[
-        plan_ready(subtasks, split="parallel"), review_approved()]))
+        plan_ready(subtasks, split="parallel"), *review_approved()]))
     assert result["status"] == "awaiting_approval", result
     assert conflicts == ["app.py"]
     conflict_record = next(item for item in result["integrations"]
@@ -181,7 +181,7 @@ def test_one_slot_forces_serial_execution(tmp_path, monkeypatch):
         return result
     monkeypatch.setattr(parallel, "run_subtask", fake)
     result = workflow.start(task, settings, root, model=FakeModel(responses=[
-        plan_ready(subtasks, split="parallel"), review_approved()]))
+        plan_ready(subtasks, split="parallel"), *review_approved()]))
     assert result["status"] == "awaiting_approval"
     assert peak == 1
     assert [item["status"] for item in result["integrations"]] == ["integrated", "integrated"]
@@ -225,7 +225,7 @@ def test_parallel_report_shows_source_and_integrated_commits(tmp_path, monkeypat
         kwargs["workspace"], kwargs["payload"]["subtask"]["id"],
         kwargs["payload"]["parallel"]["base_commit"]))
     result = workflow.start(task, settings, root, model=FakeModel(responses=[
-        plan_ready(subtasks, split="parallel"), review_approved()]))
+        plan_ready(subtasks, split="parallel"), *review_approved()]))
     from repopilot.presentation.report import build
     html = build(JobStore(root).get(result["run_id"]), root / "runs" / result["run_id"], Path.cwd())
     assert "内部整合" in html and "来源提交" in html and "整合提交" in html
@@ -240,7 +240,7 @@ def test_parallel_combined_candidate_is_approved_as_one_commit(tmp_path, monkeyp
         kwargs["workspace"], kwargs["payload"]["subtask"]["id"],
         kwargs["payload"]["parallel"]["base_commit"]))
     result = workflow.start(task, settings, root, model=FakeModel(responses=[
-        plan_ready(subtasks, split="parallel"), review_approved()]))
+        plan_ready(subtasks, split="parallel"), *review_approved()]))
     assert result["status"] == "awaiting_approval"
     approved = workflow.decide(result["run_id"], root, commit=result["review"]["reviewed_commit"],
                                approved=True, reason="核对组合差异与检查")
@@ -283,7 +283,7 @@ def test_resolver_exception_keeps_integration_recoverable(tmp_path, monkeypatch)
     workflow.recover(first["run_id"], root, commit=head_commit(parent.path),
                      reason="核对冲突破坏现场后恢复同一整合")
     resumed = workflow.resume(first["run_id"], settings, root,
-                              model=FakeModel(responses=[review_approved()]))
+                              model=FakeModel(responses=[*review_approved()]))
     assert resumed["status"] == "awaiting_approval", resumed
     assert calls["resolver"] == 2
     assert any(item["status"] == "integrated" and item["resolution"] == "model"
@@ -445,7 +445,7 @@ def test_clean_applied_integration_resumes_without_reexecuting_worker(tmp_path, 
     workflow.recover(first["run_id"], root, commit=head_commit(parent.path),
                      reason="核对已应用但未提交的干净整合")
     resumed = workflow.resume(first["run_id"], settings, root,
-                              model=FakeModel(responses=[review_approved()]))
+                              model=FakeModel(responses=[*review_approved()]))
     assert resumed["status"] == "awaiting_approval", resumed
     assert calls.count("first") == 1, "已应用来源提交被丢弃并重跑了worker"
     assert any(item["subtask"] == "first" and item["status"] == "integrated"

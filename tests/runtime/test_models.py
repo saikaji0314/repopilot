@@ -155,7 +155,7 @@ def test_real_adapter_through_framework_to_human_approval(tmp_path, monkeypatch,
         pytest.importorskip("langchain_anthropic")
         model = make_model(cfg)
     script = iter([turn("write_file", {"path": "app.py", "content": "value = 2\n"}),
-                   turn("run_registered_check", {"name": "unit"}), implement_done(), review_approved()])
+                   turn("run_registered_check", {"name": "unit"}), implement_done(), *review_approved()])
 
     with ExitStack() as stack:
         if provider == "anthropic":
@@ -186,8 +186,8 @@ def test_real_adapter_through_framework_to_human_approval(tmp_path, monkeypatch,
             model.root_client, model.client = client, client.chat.completions
         result = workflow.start(task, cfg, root, model=model)
     assert result["status"] == "awaiting_approval", result
-    assert result["model_calls"] == 4
-    assert result["input_tokens"] == 320
+    assert result["model_calls"] == 5
+    assert result["input_tokens"] == 400
     state = JobStore(root).get(result["run_id"])
     assert state["settings"]["provider"] == provider
     assert "api_key" not in state["settings"]

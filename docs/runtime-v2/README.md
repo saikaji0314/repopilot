@@ -10,7 +10,7 @@
 
 编辑只在 Git worktree 开启；精确替换拒绝不存在或多处匹配。单文件写入上限 100,000 字符，读取上限 256 KB，每次最多 200 行／8,000 字符。搜索与文件列表支持 `path / file_glob`，先选目录和文件名再读取；搜索最多读取 2,000 个候选文件、返回 20 处匹配，两种工具的文件名筛选上限为 20,000。覆盖数量、跳过文件与停止原因见[搜索协议](SEARCH.md)。路径拒绝绝对路径、上溯、盘符、敏感目录与链接。检查命令不经 shell。默认本机后端有当前用户权限；可选 [Docker 后端](SANDBOX.md)统一承载文件工具及各阶段检查，仅接入可信仓库。
 
-`ImplementationReport` 的结论是 `implemented / blocked / needs_clarification`；implemented 必须包含检查证据且工作区有变更，无变更只会降为 blocked，不把 blocked 强制升级。文件证据和检查证据分开记录。`ReviewReport` 是 `approved / changes_requested / unable_to_review`；要求返工必须有具体文件、行号与建议，approved 不得包含 blocker／major finding。
+`ImplementationReport` 的结论是 `implemented / blocked / needs_clarification`；implemented 必须包含检查证据且工作区有变更，无变更只会降为 blocked，不把 blocked 强制升级。文件证据和检查证据分开记录。`ReviewReport` 是单视角报告：`approved / changes_requested / unable_to_review`；发现必须给出依据位置（或需求／资料引用）、触发条件、影响、证据状态和建议，approved 不得包含 blocker／major finding 或未回应的 still_open 旧发现。两个视角的报告由程序合并和判定，见[双审与争议](REVIEW.md)。
 
 ## 状态与恢复
 
@@ -19,14 +19,14 @@
 | 状态 | 含义与后续 |
 | --- | --- |
 | `paused` | 完整阶段后停止，`resume` 从下一阶段继续 |
-| `needs_input` | 工作区任务等待需求补充；本机答复或Issue评论答复导入后再显式/自动`resume`；等待不调用模型。达到3批自动提问上限后只生成最终缺口说明，不自动开启新的批次 |
+| `needs_input` | 工作区任务等待需求补充、争议判断或最终缺口；本机答复／`review decide`导入后再显式或自动`resume`；等待不调用模型。达到3批自动提问上限后只生成最终缺口说明，不自动开启新的批次 |
 | `awaiting_approval` | 审核及独立检查通过，等待人工核对具体提交 |
 | `approved` / `rejected` | 已记录人工决定；approved 可显式 publish |
 | `recovery_required` | 检查点有未完成阶段，必须先核对现场并 recover |
 | `publication_failed` / `publishing` | publish 可核对 GitHub 副作用后重试 |
 | `published` | 已创建或核对到同一草稿 PR，不代表合并 |
 | `completed` | 只读、未实现或关闭审核的报告完成，需另看 report.status |
-| `limit_reached` / `review_inconclusive` / `rework_limit_reached` | 超限或结论不足，交人工处理 |
+| `limit_reached` / `review_inconclusive` / `rework_limit_reached` | 超限、审核无法判断或返工到限，交人工处理；`rework_limit_reached`可经`review continue`明确延长 |
 | `workspace_error` / `phase_error` / `failed` / `interrupted` | 工作区、结构化协议、执行异常或中断，保留现场和原因 |
 
 SQLite 每次动作开始前写入 in_flight，每个完整阶段后写入下一阶段。模型与工具事件继续记录累计调用、Token、费用、编辑及返工次数；恢复还与预算账本中的实际预留调用数核对，不能通过重启获得新额度。安全边界处保存工作树内容摘要，恢复前拒绝未经核对的外部改动。
@@ -35,7 +35,7 @@ SQLite 每次动作开始前写入 in_flight，每个完整阶段后写入下一
 
 同一运行用操作系统文件锁串行化；SQLite 乐观版本检查拒绝过期写入。两个不同运行的工作区互相独立，但首版不承诺同一仓库多任务并发交付协调，也不做自动清理。需要工作区、Git 对象和本地 SQLite 一同保留，不支持跨机器恢复。
 
-本地需求补充、固定提交批准和现场恢复共用可追溯请求记录，但授权含义不同。业务答复绑定等待时的版本，不授予推送权限；具体命令、重复答复和历史运行兼容见[人工协作](HUMAN.md)。M3默认增加任务说明与顺序计划、3批集中提问、父Issue评论自动投递／有节制轮询和按需子Issue映射，见[计划](PLANNING.md)；M4加入最多2路独立worktree并行和串行内部整合，见[并行与整合](PARALLEL.md)。双视角审核和真实平台写入仍未接入。
+本地需求补充、固定提交批准和现场恢复共用可追溯请求记录，但授权含义不同。业务答复绑定等待时的版本，不授予推送权限；具体命令、重复答复和历史运行兼容见[人工协作](HUMAN.md)。M3默认增加任务说明与顺序计划、3批集中提问、父Issue评论自动投递／有节制轮询和按需子Issue映射，见[计划](PLANNING.md)；M4加入最多2路独立worktree并行和串行内部整合，见[并行与整合](PARALLEL.md)；M5加入正确性／需求上下文双视角审核、发现合并、按需A／B＋C争议复核和修改上限，见[双审与争议](REVIEW.md)。真实平台评论／子Issue／PR写入仍未接入本增量。
 
 项目资料与决定可显式登记到[资料服务](KNOWLEDGE.md)：正文文件版本化，SQLite保存增量检索索引和确认记录，运行固定资料版本。依据变化会转为人工请求，显式刷新后重新验证；原`memory`代码事实书签仍为单独的可选能力。
 

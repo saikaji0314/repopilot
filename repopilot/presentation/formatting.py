@@ -84,7 +84,9 @@ def timeline_events(events: list[dict], limit: int = 24) -> list[dict]:
     """挑出能说明“程序在做什么”的关键事件，跳过每次工具调用的噪声。"""
 
     interesting = {"workspace_ready", "verify_finished", "review_started", "review_finished",
+                   "review_perspectives_finished", "review_merged", "review_reused",
                    "rework_started", "rework_finished", "rework_limit_reached", "review_skipped",
+                   "dispute_ab_finished", "dispute_arbitration_finished",
                    "run_error", "run_started", "run_finished", "model_failed", "phase_changed",
                    "plan_recorded", "plan_invalid", "subtask_started", "subtask_finished",
                    "subtask_blocked"}
@@ -107,8 +109,25 @@ def timeline_rows(events: list[dict], root: Path, limit: int = 24) -> list[list[
             reviews += 1
             text = f"开始审核第 {reviews} 轮，锚点提交 <code>{escape(str(event.get('commit'))[:10])}</code>"
         elif name == "review_finished":
-            suffix = f"（{escape(str(event['findings']))} 条发现）" if 'findings' in event else ""
-            text = f"审核第 {reviews} 轮结论：{escape(str(event.get('verdict')))}{suffix}"
+            suffix = f"（{escape(str(event['findings']))} 条待处理发现）" if 'findings' in event else ""
+            disputes = f"，争议 {escape(str(event['disputes']))}" if event.get('disputes') else ""
+            text = f"审核第 {reviews} 轮结论：{escape(str(event.get('verdict')))}{suffix}{disputes}"
+        elif name == "review_perspectives_finished":
+            verdicts = event.get("verdicts") or {}
+            text = "双视角审核完成：" + escape("；".join(
+                f"{key}={value}" for key, value in verdicts.items()))
+        elif name == "review_merged":
+            text = (f"合并审核发现 {escape(str(event.get('findings')))} 条"
+                    f"（阻断 {escape(str(event.get('blocking')))} 条，来源 {escape(str(event.get('sources')))} 份）")
+        elif name == "review_reused":
+            text = (f"复用同一提交与依据的审核结论（第 {escape(str(event.get('round')))} 轮，"
+                    f"{escape(str(event.get('verdict')))}）")
+        elif name == "dispute_ab_finished":
+            text = (f"争议 {escape(str(event.get('dispute')))} A／B 独立复核："
+                    f"A={escape(str(event.get('a')))}，B={escape(str(event.get('b')))}")
+        elif name == "dispute_arbitration_finished":
+            text = (f"争议 {escape(str(event.get('dispute')))} C 核对结论："
+                    f"{escape(str(event.get('outcome')))}")
         elif name == "verify_finished":
             text = f"编排层独立复核 {event.get('name')}：退出码 {event.get('exit_code')}"
         elif name == "rework_started":
@@ -165,10 +184,22 @@ def next_action(state: dict) -> str:
     if status == "published":
         return '<p class="note">已创建草稿 PR，尚未合并；合并与发布仍需单独决定。</p>'
     if status == "rework_limit_reached":
-        return '<p class="note">返工达到上限，需要人工判断是继续、改需求还是放弃。</p>'
+        return ('<p class="note">返工达到上限，需要人工判断是继续、改需求还是放弃。'
+                '可补充需求后 resume，或以 <code>repopilot review continue RUN_ID --extra 1 --reason "..."</code> '
+                '明确增加一次修改；也可用 retry 开始新尝试。两类决定都不会自动批准或推送。</p>')
     if status == "review_inconclusive":
-        return '<p class="note">审核无法判断，需要人工核对独立复核结果与候选改动。</p>'
+        return ('<p class="note">审核无法判断（报告不合法或证据不足），需要人工核对独立复核结果与候选改动；'
+                '不能用“人工看了一眼”代替新的检查或批准。</p>')
     if status == "needs_input":
+        dispute = [r for r in state.get("human_requests", [])
+                   if r.get("status") == "pending" and r.get("kind") == "dispute"]
+        if dispute:
+            request = dispute[-1]
+            identifier = str((request.get("blocking") or [{}])[0].get("dispute") or "d-1")
+            return (f'<p class="note">审核争议需要负责人判断。用 '
+                    f'<code>repopilot review decide {safe_run} --dispute {escape(identifier)} '
+                    '--decision confirmed|refuted --reason "..."</code> 明确该发现是否成立，'
+                    '再 resume 继续；同一提交同一争议不会重复复核。</p>')
         if any(r.get("status") == "pending" and r.get("kind") == "context_update"
                for r in state.get("human_requests", [])):
             return ('<p class="note">资料依据已变化或不可用。核查并确认资料后，用 '

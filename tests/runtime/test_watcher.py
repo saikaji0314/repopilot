@@ -116,7 +116,7 @@ def test_worker_binds_run_before_execution_and_releases_approval_wait(tmp_path, 
     original = workflow.resume
     def execute(run_id, *args, **kwargs):
         assert queue.list()[0]['run_id'] == run_id
-        return original(run_id, *args, **kwargs, model=FakeModel(responses=[*implementation(), review_approved()]))
+        return original(run_id, *args, **kwargs, model=FakeModel(responses=[*implementation(), *review_approved()]))
     monkeypatch.setattr(watcher, 'open_forge', lambda *args, **kwargs: API('synthetic'))
     monkeypatch.setattr(watcher, 'load_settings', lambda: settings)
     monkeypatch.setattr(workflow, 'resume', execute)
