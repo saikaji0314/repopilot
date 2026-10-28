@@ -504,7 +504,7 @@ class PhaseRunner:
         planning.record_result(self.state, info["subtask"], status=status,
             summary=report.get("summary") or integration.get("reason") or "内部整合未完成",
             evidence=[], decisions=[], source_commit=result.get("commit"),
-            worktree=info.get("workspace").path if info.get("workspace") else None,
+            worktree=str(info.get("workspace").path) if info.get("workspace") else None,
             base_commit=result.get("base_commit"), started_at=result.get("started_at"),
             integration={key: integration.get(key) for key in
                          ("status", "reason", "conflicts", "resolution")})

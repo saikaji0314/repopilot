@@ -290,6 +290,49 @@ def test_resolver_exception_keeps_integration_recoverable(tmp_path, monkeypatch)
                for item in resumed["integrations"])
 
 
+def test_recovered_conflict_can_pause_for_human_without_replaying_worker(tmp_path, monkeypatch):
+    task, settings, root = setup(tmp_path, plan_enabled=True)
+    subtasks = [subtask("first"), subtask("second")]
+    calls = {"worker": 0, "resolver": 0}
+
+    def fake(**kwargs):
+        calls["worker"] += 1
+        subtask_id = kwargs["payload"]["subtask"]["id"]
+        base = kwargs["payload"]["parallel"]["base_commit"]
+        (Path(kwargs["workspace"].path) / "app.py").write_text(
+            f"value = {subtask_id}\n", encoding="utf-8")
+        commit = kwargs["workspace"].commit(f"subtask {subtask_id}")["commit"]
+        return {"report": report(f"done {subtask_id}"), "commit": commit,
+                "worktree": str(kwargs["workspace"].path), "base_commit": base, "dirty": True,
+                "started_at": "synthetic-start", "finished_at": "synthetic-finish"}
+
+    def resolve(**kwargs):
+        calls["resolver"] += 1
+        if calls["resolver"] == 1:
+            raise RunLimit("max_model_calls")
+        return {"status": "needs_clarification", "summary": "需要接口取舍",
+                "decisions": [], "questions": ["保留哪个接口？"]}
+    monkeypatch.setattr(parallel, "run_subtask", fake)
+    monkeypatch.setattr(parallel, "resolve_conflict", resolve)
+    first = workflow.start(task, settings, root, model=FakeModel(responses=[
+        plan_ready(subtasks, split="parallel")]))
+    assert first["status"] == "limit_reached"
+    workers_after_first = calls["worker"]
+    state = JobStore(root).get(first["run_id"])
+    parent = workflow.attach(state, root)
+    workflow.recover(first["run_id"], root, commit=head_commit(parent.path),
+                     reason="核对冲突后继续同一整合")
+    resumed = workflow.resume(first["run_id"], settings, root, model=FakeModel(responses=[]))
+    assert resumed["status"] == "needs_input", resumed
+    assert calls["worker"] == workers_after_first, "recover不应重放worker"
+    assert calls["resolver"] == 2
+    assert resumed["plan_status"]["state"] == "blocked"
+    assert resumed["pending_integration"] is None
+    pending = [item for item in resumed["human_requests"]
+               if item["status"] == "pending" and item["kind"] == "clarification"]
+    assert pending and pending[-1]["blocking"][0]["phase"] == "integrate"
+
+
 def test_global_slots_block_no_plan_and_sequential_implementation(tmp_path, monkeypatch):
     task, settings, root = setup(tmp_path, implementation_slot_timeout_seconds=0.1)
     slots = SlotManager(root)
