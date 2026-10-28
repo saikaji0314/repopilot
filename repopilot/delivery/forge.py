@@ -45,6 +45,17 @@ class Origin:
     repository: str
 
 
+def repository_source_key(origin):
+    """来源身份包含平台、实例和项目；不能只用项目名跨实例去重。"""
+    return f"{origin.provider}:{origin.host.lower()}/{origin.repository.lower()}"
+
+
+def issue_source_key(url):
+    parsed = parse_issue_url(url)
+    origin = Origin(parsed['provider'], parsed['host'], parsed['repository'])
+    return f"{repository_source_key(origin)}#{parsed['number']}"
+
+
 def parse_issue_url(url):
     """严格解析 Issue 链接，返回 {provider, host, repository, number}。
 

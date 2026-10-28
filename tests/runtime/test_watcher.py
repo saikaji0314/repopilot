@@ -47,7 +47,7 @@ def test_new_issue_opt_in_and_restart_deduplication(tmp_path):
         def open_issues(self, *args, **kwargs): return values
     assert watcher.poll_once(config, queue, API()) == 1
     assert watcher.poll_once(config, watcher.IssueQueue(root), API()) == 0
-    assert [r['issue_key'] for r in queue.list()] == ['owner/repo#1']
+    assert [r['issue_key'] for r in queue.list()] == ['github:github.com/owner/repo#1']
 
 
 def test_existing_job_is_not_automatically_retried(tmp_path):
@@ -88,16 +88,16 @@ def test_unknown_worker_blocks_all_dispatch_until_inspected(tmp_path):
     queue = watcher.IssueQueue(root)
     queue.enqueue(queued_issue(), 'owner/repo', task, {})
     queue.claim(1)
-    queue.bind('owner/repo#1', 'active-run')
+    queue.bind('github:github.com/owner/repo#1', 'active-run')
     JobStore(root).create({'run_id': 'active-run', 'status': 'running'})
     queue.mark_interrupted()
     other = queued_issue(2) | {'html_url': 'https://github.com/owner/other/issues/2'}
     queue.enqueue(other, 'owner/other', task, {})
     assert queue.claim(4) is None
     with pytest.raises(StateError, match='reason_required'):
-        queue.acknowledge('owner/repo#1', '')
+        queue.acknowledge('github:github.com/owner/repo#1', '')
     with pytest.raises(StateError, match='worker_still_running'):
-        queue.acknowledge('owner/repo#1', '尚未确认退出')
+        queue.acknowledge('github:github.com/owner/repo#1', '尚未确认退出')
 
 
 def test_worker_binds_run_before_execution_and_releases_approval_wait(tmp_path, monkeypatch):

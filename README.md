@@ -42,6 +42,8 @@
 
 [Issue #1](https://github.com/saikaji0314/zhixianji-jobs/issues/1) → 104 项独立检查 → 两轮审核、一次返工 → 人工批准 → [草稿 PR #2](https://github.com/saikaji0314/zhixianji-jobs/pull/2)（未合并）。
 
+新流程另已跑通[Issue #4](https://github.com/saikaji0314/zhixianji-jobs/issues/4)：默认规划、100项离线检查、独立JSON验收、两个真实审核视角，负责人批准固定SHA后创建[草稿PR #5](https://github.com/saikaji0314/zhixianji-jobs/pull/5)。[本轮验证及失败边界 →](docs/runtime-v2/VALIDATION-30.md)
+
 ![真实交付报告：改动、检查、审核和草稿 PR](docs/demo/delivery-report.gif)
 
 动图为真实历史运行的只读回放。[查看交付证据与失败记录 →](docs/runtime-v2/VALIDATION-05.md)
@@ -88,7 +90,7 @@ git -C $demo -c user.name=RepoPilot -c user.email=demo@example.test commit -m "d
 
 ## 当前边界
 
-当前为实验性候选，适合可信仓库中的明确小任务。GitHub 有真实交付；GitLab、Qwen／兼容接口与 Claude 仅完成离线适配验证。规划、评论自动投递／轮询、子Issue映射、并行内部整合、双视角审核与A／B＋C争议复核目前只有本地机制与确定性替身验证，没有真实评论／子Issue写入、真实模型双审／并行效果或真实平台整链路结论。Docker 已验证真实容器机制，尚无该后端真实模型交付、并行子任务或双审结论；不提供 microVM 级隔离。
+当前为实验性候选，适合可信仓库中的明确小任务。GitHub已验证默认规划、真实双视角审核到负责人批准固定提交后的草稿交付；这是小样本开发验证。GitLab、Qwen／兼容接口与Claude仅完成离线适配验证。评论自动往返、子Issue映射、真实模型并行与A／B＋C争议判断仍没有完整真实效果结论。Docker已验证真实容器机制，该后端的真实模型交付及本轮其他仓库结果以[增量30](docs/runtime-v2/VALIDATION-30.md)逐项记录为准；不提供microVM级隔离。
 
 评测协议、逐题结果和记忆收益对照见评测文档；开发样本不代表通用修复率。
 

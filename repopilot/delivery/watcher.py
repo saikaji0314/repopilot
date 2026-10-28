@@ -11,7 +11,7 @@ from pydantic import Field, field_validator
 import yaml
 
 from repopilot.core.config import Contract, RuntimeSettings, Task, execution_options, load_settings, load_task
-from repopilot.delivery.forge import ForgeError, open_forge, remote_origin
+from repopilot.delivery.forge import ForgeError, open_forge, remote_origin, repository_source_key
 from repopilot.delivery.queue import IssueQueue  # 兼容原 watcher.IssueQueue 入口
 from repopilot.orchestration import human
 from repopilot.storage.jobs import JobStore, StateError, job_lock, timestamp
@@ -57,7 +57,7 @@ def poll_once(config, queue, forge=None):
         template = load_task(target.task)
         origin = remote_origin(template.repository)
         repository = origin.repository
-        activated = queue.activation(repository, target.label)
+        activated = queue.activation(repository_source_key(origin), target.label)
         client = forge or open_forge(origin)
         try:
             issues = client.open_issues(repository, label=target.label,
@@ -114,8 +114,7 @@ def run_waiting_job(root, run_id):
         state = JobStore(root).get(run_id)
         issue = state.get("issue") or {}
         if issue.get("repository") and issue.get("number"):
-            IssueQueue(root).finish(f"{issue['repository'].lower()}#{issue['number']}",
-                                    result.get("status", state["status"]))
+            IssueQueue(root).finish_run(run_id, result.get("status", state["status"]))
         return {"kind": "comment", "run_id": run_id, "status": result.get("status"),
                 "sync": {key: synced.get(key) for key in ("synced", "already_answered", "reason")},
                 "auto_comment": result.get("auto_comment")}

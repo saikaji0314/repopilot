@@ -7,7 +7,7 @@ from uuid import uuid4
 from repopilot.agents.trace import Trace
 from repopilot.storage.budget import Budget
 from repopilot.core.config import RuntimeSettings, Task, execution_options
-from repopilot.delivery.forge import ForgeError
+from repopilot.delivery.forge import ForgeError, issue_source_key, parse_issue_url
 from repopilot.orchestration.session import execute_run
 from repopilot.orchestration import human
 from repopilot.orchestration import knowledge
@@ -45,6 +45,11 @@ def create_job(task, settings, output_root, *, workspace=True, review=True,
     brief_history = carried.get("task_brief_history") or {
         initial_brief["sha256"]: initial_brief}
     store = JobStore(output_root)
+    if issue:
+        source = parse_issue_url(issue['url'])
+        if (source['repository'].lower() != issue['repository'].lower()
+                or source['number'] != issue['number']):
+            raise StateError('issue_identity_mismatch')
     state = store.create({
         "run_id": f"{task.id}-{uuid4().hex[:12]}", "task": task.model_dump(mode="json"),
         "settings": settings.model_dump(mode="json", exclude={"api_key"}),
@@ -76,7 +81,8 @@ def create_job(task, settings, output_root, *, workspace=True, review=True,
         "disputes": [], "review_dispute_decisions": [], "review_schema": 2,
         "rework_limit": settings.max_rework, "rework_extensions": [],
         "prior_attempt": carried.get("prior_attempt"),
-    }, issue_key=None if issue is None else f"{issue['repository']}#{issue['number']}", retry_of=retry_of)
+    }, issue_key=None if issue is None else issue_source_key(issue['url']), retry_of=retry_of,
+        legacy_issue_key=None if issue is None else f"{issue['repository']}#{issue['number']}")
     if issue and canonical_hash(issue) != canonical_hash(state["issue"]):
         raise StateError("issue_changed_since_intake")
     return state

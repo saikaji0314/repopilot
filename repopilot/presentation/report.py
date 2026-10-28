@@ -4,7 +4,7 @@ from html import escape
 import json
 from pathlib import Path
 
-from . import sections
+from . import sections, traceability
 from .layout import shell, overview
 # 保留旧 report 模块的格式化函数导出，兼容既有调用方。
 from .formatting import (redact, safe_url, load_json, tail, status_class, table,
@@ -31,6 +31,8 @@ def render(state: dict, run_dir: Path, events: list[dict], root: Path) -> str:
         sections.plan(state, root),
         sections.human_requests(state, root),
         sections.materials(state, root),
+        traceability.render(state, root),
+        traceability.decisions(state, root, runtime_root=run_dir.parent.parent),
         sections.candidate(changes, root),
         sections.checks(state.get("verified") or [], root),
         sections.reviews(state.get("history") or [], state.get("review_report") or {}, root),

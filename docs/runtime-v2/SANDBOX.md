@@ -6,6 +6,8 @@
 
 Linux 控制端使用本机 Docker CLI。Windows 控制端使用指定 WSL 发行版内的 Docker Engine，需先启动该服务；本次实际验证环境为 Ubuntu-24.04。两者都需要操作者拥有 Docker 控制权限。
 
+Windows还需确保WSL发行版在等待模型响应时持续存活，例如运行期间保持一个该发行版内的前台进程。M6本机记录过空闲间隙Docker服务终止、下次命令重启后原容器已停止的情况；仅启动systemd服务不足以保证本机WSL一直存活。临时保活由可信操作者管理、结束后关闭，不改变容器权限。若发生此类中断，先核对宿主与容器现场，再用显式`recover`继续同一运行；已用调用、费用与活跃时间不重置。实际记录见[增量30](VALIDATION-30.md)。
+
 ```yaml
 execution:
   backend: docker

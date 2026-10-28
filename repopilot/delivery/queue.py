@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 
-from repopilot.delivery.forge import ForgeError, parse_issue_url
+from repopilot.delivery.forge import ForgeError, issue_source_key, parse_issue_url
 from repopilot.delivery.health import heartbeat_health
 from repopilot.storage.jobs import JobStore, StateError, timestamp
 
@@ -43,10 +43,21 @@ class IssueQueue:
         if parsed["repository"].lower() != repository.lower() or parsed["number"] != issue["number"]:
             raise ForgeError("issue_identity_mismatch")
         repo, number = parsed["repository"], parsed["number"]
-        key = f"{repo.lower()}#{number}"
+        key = issue_source_key(issue['html_url'])
+        legacy_key = f"{repo.lower()}#{number}"
         with closing(self.store.connect()) as db, db:
             db.execute("BEGIN IMMEDIATE")
-            if db.execute("SELECT 1 FROM jobs WHERE lower(issue_key) = ?", (key,)).fetchone():
+            for saved_key, saved in db.execute(
+                    "SELECT issue_key,state FROM jobs WHERE issue_key=? OR lower(issue_key)=?",
+                    (key, legacy_key)):
+                old_url = (json.loads(saved).get('issue') or {}).get('url')
+                # 没有来源的旧行保守阻止自动重跑，不能猜成另一平台。
+                if saved_key == key or not old_url:
+                    return False
+                if str(old_url).lower().rstrip('/') == str(issue['html_url']).lower().rstrip('/'):
+                    return False
+            legacy = db.execute("SELECT url FROM issue_queue WHERE lower(issue_key)=?", (legacy_key,)).fetchone()
+            if legacy and legacy[0].lower().rstrip('/') == issue['html_url'].lower().rstrip('/'):
                 return False
             changed = db.execute("INSERT OR IGNORE INTO issue_queue VALUES (?, ?, ?, ?, 'queued', NULL, NULL, ?)",
                 (key, repository.lower(), issue["html_url"], json.dumps({"task": template.model_dump(mode="json"),
@@ -102,6 +113,11 @@ class IssueQueue:
     def finish(self, key, status, error=None):
         with closing(self.store.connect()) as db, db:
             db.execute("UPDATE issue_queue SET status=?, error=? WHERE issue_key=?", (status, error, key))
+
+    def finish_run(self, run_id, status, error=None):
+        """评论恢复绑定已保存的run_id，兼容仍使用旧key的队列行。"""
+        with closing(self.store.connect()) as db, db:
+            db.execute("UPDATE issue_queue SET status=?, error=? WHERE run_id=?", (status, error, run_id))
 
     def mark_interrupted(self):
         # 上次调度器退出时子进程可能仍有副作用，禁止把 running 自动放回 queued。

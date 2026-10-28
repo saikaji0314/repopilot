@@ -1,0 +1,16 @@
+# 新流程小型真实任务的候选执行profile；费用与外部动作须先登记。
+# 规划、实现、双审、返工与争议复核共用以下上限；累计账本不清零。
+thinking: enabled
+reasoning_effort: low
+plan_enabled: true
+issue_comments_enabled: true
+max_implementation_slots: 2
+max_context_bytes: 300000
+max_model_calls: 80
+max_tool_calls: 200
+max_edits: 50
+max_rework: 3
+max_output_tokens: 8192
+request_timeout_seconds: 120
+run_timeout_seconds: 3600
+max_run_cost_cny: 20

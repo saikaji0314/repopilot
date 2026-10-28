@@ -61,9 +61,27 @@ class JobStore:
     def connect(self):
         return sqlite3.connect(self.path, timeout=15)
 
-    def create(self, state: dict, issue_key: str | None = None, retry_of: str | None = None) -> dict:
+    def create(self, state: dict, issue_key: str | None = None, retry_of: str | None = None,
+               legacy_issue_key: str | None = None) -> dict:
         with self.lock, closing(self.connect()) as db, db:
             db.execute("BEGIN IMMEDIATE")
+            if issue_key and legacy_issue_key and not db.execute(
+                    "SELECT 1 FROM jobs WHERE issue_key=?", (issue_key,)).fetchone():
+                # 只迁移来源URL相同的旧索引，不改运行正文、批准、预算或revision。
+                rows = db.execute("SELECT id,state FROM jobs WHERE lower(issue_key)=?",
+                                  (legacy_issue_key.lower(),)).fetchall()
+                matching = []
+                current_url = str((state.get('issue') or {}).get('url') or '').lower().rstrip('/')
+                for identifier, saved in rows:
+                    old_url = str((json.loads(saved).get('issue') or {}).get('url') or '').lower().rstrip('/')
+                    if not old_url:
+                        raise StateError('legacy_issue_identity_requires_review')
+                    if old_url == current_url:
+                        matching.append(identifier)
+                if len(matching) > 1:
+                    raise StateError('legacy_issue_identity_requires_review')
+                if matching:
+                    db.execute("UPDATE jobs SET issue_key=? WHERE id=?", (issue_key, matching[0]))
             if retry_of and issue_key:
                 changed = db.execute("UPDATE jobs SET issue_key = NULL WHERE id = ? AND issue_key = ?",
                                      (retry_of, issue_key))
