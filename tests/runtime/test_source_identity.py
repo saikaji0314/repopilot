@@ -96,8 +96,9 @@ def test_queue_legacy_job_suppression_checks_origin_and_comment_finishes_by_run(
     assert not queue.enqueue({'number':1,'html_url':URLS[0]},'owner/repo',task,{})
     assert queue.enqueue({'number':1,'html_url':URLS[1]},'owner/repo',task,{})
     key=queue.list()[0]['issue_key']
-    queue.bind(key,old['run_id'])
-    queue.finish_run(old['run_id'],'awaiting_approval')
+    other=workflow.create_job(task,settings,root,issue=issue(URLS[1]))
+    queue.bind(key,other['run_id'])
+    queue.finish_run(other['run_id'],'awaiting_approval')
     assert queue.list()[0]['status']=='awaiting_approval'
 
 

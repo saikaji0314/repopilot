@@ -1,6 +1,7 @@
 """只读呈现版本、人工来源与决定正文，不访问平台或改变知识索引。"""
 
 from html import escape
+import json
 import sqlite3
 
 from .formatting import redact, safe_url, table
@@ -103,7 +104,8 @@ def decisions(state, root, *, runtime_root=None):
             if store is None or not identifier or not version:
                 raise KnowledgeFault("knowledge_store_unavailable")
             body = store.read(repository, identifier, version=version, end_line=120, include_events=False)
-        except (KnowledgeFault, WorkspaceError, OSError, sqlite3.DatabaseError):
+        except (KnowledgeFault, WorkspaceError, OSError, sqlite3.DatabaseError,
+                UnicodeError, json.JSONDecodeError):
             parts.append('<p class="bad">固定版本正文不可用；请回查原运行资料，未用当前版本替代。</p>')
             continue
         parts.append(f"<pre>{text(body['text'], root)}</pre>")

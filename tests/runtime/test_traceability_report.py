@@ -80,6 +80,39 @@ def test_request_provenance_escapes_content_and_rejects_executable_links(tmp_pat
     assert "当前等待事项" in html and "s2" in html and "v1" in html
 
 
+@pytest.mark.parametrize("damage", ["invalid_utf8", "invalid_metadata_json"])
+def test_one_damaged_decision_keeps_other_history_and_delivery_report_readonly(tmp_path, damage):
+    task, _, root = setup(tmp_path)
+    store = KnowledgeStore(root)
+    old = store.record(task.repository, "# 历史\n\n损坏的旧理由\n",
+                       Material(id="choice", kind="decision", title="选择"))
+    store.record(task.repository, "# 当前\n\n不得回退到当前理由\n",
+                 Material(id="choice", kind="decision", title="选择"))
+    good = store.record(task.repository, "# 独立记录\n\n其他历史理由仍可回查\n",
+                        Material(id="other", kind="decision", title="另一选择"))
+    with closing(store.connect()) as db, db:
+        path = root / db.execute("SELECT path FROM material_versions WHERE id='choice' AND version=?",
+                                 (old["version"],)).fetchone()[0]
+        if damage == "invalid_metadata_json":
+            db.execute("UPDATE material_versions SET metadata='not json' WHERE id='choice' AND version=?",
+                       (old["version"],))
+    if damage == "invalid_utf8":
+        path.write_bytes(b"\xff\xfe\x80")
+    state = {"run_id": "demo", "status": "published", "task": task.model_dump(mode="json"),
+        "decision_records": [{"id": item["id"], "version": item["version"], "status": "proposed"}
+                             for item in (old, good)],
+        "verified": [{"name": "independent", "exit_code": 0}],
+        "approval": {"commit": "a" * 40, "approved": True, "reason": "固定版本批准证据"},
+        "pull_request": {"url": "https://github.com/owner/repo/pull/2"}}
+    before = {p: p.read_bytes() for p in root.rglob("*") if p.is_file()}
+    html = build(state, root / "runs/demo", root)
+    assert "固定版本正文不可用" in html
+    assert "其他历史理由仍可回查" in html
+    assert "不得回退到当前理由" not in html
+    assert "固定版本批准证据" in html and "independent" in html and "/pull/2" in html
+    assert {p: p.read_bytes() for p in root.rglob("*") if p.is_file()} == before
+
+
 def test_cli_report_reads_decisions_from_explicit_runtime_not_source_root(tmp_path, monkeypatch):
     import repopilot.cli as cli
     from repopilot.storage.jobs import JobStore

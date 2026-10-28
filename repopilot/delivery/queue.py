@@ -82,6 +82,48 @@ class IssueQueue:
         with closing(self.store.connect()) as db, db:
             db.execute("UPDATE issue_queue SET run_id=? WHERE issue_key=?", (run_id, key))
 
+    def _comment_row(self, db, run_id):
+        """只认run绑定的实际行；旧键也必须与保存的工单来源相同。"""
+        rows = db.execute("SELECT issue_key,repository,url,status FROM issue_queue WHERE run_id=?",
+                          (run_id,)).fetchall()
+        if not rows:
+            return None
+        if len(rows) != 1:
+            raise StateError("queue_run_binding_ambiguous")
+        key, repository, url, status = rows[0]
+        issue = self.store.get(run_id).get("issue") or {}
+        try:
+            source = parse_issue_url(issue["url"])
+            canonical = issue_source_key(issue["url"])
+            legacy = f"{source['repository'].lower()}#{source['number']}"
+            valid = (issue_source_key(url) == canonical and key.lower() in {canonical, legacy}
+                     and repository.lower() == source["repository"].lower()
+                     and issue.get("repository", "").lower() == repository.lower()
+                     and issue.get("number") == source["number"])
+        except (ForgeError, KeyError, TypeError):
+            valid = False
+        if not valid:
+            raise StateError("queue_run_source_mismatch")
+        return key, repository, status
+
+    def begin_comment_run(self, run_id, max_per_repository):
+        """评论调度按run_id原子占槽；无绑定行的手工运行沿用原入口。"""
+        with closing(self.store.connect()) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            if db.execute("SELECT 1 FROM issue_queue WHERE status='interrupted' LIMIT 1").fetchone():
+                return False
+            row = self._comment_row(db, run_id)
+            if row is None:
+                return True
+            key, repository, status = row
+            active = db.execute("SELECT count(*) FROM issue_queue WHERE repository=? AND status='running'",
+                                (repository,)).fetchone()[0]
+            if status != "needs_input" or active >= max_per_repository:
+                return False
+            db.execute("UPDATE issue_queue SET status='running',error=NULL WHERE issue_key=? AND run_id=?",
+                       (key, run_id))
+            return True
+
     def begin_comment(self, key, max_per_repository):
         """把等待中的队列行临时标为running，让评论恢复也占同仓库槽位。
 
@@ -117,7 +159,11 @@ class IssueQueue:
     def finish_run(self, run_id, status, error=None):
         """评论恢复绑定已保存的run_id，兼容仍使用旧key的队列行。"""
         with closing(self.store.connect()) as db, db:
-            db.execute("UPDATE issue_queue SET status=?, error=? WHERE run_id=?", (status, error, run_id))
+            db.execute("BEGIN IMMEDIATE")
+            row = self._comment_row(db, run_id)
+            if row is not None:
+                db.execute("UPDATE issue_queue SET status=?,error=? WHERE issue_key=? AND run_id=?",
+                           (status, error, row[0], run_id))
 
     def mark_interrupted(self):
         # 上次调度器退出时子进程可能仍有副作用，禁止把 running 自动放回 queued。
