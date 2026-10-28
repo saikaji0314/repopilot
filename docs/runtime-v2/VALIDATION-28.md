@@ -1,6 +1,6 @@
 # 增量28：M4 并行实现与内部整合
 
-日期：2026-10-28。基线：dev/3fc250b；初始实现b685c69，独立复审修复2968b2e、7e9014c。对应原始规格第7节及A07／A09；实现范围只到本地并行、独立worktree、槽位、串行整合和组合检查，不包含M5双审、AB复核或真实平台效果验收。
+日期：2026-10-28。基线：dev/3fc250b；初始实现b685c69，独立复审修复2968b2e、7e9014c、f75c068。对应原始规格第7节及A07／A09；实现范围只到本地并行、独立worktree、槽位、串行整合和组合检查，不包含M5双审、AB复核或真实平台效果验收。
 
 ## 本轮交付
 
@@ -31,9 +31,11 @@
 | R2局部澄清全停父任务 | 调度器不再因单个澄清退出；阻塞任务登记到`parallel_blocked`，独立任务继续提交／整合，无可继续任务后汇总人工请求 |
 | R3整合resolver异常残留冲突 | `pending_integration`记录应用前状态；resolver异常保留冲突现场和来源提交，`recover`后从同一整合继续；正常人工分支仍回滚到干净HEAD |
 | R4并发费用越过运行上限 | `Quota.pending_cny`把已预留未结算金额计入准入；结算时先结算账本再原子转成accounted，避免释放与入账之间的窗口 |
-| R5硬退出丢失工具／编辑计数 | `RunSession._restore_worker_events`从逐条`events.jsonl`重建工具调用和成功编辑，并按最大值与既有检查点合并 |
+| R5硬退出丢失工具／编辑计数 | `RunSession._restore_worker_events`从逐条`events.jsonl`重建工具调用和编辑尝试，并按最大值与既有检查点合并 |
+| R5补充失败编辑被清零 | 编辑工具先`take`额度再执行；恢复按`tool_started`计数并排除明确的`edit_limit_reached`，失败编辑（如`old_string_not_found`）仍计入 |
+| R6干净应用中断后重跑worker | 恢复检查`pending_integration`和暂存区：已应用未提交直接完成整合；未应用则用来源提交重新应用；只有无来源可接续才重跑受影响worker |
 
-修复后独立探针6项全部通过（原5项复现缺陷＋组合检查反向场景）；新增产品回归覆盖R1—R5。探针源码与原始输出见`.local/evidence/m4-independent-review/`，不提交到公开仓库。
+修复后原独立探针6项全部通过；补充审复审2项（失败编辑硬退出、干净应用中断恢复）也全部通过。新增产品回归覆盖R1—R6。探针源码与输出见`.local/evidence/m4-independent-review/`和`.local/evidence/m4-independent-rereview/`，不提交到公开仓库。
 
 ## 验证
 
@@ -41,18 +43,18 @@
 
 | 检查 | 结果 |
 | --- | --- |
-| M4专项 | 16项通过（并行、依赖、冲突、局部暂停、槽位、费用预留、硬退出计数、异常整合恢复、恢复后转人工、组合批准等） |
-| 完整回归 | **669通过／16跳过，573.85秒** |
+| M4专项 | 18项通过（并行、依赖、冲突、局部暂停、槽位、费用预留、硬退出计数、失败编辑计数、异常整合恢复、恢复后转人工、干净应用中断恢复、组合批准等） |
+| 完整回归 | **671通过／16跳过，553.89秒** |
 
 命令：
 
 ```powershell
-$t = (Resolve-Path .local).Path + '\tmp\m4-final3-system-temp'
+$t = (Resolve-Path .local).Path + '\tmp\m4-final4-system-temp'
 $env:TEMP=$t; $env:TMP=$t; $env:TMPDIR=$t; $env:GIT_CEILING_DIRECTORIES=$t
-python -m pytest tests -q -p no:cacheprovider --basetemp .local/tmp/m4-fix-final3 --tb=short
+python -m pytest tests -q -p no:cacheprovider --basetemp .local/tmp/m4-fix-final4 --tb=short
 ```
 
-测试入口：[并行与整合](../../tests/runtime/test_parallel.py)。本地探针另验证了：两个独立worker都从同一父基线启动；依赖第三任务看到第一任务整合后的文件；冲突在父工作区产生`UU`，受控修复提交后文件保留双方内容；未解决时回滚后父工作区无冲突标记；槽位占满时无计划实现被拒绝；局部澄清时独立任务继续整合；resolver额度异常后recover可继续；并发费用不越过运行上限；硬退出后工具／编辑计数可恢复。
+测试入口：[并行与整合](../../tests/runtime/test_parallel.py)。本地探针另验证了：两个独立worker都从同一父基线启动；依赖第三任务看到第一任务整合后的文件；冲突在父工作区产生`UU`，受控修复提交后文件保留双方内容；未解决时回滚后父工作区无冲突标记；槽位占满时无计划实现被拒绝；局部澄清时独立任务继续整合；resolver额度异常后recover可继续；干净应用中断后不重跑worker；并发费用不越过运行上限；硬退出后工具／编辑计数（含失败编辑）可恢复。
 
 ## 边界与限制
 

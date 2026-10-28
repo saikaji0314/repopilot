@@ -48,14 +48,15 @@ repopilot plan show RUN_ID --output .local/runtime
 - 某个子任务需要澄清或整合冲突转人工时，只阻塞该子任务及其后继；其他独立子任务继续执行、提交并整合。父文件、独立结果和检查点都保留后，才汇总打开人工请求并进入`needs_input`。
 - 受影响子任务的worktree和不完整报告保留在`parallel_runs`／`parallel_blocked`；未提交编辑不会自动续用，答复触发计划变化时按M3重规划，但已整合的独立提交不会被说成丢失。
 - 整合操作在应用前写入`pending_integration`。冲突修复Agent抛异常或进程中断时，父冲突现场和来源提交保留；显式`recover`接纳现场后，恢复会继续同一整合，而不是要求先把工作树改干净或重放worker。
+- 无冲突`cherry-pick --no-commit`已完成但尚未提交时，恢复会识别暂存区中的合法应用结果并直接完成整合；若应用尚未发生，则用`pending.source_commit`重新应用，同样不重跑已完成的worker。
 - 普通异常回滚后才进入`needs_input`；已提交的整合由`pending_integration`识别并补记，不会重复提交。
-- 进程中断时，`parallel_runs`中的running记录在恢复时标为`interrupted`，保留worktree供核对；没有可接续的整合现场时，恢复从当前父整合HEAD按计划重新执行受影响子任务。
+- 进程中断且没有可接续的整合现场时，`parallel_runs`中的running记录标为`interrupted`，保留worktree；恢复按计划重新执行受影响子任务，但这只用于确实没有来源提交可接续的情况。
 - 没有worktree或顺序计划仍使用原有阶段恢复；无计划单Agent和顺序子任务也申请槽位，槽位等待超时以`limit_reached`/`implementation_slots_busy`停止，不绕过上限。
-- worker的工具和编辑计数逐条写入`events.jsonl`；硬退出后恢复会从可靠事件重建被父检查点遗漏的共享计数，预算账本继续恢复模型调用和费用。
+- worker的工具和编辑尝试逐条写入`events.jsonl`；硬退出后恢复会从可靠事件重建被父检查点遗漏的共享计数。正在编辑的尝试先消耗额度，因此除明确的`edit_limit_reached`外，失败编辑也计入恢复，不由“成功工具数”代替。
 
 ## 验证与限制
 
-测试入口：[并行与整合](../../tests/runtime/test_parallel.py)。使用确定性worker替身、真实本地Git／SQLite和运行目录，覆盖同时启动两个独立子任务、依赖等待已整合前置、普通冲突受控修复、冲突转人工、单槽位串行、槽位租约、worker提交与报告；复审修复后还覆盖无计划／顺序路径的全局槽位、局部暂停保留独立结果、整合resolver异常恢复、并发费用上限和硬退出计数重建。
+测试入口：[并行与整合](../../tests/runtime/test_parallel.py)。使用确定性worker替身、真实本地Git／SQLite和运行目录，覆盖同时启动两个独立子任务、依赖等待已整合前置、普通冲突受控修复、冲突转人工、单槽位串行、槽位租约、worker提交与报告；复审修复后还覆盖无计划／顺序路径的全局槽位、局部暂停保留独立结果、整合resolver异常恢复、恢复后转人工、干净应用中断后不重跑worker、并发费用上限和硬退出计数重建（含失败编辑消耗）。
 
 本增量未验证：
 
