@@ -12,6 +12,7 @@ import pytest
 import repopilot.cli as cli
 from repopilot.agents.reports import ArbitrationReport, DisputeReviewReport, ReviewReport
 from repopilot.orchestration import human, workflow
+from repopilot.orchestration.state import approval_digest
 from repopilot.review import basis as review_basis
 from repopilot.review import gate, merge, outcome, runner
 from repopilot.storage.jobs import JobStore, StateError
@@ -424,3 +425,23 @@ def test_legacy_run_without_review_fields_resumes_with_defaults(tmp_path):
     assert resumed["status"] == "awaiting_approval", resumed
     assert resumed["review"]["rework_limit"] == settings.max_rework
     assert resumed["review_rounds"], "旧运行补默认字段后仍能完成双审"
+
+
+def test_legacy_run_without_review_schema_keeps_the_original_approval_digest(tmp_path):
+    task, settings, root = setup(tmp_path)
+    scripts = Scripted([{"correctness": review(), "context": review()}])
+    result = start(task, settings, root, scripts, implementation())
+    assert result["status"] == "awaiting_approval"
+    state = JobStore(root).get(result["run_id"])
+    for key in ("review_schema", "review_rounds", "review_basis", "review_reuse",
+                "review_invalidations", "review_pending", "review_draft", "disputes",
+                "review_dispute_decisions", "rework_limit", "rework_extensions"):
+        state.pop(key, None)
+    state["review_report"] = {"verdict": "approved", "summary": "旧版单视角结论", "findings": []}
+    state["history"] = [{"attempt": 0, "commit": state["reviewed_commit"],
+                         "verdict": "approved", "summary": "旧版单视角结论", "findings": []}]
+    state["approval_digest"] = approval_digest(state)
+    JobStore(root).save(state)
+    decided = workflow.decide(result["run_id"], root, commit=state["reviewed_commit"],
+                              approved=True, reason="旧运行使用原摘要批准")
+    assert decided["status"] == "approved"

@@ -30,13 +30,15 @@ python -m pytest tests -q -p no:cacheprovider --basetemp .local/tmp/m5-full4 --t
 
 | 检查 | 结果 |
 | --- | --- |
-| M5双审／争议专项 | 12 passed，42.04秒 |
+| M5双审／争议专项 | 13 passed（含旧运行兼容用例） |
 | 审核报告契约 | 11 passed（含4项新增证据结构／A／B／C契约） |
-| 评测接线与双审 | 28 passed，53.01秒（含`test_solver` 9项与双审12项） |
-| 完整`tests` | 686 passed，16 skipped，649.74秒 |
+| 评测接线与M5相关用例 | 40 passed，59.64秒 |
+| 完整`tests` | 687 passed，16 skipped，649.42秒 |
 | 真实模型／平台／Docker | 0次 |
 
 `test_solver` 的两个失败曾在中间版本出现：双审直接导入`repository_session`，绕过了评测替身对`phases.repository_session`的替换，导致尝试真实Docker会话而`workspace_error`。修复为把会话工厂从阶段传入审核执行，评测替身重新生效；最终完整测试通过。该失败保留在本地记录，不隐藏。
+
+旧运行兼容另有两处修正：恢复时为没有M5字段的旧状态补默认审核记录；没有M5标记的旧运行继续使用原批准摘要算法，新增用例确认旧摘要仍能批准。新运行的批准摘要绑定审核依据、合并发现和争议结论。
 
 ## 验收场景对应
 

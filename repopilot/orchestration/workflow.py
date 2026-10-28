@@ -73,7 +73,7 @@ def create_job(task, settings, output_root, *, workspace=True, review=True,
         "platform_preflight": None,
         "review_rounds": [], "review_basis": None, "review_reuse": [],
         "review_invalidations": [], "review_pending": None, "review_draft": None,
-        "disputes": [], "review_dispute_decisions": [],
+        "disputes": [], "review_dispute_decisions": [], "review_schema": 2,
         "rework_limit": settings.max_rework, "rework_extensions": [],
         "prior_attempt": carried.get("prior_attempt"),
     }, issue_key=None if issue is None else f"{issue['repository']}#{issue['number']}", retry_of=retry_of)
