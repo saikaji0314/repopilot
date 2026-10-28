@@ -515,8 +515,25 @@ class PhaseRunner:
             "conflicts": integration.get("conflicts") or [],
             "report": report.get("summary")})
 
+    def _finish_resumed_integration(self, info, result, integration):
+        if integration["status"] == "integrated":
+            return self._record_completed_parallel(info, result, integration,
+                                                    integration.get("report")) == "continue"
+        if integration["status"] == "needs_input":
+            self._record_parallel_integration_block(info, result, integration, "conflict")
+            self._register_parallel_block(info, "conflict",
+                (integration.get("report") or {}).get("summary") or "内部整合冲突",
+                (integration.get("report") or {}).get("questions")
+                or ["内部整合冲突需要确认保留哪一方行为。"], phase="integrate",
+                report=integration.get("report"), source_commit=result.get("commit"))
+            return True
+        self._record_parallel_integration_block(info, result, integration, "failed")
+        self.state["status"] = "phase_error"
+        self.state["stop_reason"] = f"integration_{integration.get('reason') or 'failed'}"
+        return False
+
     def _resume_pending_integration(self):
-        """恢复未完成整合：冲突现场继续修复；已提交则补记结果，清洁现场允许重试。"""
+        """恢复未完成整合：保留已应用内容，冲突继续修复，已提交则补记；不重跑worker。"""
         pending = self.state.get("pending_integration")
         if not pending:
             return True
@@ -531,6 +548,8 @@ class PhaseRunner:
                 "workspace": Workspace(self.task.repository, self.store_root / "worktrees",
                                        path=worktree, base_commit=pending.get("base_commit")),
                 "base_commit": pending.get("base_commit"), "started_at": pending.get("started_at")}
+        result = {"commit": pending.get("source_commit"), "base_commit": pending.get("base_commit"),
+                  "worktree": pending.get("worktree"), "started_at": pending.get("started_at")}
         head = head_commit(parent.repository())
         if head != pending.get("parent_head"):
             if parent.integration_conflicts():
@@ -541,37 +560,22 @@ class PhaseRunner:
                            "base_commit": pending["base_commit"], "integrated_commit": head,
                            "resolution": "recovered", "conflicts": pending.get("conflicts") or [],
                            "report": None, "worktree": pending.get("worktree")}
-            return self._record_completed_parallel(info, {"started_at": pending.get("started_at")},
-                                                   integration, None) == "continue"
+            return self._finish_resumed_integration(info, result, integration)
         if parent.integration_conflicts():
-            integration = self._resolve_parallel_conflict(info, {"worktree": pending.get("worktree")},
-                pending["source_commit"], pending["base_commit"],
-                pending.get("conflicts") or parent.integration_conflicts(), pending)
-            if integration["status"] == "integrated":
-                return self._record_completed_parallel(info, {"started_at": pending.get("started_at")},
-                                                       integration, integration.get("report")) == "continue"
-            if integration["status"] == "needs_input":
-                self._record_parallel_integration_block(info,
-                    {"commit": pending["source_commit"], "base_commit": pending["base_commit"],
-                     "worktree": pending.get("worktree"), "started_at": pending.get("started_at")},
-                    integration, "conflict")
-                self._register_parallel_block(info, "conflict",
-                    (integration.get("report") or {}).get("summary") or "内部整合冲突",
-                    (integration.get("report") or {}).get("questions")
-                    or ["内部整合冲突需要确认保留哪一方行为。"], phase="integrate",
-                    report=integration.get("report"), source_commit=pending["source_commit"])
-                return True
-            self._record_parallel_integration_block(info,
-                {"commit": pending["source_commit"], "base_commit": pending["base_commit"],
-                 "worktree": pending.get("worktree"), "started_at": pending.get("started_at")},
-                integration, "failed")
-            self.state["status"] = "phase_error"
-            self.state["stop_reason"] = f"integration_{integration.get('reason') or 'failed'}"
-            return False
-        # 清洁且父HEAD未变：没有可接续的冲突，丢弃整合意图并按正常调度重试该子任务。
-        parent.abort_integration()
-        self.state["pending_integration"] = None
-        return True
+            return self._finish_resumed_integration(info, result,
+                self._resolve_parallel_conflict(info, result, pending["source_commit"],
+                    pending["base_commit"], pending.get("conflicts") or parent.integration_conflicts(),
+                    pending))
+        dirty = run_git(parent.repository(), "status", "--porcelain=v1",
+                        "--untracked-files=all").stdout.strip()
+        if dirty:
+            # 无冲突cherry-pick --no-commit已在索引留下合法应用结果；直接完成提交，不重跑worker。
+            return self._finish_resumed_integration(info, result,
+                self._commit_parallel_integration(info, pending["source_commit"],
+                    pending["base_commit"], result, [], "recovered", None, pending))
+        # 应用尚未发生：用已知来源提交重新应用，仍不重跑实现worker。
+        return self._finish_resumed_integration(info, result,
+            self._integrate_parallel_result(info, result))
 
     def _handle_parallel_result(self, info, result):
         subtask = info["subtask"]

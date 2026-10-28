@@ -413,6 +413,73 @@ def test_parallel_cost_reservations_include_inflight_amount(tmp_path):
     assert any(item.startswith("RunLimit:run_cost_budget") for item in outcomes)
 
 
+def test_clean_applied_integration_resumes_without_reexecuting_worker(tmp_path, monkeypatch):
+    task, settings, root = setup(tmp_path, plan_enabled=True, max_implementation_slots=1)
+    subtasks = [subtask("first"), subtask("second")]
+    calls = []
+
+    def fake(**kwargs):
+        subtask_id = kwargs["payload"]["subtask"]["id"]
+        calls.append(subtask_id)
+        return worker_result(kwargs["workspace"], subtask_id,
+                             kwargs["payload"]["parallel"]["base_commit"])
+
+    original_apply = parallel.apply_integration
+    interrupted = {"done": False}
+
+    def apply(parent, source_commit):
+        outcome = original_apply(parent, source_commit)
+        if not interrupted["done"]:
+            interrupted["done"] = True
+            assert outcome[0] is True
+            raise KeyboardInterrupt()
+        return outcome
+    monkeypatch.setattr(parallel, "run_subtask", fake)
+    monkeypatch.setattr(parallel, "apply_integration", apply)
+    first = workflow.start(task, settings, root, model=FakeModel(responses=[
+        plan_ready(subtasks, split="parallel")]))
+    assert first["status"] == "interrupted"
+    state = JobStore(root).get(first["run_id"])
+    parent = workflow.attach(state, root)
+    assert (parent.path / "first.txt").exists()
+    workflow.recover(first["run_id"], root, commit=head_commit(parent.path),
+                     reason="核对已应用但未提交的干净整合")
+    resumed = workflow.resume(first["run_id"], settings, root,
+                              model=FakeModel(responses=[review_approved()]))
+    assert resumed["status"] == "awaiting_approval", resumed
+    assert calls.count("first") == 1, "已应用来源提交被丢弃并重跑了worker"
+    assert any(item["subtask"] == "first" and item["status"] == "integrated"
+               for item in resumed["integrations"])
+
+
+def test_hard_exit_failed_edit_attempts_stay_counted(tmp_path):
+    task, settings, root = setup(tmp_path)
+    state = workflow.create_job(task, settings, root, workspace=True)
+    store = JobStore(root)
+    directory = root / "runs" / state["run_id"]
+    directory.mkdir(parents=True, exist_ok=True)
+    events = [
+        {"event": "tool_started", "phase": "implement", "name": "replace_in_file",
+         "args": {"path": "app.py", "old": "missing", "new": "x"}},
+        {"event": "tool_finished", "phase": "implement", "name": "replace_in_file",
+         "result": json.dumps({"ok": False, "error": "old_string_not_found"})},
+        {"event": "tool_started", "phase": "implement", "name": "write_file",
+         "args": {"path": "app.py", "content": "value = 2\n"}},
+        {"event": "tool_finished", "phase": "implement", "name": "write_file",
+         "result": json.dumps({"ok": True, "path": "app.py"})},
+    ]
+    (directory / "events.jsonl").write_text(
+        "\n".join(json.dumps(item, ensure_ascii=False) for item in events) + "\n",
+        encoding="utf-8")
+    state["control"] = {"model_calls": 0, "tool_calls": 0, "input_tokens": 0,
+                        "output_tokens": 0, "accounted_cny": 0.0, "checks": [], "progress": {}}
+    state["edits"] = {"edits": 0, "edited_files": []}
+    store.save(state)
+    restored = RunSession(store, store.get(state["run_id"]), settings, FakeModel(responses=[]))
+    assert restored.control.tool_calls == 2
+    assert restored.edits.count == 2, "失败编辑已消耗额度，恢复不能只数成功编辑"
+
+
 def test_hard_exit_worker_tool_and_edit_counts_are_rebuilt_from_events(tmp_path):
     task, settings, root = setup(tmp_path)
     state = workflow.create_job(task, settings, root, workspace=True)

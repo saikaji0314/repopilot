@@ -74,7 +74,7 @@ class RunSession:
         path = self.trace.directory / "events.jsonl"
         if not path.exists():
             return
-        tools = edits = 0
+        tools = edits = edit_attempts = edit_limit_rejections = 0
         checks = []
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
             try:
@@ -83,19 +83,23 @@ class RunSession:
                 continue
             if event.get("event") == "tool_started":
                 tools += 1
+                if event.get("name") in {"write_file", "replace_in_file"}:
+                    edit_attempts += 1
             elif event.get("event") == "tool_finished":
                 name = event.get("name")
                 try:
                     observation = json.loads(event.get("result") or "{}")
                 except (TypeError, ValueError):
                     observation = {}
-                if name in {"write_file", "replace_in_file"} and observation.get("ok"):
-                    edits += 1
+                # editing()先take再执行；除明确的edit_limit_reached外，失败尝试也已经消耗额度。
+                if name in {"write_file", "replace_in_file"} and observation.get("error") == "edit_limit_reached":
+                    edit_limit_rejections += 1
                 if name == "run_registered_check" and observation.get("ok"):
                     checks.append({key: value for key, value in
                                    {"name": observation.get("name"),
                                     "exit_code": observation.get("exit_code")}.items()
                                    if value is not None})
+        edits = max(0, edit_attempts - edit_limit_rejections)
         self.control.tool_calls = max(self.control.tool_calls, tools)
         self.edits.count = max(self.edits.count, edits)
         if checks and not self.control.checks:
