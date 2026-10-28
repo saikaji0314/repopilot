@@ -9,14 +9,14 @@
 - `parallel`至少两个子任务，且至少两个互不依赖；规划理由必须说明为什么这些子任务可以独立完成、修改边界不冲突。
 - 程序仍按依赖拓扑排序；同时运行的子任务必须依赖已完成，并已**整合进父临时工作区**。
 - 依赖下游的worktree基线是父整合工作区当前的HEAD，不是另一个worker正在修改的目录。
-- 顺序计划继续走M3的单worktree路径；单Agent路径和无计划路径不变。
+- 顺序计划继续走M3的单worktree路径；单Agent路径和无计划路径的执行语义不变，但同样计入全局实现槽位。
 
 ```powershell
 repopilot run task.yaml --max-implementation-slots 2 --output .local/runtime
 repopilot plan show RUN_ID --output .local/runtime
 ```
 
-`max_implementation_slots`默认2、允许1或2；`--slot-timeout`控制等待空位的时间。槽位租约在`jobs.sqlite3`的`implementation_slots`表中，所有运行共享，不能靠同时接多个Issue把并发放大到2以上。进程退出后租约按TTL过期。
+`max_implementation_slots`默认2、允许1或2；`--slot-timeout`控制等待空位的时间。槽位租约在`jobs.sqlite3`的`implementation_slots`表中，所有运行共享，不能靠同时接多个Issue把并发放大到2以上。并行worker、单Agent／无计划、顺序子任务、返工和整合修复Agent都必须先取得同一槽位；整合前会释放worker租约，再由整合修复取得自己的租约。进程退出后租约按TTL过期。
 
 ## 独立worktree与共享额度
 
@@ -43,23 +43,26 @@ repopilot plan show RUN_ID --output .local/runtime
 
 内部整合只发生在运行目录的临时worktree，不更新原仓库工作树、main或远端；仍只有一个父任务汇总草稿PR（M3的发布路径）。不会为每个worker自动创建PR，也不会因创建草稿自动关闭父／子Issue。
 
-## 暂停与恢复
+## 局部暂停与恢复
 
-- 任一worker需要澄清时停止派发新子任务，等待已开始worker结束；不把未处理结果悄悄整合。请求、worktree和检查点落盘，运行进入`needs_input`。
-- 进程中断时，`parallel_runs`中的running记录在恢复时标为`interrupted`，保留worktree供核对；不默认复用未提交编辑，恢复从当前父整合HEAD按计划重新执行受影响子任务。
-- 没有worktree或顺序计划仍使用原有阶段恢复；`--no-plan`不创建并行槽位。
-- 槽位等待超时以`limit_reached`/`implementation_slots_busy`停止，不绕过上限；进程崩溃留下的租约按TTL清理。
+- 某个子任务需要澄清或整合冲突转人工时，只阻塞该子任务及其后继；其他独立子任务继续执行、提交并整合。父文件、独立结果和检查点都保留后，才汇总打开人工请求并进入`needs_input`。
+- 受影响子任务的worktree和不完整报告保留在`parallel_runs`／`parallel_blocked`；未提交编辑不会自动续用，答复触发计划变化时按M3重规划，但已整合的独立提交不会被说成丢失。
+- 整合操作在应用前写入`pending_integration`。冲突修复Agent抛异常或进程中断时，父冲突现场和来源提交保留；显式`recover`接纳现场后，恢复会继续同一整合，而不是要求先把工作树改干净或重放worker。
+- 普通异常回滚后才进入`needs_input`；已提交的整合由`pending_integration`识别并补记，不会重复提交。
+- 进程中断时，`parallel_runs`中的running记录在恢复时标为`interrupted`，保留worktree供核对；没有可接续的整合现场时，恢复从当前父整合HEAD按计划重新执行受影响子任务。
+- 没有worktree或顺序计划仍使用原有阶段恢复；无计划单Agent和顺序子任务也申请槽位，槽位等待超时以`limit_reached`/`implementation_slots_busy`停止，不绕过上限。
+- worker的工具和编辑计数逐条写入`events.jsonl`；硬退出后恢复会从可靠事件重建被父检查点遗漏的共享计数，预算账本继续恢复模型调用和费用。
 
 ## 验证与限制
 
-测试入口：[并行与整合](../../tests/runtime/test_parallel.py)。使用确定性worker替身、真实本地Git／SQLite和运行目录，覆盖同时启动两个独立子任务、依赖等待已整合前置、普通冲突受控修复、冲突转人工、单槽位串行、槽位租约、worker提交与报告。
+测试入口：[并行与整合](../../tests/runtime/test_parallel.py)。使用确定性worker替身、真实本地Git／SQLite和运行目录，覆盖同时启动两个独立子任务、依赖等待已整合前置、普通冲突受控修复、冲突转人工、单槽位串行、槽位租约、worker提交与报告；复审修复后还覆盖无计划／顺序路径的全局槽位、局部暂停保留独立结果、整合resolver异常恢复、并发费用上限和硬退出计数重建。
 
 本增量未验证：
 
 - 没有真实模型在两个线程上并行调用，也没有真实模型整合修复效果；测试的worker是确定性替身。
 - 没有Docker后端的并行子任务验证；线程并发与容器会话组合待测。
 - 未验证真实GitHub／GitLab评论、子Issue或草稿PR在并行计划下的端到端效果。
-- 暂停时保留worktree和记录，但没有自动续用未提交编辑；答复触发任务说明变化时按M3重规划。
+- 暂停时保留worktree、局部阻塞记录和已整合的独立结果，但没有自动续用未提交编辑；答复触发任务说明变化时按M3重规划。
 - 冲突修复依赖模型判断，程序只检查索引／标记和最终检查；不能保证语义上完全保留双方功能，需要最终审核和人工批准。
 - 实际并发收益、费用和失败率没有和顺序执行做对照；不把机制存在等同于效果更好。
 

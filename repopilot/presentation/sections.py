@@ -101,6 +101,21 @@ def integrations(state, root):
             ["子任务", "状态", "来源提交", "整合提交", "处理", "冲突文件", "时间"], rows))
 
 
+def parallel_blocks(state, root):
+    """局部暂停只列出受影响子任务，不把独立任务的成功结果混进阻塞说明。"""
+    blocks = state.get("parallel_blocked") or []
+    if not blocks:
+        return ""
+    rows = [[escape(str(item.get("subtask"))), escape(str(item.get("kind"))),
+             escape(redact(str(item.get("summary") or ""), root)),
+             escape(redact("；".join(item.get("questions") or []), root)),
+             escape(redact(str(item.get("worktree") or ""), root))]
+            for item in blocks]
+    return ('<h2>局部暂停</h2><p class="note">以下子任务及其后继被阻塞；其他独立任务'
+            '仍已完成并整合，未把整个父任务的工作丢掉。</p>' + table(
+            ["子任务", "类型", "摘要", "问题", "工作区"], rows))
+
+
 def human_requests(state, root):
     requests = state.get("human_requests") or []
     if not requests:

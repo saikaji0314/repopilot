@@ -65,6 +65,8 @@ def record(state, plan, projected):
     state["plan"] = plan.model_dump(mode="json")
     state["plan_progress"] = {"order": list(plan.order), "current": None, "results": [],
                               "started_at": timestamp()}
+    # 新计划重新获得可调度空间；旧局部阻塞只留在历史中，不能阻塞新版本。
+    state["parallel_blocked"] = []
     # 重规划后把新计划版本关联到触发它的旧计划记录，实现载荷可判断旧工作上下文。
     if state.get("plan_refresh_required") and state.get("plan_refresh_history"):
         latest = state["plan_refresh_history"][-1]

@@ -50,6 +50,8 @@ class Quota:
         self.tool_lock = Lock()
         self.model_calls = self.tool_calls = self.input_tokens = self.output_tokens = 0
         self.accounted_cny = 0.0
+        # 已向预算账本预留、尚未按响应结算的金额；并发准入必须把它算进运行上限。
+        self.pending_cny = 0.0
         self.checks = []
         self.halt_reason = None
 
@@ -203,9 +205,10 @@ class RunControl(AgentMiddleware):
                 raise RunLimit(self.quota.halt_reason)
             if self.model_calls >= settings.max_model_calls:
                 raise RunLimit("max_model_calls")
-            if self.accounted_cny + bound > settings.max_run_cost_cny:
+            if self.accounted_cny + self.quota.pending_cny + bound > settings.max_run_cost_cny:
                 raise RunLimit("run_cost_budget")
             call_id = self.budget.reserve(self.run_id, bound)
+            self.quota.pending_cny += bound
             self.model_calls += 1
         self.observation.messages = []
         self.trace.event("model_started", call_id=call_id, input_bytes=size, reserved_cny=bound,
@@ -220,6 +223,7 @@ class RunControl(AgentMiddleware):
             else:
                 self.budget.settle(call_id, None)
                 with self.quota.lock:
+                    self.quota.pending_cny = max(0.0, self.quota.pending_cny - bound)
                     self.quota.accounted_cny += bound
             self.trace.event("model_failed", call_id=call_id, error_type=type(exc).__name__)
             raise
@@ -232,6 +236,7 @@ class RunControl(AgentMiddleware):
         if not usages or not any(u["total_tokens"] > 0 for u in usages):
             self.budget.settle(call_id, None)
             with self.quota.lock:
+                self.quota.pending_cny = max(0.0, self.quota.pending_cny - bound)
                 self.quota.accounted_cny += bound
             raise RunLimit("usage_unavailable")
         input_tokens = sum(u["input_tokens"] for u in usages)
@@ -240,6 +245,7 @@ class RunControl(AgentMiddleware):
                 output_tokens * settings.output_cny_per_million) / 1_000_000
         self.budget.settle(call_id, cost)
         with self.quota.lock:
+            self.quota.pending_cny = max(0.0, self.quota.pending_cny - bound)
             self.quota.accounted_cny += cost
             self.quota.input_tokens += input_tokens
             self.quota.output_tokens += output_tokens

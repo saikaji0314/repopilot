@@ -163,4 +163,6 @@ def show(run_id, root):
             "subtask_mappings": state.get("subtask_mappings") or [],
             "parallel_runs": state.get("parallel_runs") or [],
             "integrations": state.get("integrations") or [],
+            "parallel_blocked": state.get("parallel_blocked") or [],
+            "pending_integration": state.get("pending_integration"),
             "platform_preflight": state.get("platform_preflight")}

@@ -22,7 +22,8 @@ STATUS_FIELDS = ('run_id', 'status', 'phase', 'in_flight', 'stop_reason', 'revie
                  'decision_records', 'publication', 'task_brief', 'plan', 'plan_status', 'plan_progress',
                  'plan_refresh_history', 'plan_refresh_required',
                  'subtask_mappings', 'question_batches', 'question_handovers', 'question_limit',
-                 'platform_preflight', 'parallel_runs', 'integrations', 'implementation_slots')
+                 'platform_preflight', 'parallel_runs', 'integrations', 'parallel_blocked',
+                 'pending_integration', 'implementation_slots')
 
 
 def _watch_options(parser):

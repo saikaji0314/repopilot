@@ -67,7 +67,7 @@ def create_job(task, settings, output_root, *, workspace=True, review=True,
         "plan_refresh_history": list(carried.get("plan_refresh_history") or []) if prior_plan else [],
         "plan_refresh_required": bool(carried.get("plan_refresh_required")) if prior_plan else False,
         "subtask_mappings": list(carried.get("subtask_mappings") or []) if prior_plan else [],
-        "parallel_runs": [], "integrations": [],
+        "parallel_runs": [], "integrations": [], "parallel_blocked": [], "pending_integration": None,
         "platform_preflight": None,
     }, issue_key=None if issue is None else f"{issue['repository']}#{issue['number']}", retry_of=retry_of)
     if issue and canonical_hash(issue) != canonical_hash(state["issue"]):
@@ -280,6 +280,8 @@ def snapshot(store, state, settings):
         "subtask_mappings": state.get("subtask_mappings", []),
         "parallel_runs": state.get("parallel_runs", []),
         "integrations": state.get("integrations", []),
+        "parallel_blocked": state.get("parallel_blocked", []),
+        "pending_integration": state.get("pending_integration"),
         "implementation_slots": SlotManager(store.root,
             limit=settings.max_implementation_slots).snapshot(),
         "platform_preflight": state.get("platform_preflight"),

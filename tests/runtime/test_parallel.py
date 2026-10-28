@@ -1,9 +1,14 @@
 """M4并行子任务、独立worktree、串行整合与槽位约束；模型和整合Agent为确定性替身。"""
 
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+import json
 import threading
+import time
+from types import SimpleNamespace
 
 import pytest
+from langchain_core.messages import AIMessage, HumanMessage
 
 from repopilot.agents import loop as engine
 from repopilot.agents.reports import ImplementationReport
@@ -11,7 +16,9 @@ from repopilot.agents.trace import Trace
 from repopilot.core.config import RuntimeSettings
 from repopilot.execution.workspace import EditBudget, head_commit
 from repopilot.orchestration import parallel, workflow
+from repopilot.orchestration.session import RunSession
 from repopilot.orchestration.slots import SlotFault, SlotManager
+from repopilot.storage.budget import Budget, RunLimit
 from repopilot.storage.jobs import JobStore
 from tests.runtime.test_planning import plan_ready, subtask
 from tests.runtime.test_review_loop import FakeModel, review_approved, setup
@@ -180,7 +187,7 @@ def test_one_slot_forces_serial_execution(tmp_path, monkeypatch):
     assert [item["status"] for item in result["integrations"]] == ["integrated", "integrated"]
 
 
-def test_parallel_clarification_pauses_without_integrating_other_worker(tmp_path, monkeypatch):
+def test_local_clarification_preserves_independent_completed_work(tmp_path, monkeypatch):
     task, settings, root = setup(tmp_path, plan_enabled=True)
     subtasks = [subtask("first"), subtask("second")]
     started = []
@@ -205,8 +212,10 @@ def test_parallel_clarification_pauses_without_integrating_other_worker(tmp_path
     pending = [item for item in result["human_requests"]
                if item["status"] == "pending" and item["kind"] == "clarification"]
     assert pending and pending[-1]["blocking"][0]["subtask"] == "first"
-    assert not result["integrations"], "暂停时不能把未处理结果当整合完成"
-    assert {item["status"] for item in result["parallel_runs"]} >= {"paused", "interrupted"}
+    assert [item["subtask"] for item in result["integrations"]] == ["second"], \
+        "独立子任务的成功提交必须保留并整合"
+    statuses = {item["subtask"]: item["status"] for item in result["parallel_runs"]}
+    assert statuses == {"first": "paused", "second": "completed"}
 
 
 def test_parallel_report_shows_source_and_integrated_commits(tmp_path, monkeypatch):
@@ -239,6 +248,150 @@ def test_parallel_combined_candidate_is_approved_as_one_commit(tmp_path, monkeyp
     state = JobStore(root).get(result["run_id"])
     assert state["approval"]["commit"] == result["review"]["reviewed_commit"]
     assert state["integrations"] and all(item["status"] == "integrated" for item in state["integrations"])
+
+
+def test_resolver_exception_keeps_integration_recoverable(tmp_path, monkeypatch):
+    task, settings, root = setup(tmp_path, plan_enabled=True)
+    subtasks = [subtask("first"), subtask("second")]
+    calls = {"resolver": 0}
+
+    def fake(**kwargs):
+        subtask_id = kwargs["payload"]["subtask"]["id"]
+        base = kwargs["payload"]["parallel"]["base_commit"]
+        (Path(kwargs["workspace"].path) / "app.py").write_text(
+            f"value = {subtask_id}\n", encoding="utf-8")
+        commit = kwargs["workspace"].commit(f"subtask {subtask_id}")["commit"]
+        return {"report": report(f"done {subtask_id}"), "commit": commit,
+                "worktree": str(kwargs["workspace"].path), "base_commit": base, "dirty": True,
+                "started_at": "synthetic-start", "finished_at": "synthetic-finish"}
+
+    def resolve(**kwargs):
+        calls["resolver"] += 1
+        if calls["resolver"] == 1:
+            raise RunLimit("max_model_calls")
+        (Path(kwargs["workspace"].path) / "app.py").write_text(
+            "value = first\nvalue = second\n", encoding="utf-8")
+        return {"status": "resolved", "summary": "恢复后合并", "decisions": [], "questions": []}
+    monkeypatch.setattr(parallel, "run_subtask", fake)
+    monkeypatch.setattr(parallel, "resolve_conflict", resolve)
+    first = workflow.start(task, settings, root, model=FakeModel(responses=[
+        plan_ready(subtasks, split="parallel")]))
+    assert first["status"] == "limit_reached", first
+    state = JobStore(root).get(first["run_id"])
+    parent = workflow.attach(state, root)
+    assert parent.integration_conflicts() == ["app.py"]
+    workflow.recover(first["run_id"], root, commit=head_commit(parent.path),
+                     reason="核对冲突破坏现场后恢复同一整合")
+    resumed = workflow.resume(first["run_id"], settings, root,
+                              model=FakeModel(responses=[review_approved()]))
+    assert resumed["status"] == "awaiting_approval", resumed
+    assert calls["resolver"] == 2
+    assert any(item["status"] == "integrated" and item["resolution"] == "model"
+               for item in resumed["integrations"])
+
+
+def test_global_slots_block_no_plan_and_sequential_implementation(tmp_path, monkeypatch):
+    task, settings, root = setup(tmp_path, implementation_slot_timeout_seconds=0.1)
+    slots = SlotManager(root)
+    first = slots.acquire("other-run:one")
+    second = slots.acquire("other-run:two")
+    started = []
+
+    original_phase = engine.run_phase
+
+    def phase(**kwargs):
+        if kwargs["phase"] == "implement":
+            started.append(kwargs["phase"])
+            raise AssertionError("implementation must not start while both slots are leased")
+        return original_phase(**kwargs)
+    monkeypatch.setattr(engine, "run_phase", phase)
+    try:
+        result = workflow.start(task, settings, root, model=object())
+    finally:
+        slots.release(first)
+        slots.release(second)
+    assert result["status"] == "limit_reached"
+    assert not started
+
+    sequential_root = tmp_path / "sequential"
+    sequential_root.mkdir()
+    sequential_task, sequential_settings, sequential_root = setup(
+        sequential_root, plan_enabled=True, implementation_slot_timeout_seconds=0.1)
+    slots = SlotManager(sequential_root)
+    one = slots.acquire("other-run:one")
+    two = slots.acquire("other-run:two")
+    started.clear()
+    try:
+        result = workflow.start(sequential_task, sequential_settings, sequential_root,
+            model=FakeModel(responses=[plan_ready(
+                [subtask("first"), subtask("second")], split="sequential")]))
+    finally:
+        slots.release(one)
+        slots.release(two)
+    assert result["status"] == "limit_reached"
+    assert not started
+
+
+def test_parallel_cost_reservations_include_inflight_amount(tmp_path):
+    settings = RuntimeSettings(api_key="synthetic", max_run_cost_cny=0.6,
+                               output_cny_per_million=200, budget_cny=10)
+    budget = Budget(tmp_path / "budget.sqlite3", settings.budget_cny)
+    trace_dir = tmp_path / "trace"
+    trace_dir.mkdir()
+    control = engine.RunControl(settings, budget, Trace(trace_dir, "synthetic"), "run")
+
+    def handler(_request):
+        time.sleep(0.15)
+        return SimpleNamespace(result=[AIMessage(content="ok", usage_metadata={
+            "input_tokens": 100, "output_tokens": 2000, "total_tokens": 2100})])
+
+    class Request:
+        messages = [HumanMessage(content="test")]
+        system_message = tools = model_settings = None
+        state = {"messages": []}
+
+        def override(self, **values):
+            clone = Request()
+            clone.__dict__.update(values)
+            return clone
+
+    def invoke(_):
+        try:
+            control.fork().wrap_model_call(Request(), handler)
+            return "ok"
+        except Exception as exc:
+            return type(exc).__name__ + ":" + str(exc)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(invoke, range(2)))
+    observed = budget.snapshot("run")
+    assert observed["accounted_cny"] <= settings.max_run_cost_cny
+    assert outcomes.count("ok") == 1
+    assert any(item.startswith("RunLimit:run_cost_budget") for item in outcomes)
+
+
+def test_hard_exit_worker_tool_and_edit_counts_are_rebuilt_from_events(tmp_path):
+    task, settings, root = setup(tmp_path)
+    state = workflow.create_job(task, settings, root, workspace=True)
+    store = JobStore(root)
+    directory = root / "runs" / state["run_id"]
+    directory.mkdir(parents=True, exist_ok=True)
+    events = [
+        {"event": "tool_started", "phase": "implement", "name": "write_file",
+         "args": {"path": "app.py", "content": "value = 2\n"}},
+        {"event": "tool_finished", "phase": "implement", "name": "write_file",
+         "result": json.dumps({"ok": True, "path": "app.py"})},
+    ]
+    (directory / "events.jsonl").write_text(
+        "\n".join(json.dumps(item, ensure_ascii=False) for item in events) + "\n",
+        encoding="utf-8")
+    state["control"] = {"model_calls": 0, "tool_calls": 0, "input_tokens": 0,
+                        "output_tokens": 0, "accounted_cny": 0.0, "checks": [], "progress": {}}
+    state["edits"] = {"edits": 0, "edited_files": []}
+    store.save(state)
+    restored = RunSession(store, store.get(state["run_id"]), settings, FakeModel(responses=[]))
+    assert restored.control.tool_calls >= 1
+    assert restored.edits.count >= 1
 
 
 def test_slot_manager_is_shared_and_released(tmp_path):

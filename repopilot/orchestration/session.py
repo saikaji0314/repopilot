@@ -49,6 +49,7 @@ class RunSession:
         self.edits = engine.EditBudget(settings.max_edits)
         self.edits.count = state["edits"].get("edits", 0)
         self.edits.touched = state["edits"].get("edited_files", [])
+        self._restore_worker_events()
         self.previous_active, self.started = state["active_seconds"], time.monotonic()
         self.control.deadline = self.started + max(0, settings.run_timeout_seconds - self.previous_active)
         self.saving = RLock()
@@ -67,6 +68,38 @@ class RunSession:
         accounted = budget.snapshot(self.state["run_id"])
         self.control.model_calls = max(self.control.model_calls, accounted["calls"])
         self.control.accounted_cny = max(self.control.accounted_cny, accounted["accounted_cny"])
+
+    def _restore_worker_events(self):
+        """硬退出时父检查点可能来不及写入；events是逐条落盘的可靠事实，补回共享工具／编辑计数。"""
+        path = self.trace.directory / "events.jsonl"
+        if not path.exists():
+            return
+        tools = edits = 0
+        checks = []
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            try:
+                event = json.loads(line)
+            except (TypeError, ValueError):
+                continue
+            if event.get("event") == "tool_started":
+                tools += 1
+            elif event.get("event") == "tool_finished":
+                name = event.get("name")
+                try:
+                    observation = json.loads(event.get("result") or "{}")
+                except (TypeError, ValueError):
+                    observation = {}
+                if name in {"write_file", "replace_in_file"} and observation.get("ok"):
+                    edits += 1
+                if name == "run_registered_check" and observation.get("ok"):
+                    checks.append({key: value for key, value in
+                                   {"name": observation.get("name"),
+                                    "exit_code": observation.get("exit_code")}.items()
+                                   if value is not None})
+        self.control.tool_calls = max(self.control.tool_calls, tools)
+        self.edits.count = max(self.edits.count, edits)
+        if checks and not self.control.checks:
+            self.control.checks = checks
 
     def checkpoint(self):
         with self.saving:

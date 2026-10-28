@@ -27,6 +27,7 @@ def render(state: dict, run_dir: Path, events: list[dict], root: Path) -> str:
         sections.implementation(state.get("report") or {}, root),
         sections.subtask_reports(state, root),
         sections.integrations(state, root),
+        sections.parallel_blocks(state, root),
         sections.plan(state, root),
         sections.human_requests(state, root),
         sections.materials(state, root),

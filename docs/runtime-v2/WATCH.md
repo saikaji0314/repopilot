@@ -48,7 +48,7 @@ targets:
       max_run_cost_cny: 8
 ```
 
-`plan_enabled`和`issue_comments_enabled`默认都是true：新Issue先做任务说明与计划，等待澄清时自动发父Issue评论并轮询回复。`--no-plan`／`REPOPILOT_PLAN_ENABLED=false`或`poll_comments: false`／`REPOPILOT_ISSUE_COMMENTS_ENABLED=false`可以关闭；关闭后仍是原单Agent和本地答复路径。`poll_comments`只控制监听器是否扫描等待批次，不改变单次`human post`／`sync`。并行计划的`max_implementation_slots`是全局共享槽位，默认2；不同Issue和监听worker都不能突破，等待空位超时后停止而不是无限排队。
+`plan_enabled`和`issue_comments_enabled`默认都是true：新Issue先做任务说明与计划，等待澄清时自动发父Issue评论并轮询回复。`--no-plan`／`REPOPILOT_PLAN_ENABLED=false`或`poll_comments: false`／`REPOPILOT_ISSUE_COMMENTS_ENABLED=false`可以关闭；关闭后仍是原单Agent和本地答复路径。`poll_comments`只控制监听器是否扫描等待批次，不改变单次`human post`／`sync`。`max_implementation_slots`是全局共享槽位，默认2；并行worker、无计划、顺序子任务、返工和整合修复都不能突破，等待空位超时后停止而不是无限排队。
 
 ```powershell
 # 当前终端常驻；Ctrl+C 停止接新任务，等待当前 worker 落盘后退出
