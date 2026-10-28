@@ -75,3 +75,12 @@ class ReviewReport(Contract):
         if self.verdict == "approved" and any(item.severity in {"blocker", "major"} for item in self.findings):
             raise ValueError("approved cannot carry a blocker or major finding")
         return self
+
+
+class IntegrationReport(Contract):
+    """整合冲突修复的结构化结果；不把“模型说已解决”当作冲突已消失。"""
+
+    status: Literal["resolved", "needs_clarification", "blocked"]
+    summary: str = Field(min_length=1, max_length=2000)
+    decisions: list[Decision] = Field(default_factory=list, max_length=8)
+    questions: list[str] = Field(default_factory=list, max_length=10)

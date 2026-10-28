@@ -16,6 +16,10 @@ flowchart TD
     PLAN -->|关键信息不足| ASK[集中提问批次：CLI或父Issue评论]
     ASK -->|答复后resume| PLAN
     PLAN -->|计划有效| IMPL
+    IMPL -->|parallel| WORKERS[独立worktree子任务 ×≤2]
+    WORKERS --> INTEG[串行整合到父临时工作区]
+    INTEG --> IMPL2[组合代码 anchor/verify/review]
+    IMPL2 --> ANCHOR
     IMPL --> ANCHOR[phases.anchor：把候选固定为提交]
     ANCHOR --> VERIFY[phases.verify：编排层重跑登记检查]
     VERIFY --> REVIEW[phases.review：审核Agent判断当前提交]
@@ -47,7 +51,9 @@ flowchart TD
 | 外层显式状态机 | 当前阶段有限，阶段、错误、真实副作用和落盘点可以直接对应；已有恢复与审批测试覆盖 | 可以改为 LangGraph StateGraph／checkpointer；框架也支持持久化，但迁移仍需定义Git/GitHub副作用的幂等及审批规则，不是换框架即自动解决 |
 | SQLite 与本机文件锁 | 对当前单机、低并发执行部署简单；任务版本校验拒绝过期写入，数据库事务管理竞争 | 多机器执行或持续高写入竞争时，应考虑服务化数据库和调度；当前不声称分布式可靠性 |
 | 人工请求与任务同检查点保存 | 请求、答案和阶段一起更新，避免分库半次保存；需求补充、批准、恢复共用记录而保留各自条件，等待不占模型循环 | 独立请求服务适合多机／多渠道，但仍需解决请求版本和任务状态一致性；本地协议见[人工协作](HUMAN.md)，平台评论见[计划](PLANNING.md) |
-| 计划与子Issue分开 | 内部计划先成为可校验的本地执行依据；外部子Issue只是按需追踪映射，平台能力不足不破坏计划，重试按标记复用 | 自动把每个计划步骤建成工单会污染外部协作；真正多Agent并行时需要子任务独立worktree和整合，属于后续增量 |
+| 计划与子Issue分开 | 内部计划先成为可校验的本地执行依据；外部子Issue只是按需追踪映射，平台能力不足不破坏计划，重试按标记复用 | 自动把每个计划步骤建成工单会污染外部协作；并行执行需要独立worktree和整合，已由M4接入，真实模型效果仍待验证 |
+| 并行用线程、整合用串行Git | 同一运行内最多2个worker线程和全局SQLite槽位租约，避免多Issue绕过上限；worker只写独立worktree，父进程统一cherry-pick并检查组合代码，取消和冲突边界清楚 | 独立进程能更强隔离但需要跨进程状态和模型重载；线程模型仍共享Python进程，不能当安全沙箱。Docker并行与真实模型并发仍未验证 |
+| 普通整合冲突交给受控Agent | 冲突在父临时工作区保留双方内容，模型按`IntegrationReport`修复，程序再查未合并索引／冲突标记和最终检查；接口／业务取舍转人工 | 自动语义合并无法保证不丢功能；最终仍需审核和人工批准。冲突修复质量没有真实模型统计 |
 | 默认规划、保留 `--no-plan` | 需求流程把任务说明和拆分判断作为常规步骤；默认开启让普通任务也留下验收、依赖和拆分理由，小任务可用`--no-plan`保留原路径 | 默认开启增加一次规划调用和上下文；真实效果与成本仍需对照，若小任务收益不足可在评测后调整默认值 |
 | 版本化正文＋SQLite派生索引 | 原文和历史可读，改删局部同步；确认与运行清单绑定版本，缺失／变更不能静默放行；人工事件派生产物可幂等补齐 | 向量／图服务可在检索缺口或规模需要时另接，不替代来源与确认；索引不是第二份可独立编辑正文，详见[资料管理](KNOWLEDGE.md) |
 | 每次运行独立 Git worktree | 固定提交并共享对象库，不直接改用户工作目录；便于采集差异和绑定候选 SHA | clone 隔离 Git 配置更彻底但成本更高；worktree 共享对象与配置，不能当 OS 沙箱 |
@@ -80,6 +86,7 @@ flowchart TD
 | 10 | [evaluation/grading.py](../../repopilot/evaluation/grading.py)、[cases.py](../../repopilot/evaluation/cases.py) | 机制测试、真实模型效果和独立补丁评分分别证明什么？ | [grading](../../tests/evaluation/test_grading.py) |
 | 11 | [presentation/report.py](../../repopilot/presentation/report.py)、[sections.py](../../repopilot/presentation/sections.py)、[layout.py](../../repopilot/presentation/layout.py) | 展示从哪里读取事实，如何避免把缺失、历史或模拟结果展示为成功？ | [report](../../tests/runtime/test_report.py) |
 | 12 | [planning/planner.py](../../repopilot/planning/planner.py)、[planning/brief.py](../../repopilot/planning/brief.py)、[collaboration/questions.py](../../repopilot/collaboration/questions.py) | 计划为什么不能由模型自报顺序；批次计数和任务说明版本如何跨阶段、跨重试保留？ | [planning](../../tests/runtime/test_planning.py) |
+| 13 | [orchestration/parallel.py](../../repopilot/orchestration/parallel.py)、[orchestration/slots.py](../../repopilot/orchestration/slots.py)、[phases.py](../../repopilot/orchestration/phases.py) | 并行worker为什么不能直接改父状态；依赖基线、槽位租约和冲突回滚分别由谁保证？ | [parallel](../../tests/runtime/test_parallel.py) |
 | 13 | [runtime/__init__.py](../../repopilot/runtime/__init__.py)、[历史实现](../legacy/README.md) | 为什么保留旧导入，但新代码不能依赖legacy？ | [architecture](../../tests/runtime/test_architecture.py) |
 
 阅读文档、运行已有测试和能独立解释／修改是不同程度的掌握，不能混为一项已完成记录。

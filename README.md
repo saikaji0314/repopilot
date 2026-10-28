@@ -31,6 +31,7 @@
 
 - **独立验证**：编排层重跑登记检查，审核绑定固定提交，人工审批绑定完整 SHA。
 - **默认先规划**：新任务先整理任务说明与顺序子任务，集中提问最多 3 批；`--no-plan`保留小任务单Agent路径。依赖有环或缺前置产物不执行，子Issue按需映射。
+- **受控并行**：可并行计划最多2个实现槽位，每个子任务独立worktree；结果串行整合到父临时分支，再对组合代码独立检查，不直接更新main。
 - **可恢复执行**：SQLite 保存阶段状态与累计预算，支持暂停、显式恢复及轮询接单。
 - **可选 Docker 隔离**：文件工具与检查禁网执行、限制资源，校验产物后导入；失败不回退宿主。
 - **可追溯记忆**：可选文件事实书签，带提交来源、文件指纹和人工确认，变更后失效。
@@ -78,13 +79,14 @@ git -C $demo -c user.name=RepoPilot -c user.email=demo@example.test commit -m "d
 | 接 Issue、审批、创建草稿 PR／MR | [平台接入](docs/runtime-v2/FORGES.md) · [自动监听](docs/runtime-v2/WATCH.md) |
 | 配置模型、限额或恢复任务 | [模型](docs/runtime-v2/MODELS.md) · [运行协议](docs/runtime-v2/README.md) |
 | 按需规划、集中提问或映射子Issue | [计划与提问](docs/runtime-v2/PLANNING.md) · [人工协作](docs/runtime-v2/HUMAN.md) |
+| 并行实现、独立worktree或内部整合 | [并行与整合](docs/runtime-v2/PARALLEL.md) |
 | 配置隔离执行、代码记忆或项目资料 | [Docker](docs/runtime-v2/SANDBOX.md) · [Memory](docs/runtime-v2/MEMORY.md) · [项目资料](docs/runtime-v2/KNOWLEDGE.md) |
 | 理解实现与技术取舍 | [架构与代码导航](docs/runtime-v2/ARCHITECTURE.md) · [设计](docs/runtime-v2/DESIGN.md) |
 | 查看评测与安装候选 | [评测方法与结果](evals/swebench/README.md) · [0.1.0rc1](docs/runtime-v2/RELEASE-0.1.0rc1.md) |
 
 ## 当前边界
 
-当前为实验性候选，适合可信仓库中的明确小任务。GitHub 有真实交付；GitLab、Qwen／兼容接口与 Claude 仅完成离线适配验证。规划、评论自动投递／轮询与子Issue映射目前只有本地机制和模拟平台协议验证，没有真实评论／子Issue写入或真实模型规划效果结论。Docker 已验证真实容器机制，尚无该后端真实模型交付结论；不提供 microVM 级隔离。
+当前为实验性候选，适合可信仓库中的明确小任务。GitHub 有真实交付；GitLab、Qwen／兼容接口与 Claude 仅完成离线适配验证。规划、评论自动投递／轮询、子Issue映射和并行内部整合目前只有本地机制与模拟验证，没有真实评论／子Issue写入、真实模型并行效果或真实平台整链路结论。Docker 已验证真实容器机制，尚无该后端真实模型交付或并行子任务结论；不提供 microVM 级隔离。
 
 评测协议、逐题结果和记忆收益对照见评测文档；开发样本不代表通用修复率。
 

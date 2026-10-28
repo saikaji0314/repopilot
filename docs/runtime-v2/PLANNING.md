@@ -42,8 +42,9 @@ repopilot plan show RUN_ID --output .local/runtime
 
 - `status=ready`：任务说明`brief`加1—6个子任务（默认上限6）；
 - `split=none`：一个子任务，不拆分；
-- `split=sequential`：至少两个子任务，按依赖声明顺序候选；
-- `split_reason`：必须说明不拆或顺序拆分的理由；
+- `split=sequential`：至少两个子任务，顺序执行；
+- `split=parallel`：至少两个互不依赖的子任务，按依赖最多同时运行2个；详见[并行实现](PARALLEL.md)；
+- `split_reason`：必须说明不拆、顺序或并行的理由；
 - 每个子任务必须有`goal`、`inputs`、`outputs`、`acceptance`、`boundaries`；`depends_on`可空，跨任务共享接口写`interfaces`；
 - 只有独立可跟踪的子任务才写`track=issue`并说明`track_reason`。`split=none`时禁止创建子Issue。
 
@@ -151,7 +152,7 @@ repopilot plan map RUN_ID --output .local/runtime
 本增量明确未验证：
 
 - 没有真实GitHub／GitLab评论、子Issue或原生层级写入；GitLab子项一律按链接映射准备；
-- 没有并行执行、两个实现槽位、每个子任务独立worktree或内部整合；这些属于M4；
+- 并行执行、独立worktree和内部整合已在[并行实现](PARALLEL.md)接入M4；真实模型并行效果、Docker并行和真实平台交付仍未验证；
 - 没有按子任务双审、争议AB复核或发现合并；这些属于M5；
 - 自动评论投递与轮询只在本地Fake／MockTransport机制中验证；没有真实平台端到端轮询，也没有评论编辑／删除的增量同步；答复导入后评论再被删除，已记录答复仍保留在运行状态；
 - 轮询按`poll_seconds`进行，不保证秒级响应；自动恢复会占用监听器worker，并像手动恢复一样受`max_per_repository`约束，不放宽同仓库并发；

@@ -14,6 +14,7 @@ from repopilot.storage.budget import Budget, RunLimit
 from repopilot.core.config import Task
 from repopilot.orchestration.phases import PhaseRunner
 from repopilot.orchestration import knowledge
+from repopilot.orchestration.slots import SlotFault
 from repopilot.knowledge.documents import KnowledgeFault
 from repopilot.planning.contracts import PlanFault
 from repopilot.orchestration.state import attach
@@ -111,6 +112,8 @@ class RunSession:
             self.trace.event("run_error", error_type=type(exc).__name__, phase=phase,
                              validation=engine.validation_details(exc))
         elif isinstance(exc, RunLimit):
+            state["status"], state["stop_reason"] = "limit_reached", str(exc)
+        elif isinstance(exc, SlotFault):
             state["status"], state["stop_reason"] = "limit_reached", str(exc)
         elif isinstance(exc, WorkspaceError):
             state["status"], state["stop_reason"] = "workspace_error", str(exc)

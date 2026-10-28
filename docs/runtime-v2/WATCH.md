@@ -34,6 +34,8 @@ targets:
     settings:
       plan_enabled: true
       issue_comments_enabled: true
+      max_implementation_slots: 2
+      implementation_slot_timeout_seconds: 30
       thinking: enabled
       reasoning_effort: low
       max_context_bytes: 300000
@@ -46,7 +48,7 @@ targets:
       max_run_cost_cny: 8
 ```
 
-`plan_enabled`和`issue_comments_enabled`默认都是true：新Issue先做任务说明与计划，等待澄清时自动发父Issue评论并轮询回复。`--no-plan`／`REPOPILOT_PLAN_ENABLED=false`或`poll_comments: false`／`REPOPILOT_ISSUE_COMMENTS_ENABLED=false`可以关闭；关闭后仍是原单Agent和本地答复路径。`poll_comments`只控制监听器是否扫描等待批次，不改变单次`human post`／`sync`。
+`plan_enabled`和`issue_comments_enabled`默认都是true：新Issue先做任务说明与计划，等待澄清时自动发父Issue评论并轮询回复。`--no-plan`／`REPOPILOT_PLAN_ENABLED=false`或`poll_comments: false`／`REPOPILOT_ISSUE_COMMENTS_ENABLED=false`可以关闭；关闭后仍是原单Agent和本地答复路径。`poll_comments`只控制监听器是否扫描等待批次，不改变单次`human post`／`sync`。并行计划的`max_implementation_slots`是全局共享槽位，默认2；不同Issue和监听worker都不能突破，等待空位超时后停止而不是无限排队。
 
 ```powershell
 # 当前终端常驻；Ctrl+C 停止接新任务，等待当前 worker 落盘后退出
@@ -77,7 +79,7 @@ targets:
 
 ## 并发与恢复
 
-`max_workers` 为全局上限（1–4），`max_per_repository` 为同仓库运行上限（1–4）。默认两个值都是 1。可先把全局设为 2，让不同仓库并行；确认机器资源、检查命令和成本后再提高同仓库并发。评论同步和恢复与 issue worker 共用同一个有界进程池，因此等待回复本身不占槽位，只有真正恢复执行才占；恢复前会把对应队列行临时标为`running`，同样受`max_per_repository`约束，失败时归还原等待状态。
+`max_workers` 为全局上限（1–4），`max_per_repository` 为同仓库运行上限（1–4）。默认两个值都是 1。可先把全局设为 2，让不同仓库并行；确认机器资源、检查命令和成本后再提高同仓库并发。评论同步和恢复与 issue worker 共用同一个有界进程池，因此等待回复本身不占槽位，只有真正恢复执行才占；恢复前会把对应队列行临时标为`running`，同样受`max_per_repository`约束，失败时归还原等待状态。单个并行计划的实现worker还受`max_implementation_slots`（全局默认2）限制，与监听worker数是两个独立边界。
 
 worktree 隔离不等于操作系统隔离。两个任务仍共享宿主权限、网络、部分 Git 元数据和本地资源；登记检查必须避免共享可写数据、固定端口和真实账号。源仓库工作树保持不变并不证明没有宿主副作用。
 

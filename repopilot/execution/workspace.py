@@ -214,6 +214,36 @@ class Workspace:
                        commit).stdout.decode("utf-8", errors="replace")
         return {"diff": text[:limit], "truncated": len(text) > limit, "characters": len(text)}
 
+    def apply_commit(self, commit: str):
+        """把子任务提交应用到当前整合工作区但不提交；冲突留给受控整合修复。"""
+        return run_git(self.repository(), "cherry-pick", "--no-commit", commit, check=False)
+
+    def integration_conflicts(self) -> list[str]:
+        output = run_git(self.repository(), "diff", "--name-only", "--diff-filter=U", check=False)
+        return sorted(name for name in output.stdout.decode("utf-8", errors="replace").splitlines() if name)
+
+    def abort_integration(self):
+        # --no-commit冲突不一定留下可abort的cherry-pick状态；硬重置到当前父提交确保不把冲突标记留在整合区。
+        run_git(self.repository(), "cherry-pick", "--abort", check=False)
+        run_git(self.repository(), "reset", "--hard", "HEAD", check=False)
+        # 冲突修复阶段可能新建未跟踪文件；它们不属于父候选，清理后才能回到可恢复的干净现场。
+        run_git(self.repository(), "clean", "-fd", check=False)
+
+    def finish_integration(self):
+        run_git(self.repository(), "cherry-pick", "--quit", check=False)
+
+    def unresolved_markers(self, paths) -> list[str]:
+        """冲突标记残留是“模型说已解决”之外可检查的本地事实。"""
+        result = []
+        for name in paths:
+            try:
+                text = (self.repository() / name).read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if any(marker in text for marker in ("<<<<<<<", "=======", ">>>>>>>")):
+                result.append(name)
+        return sorted(set(result))
+
 
 class EditBudget:
     """限制本次运行的文件编辑次数，并记录被编辑的路径。"""

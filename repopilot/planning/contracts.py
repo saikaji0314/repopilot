@@ -103,7 +103,7 @@ class PlanReport(Contract):
 
     status: Literal["ready", "needs_clarification"]
     summary: str = Field(min_length=1, max_length=2000)
-    split: Literal["none", "sequential"] = "none"
+    split: Literal["none", "sequential", "parallel"] = "none"
     split_reason: str = Field(default="", max_length=1000)
     brief: BriefFields | None = None
     subtasks: list[PlannedSubtask] = Field(default_factory=list, max_length=MAX_SUBTASKS)
@@ -134,6 +134,10 @@ class PlanReport(Contract):
             raise ValueError("split=none requires exactly one subtask")
         if self.split == "sequential" and len(self.subtasks) < 2:
             raise ValueError("split=sequential requires at least two subtasks")
+        if self.split == "parallel" and len(self.subtasks) < 2:
+            raise ValueError("split=parallel requires at least two subtasks")
+        if self.split == "parallel" and sum(not item.depends_on for item in self.subtasks) < 2:
+            raise ValueError("split=parallel requires at least two independent subtasks")
         if self.split == "none" and any(item.track == "issue" for item in self.subtasks):
             raise ValueError("a non-split plan must not create sub-issue mappings")
         return self
@@ -147,7 +151,7 @@ class TaskPlan(Contract):
     hash: str = Field(pattern=r"^[0-9a-f]{64}$")
     brief_revision: int = Field(ge=1)
     brief_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    split: Literal["none", "sequential"]
+    split: Literal["none", "sequential", "parallel"]
     split_reason: str
     summary: str
     subtasks: list[PlannedSubtask] = Field(min_length=1, max_length=MAX_SUBTASKS)

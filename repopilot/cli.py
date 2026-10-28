@@ -22,7 +22,7 @@ STATUS_FIELDS = ('run_id', 'status', 'phase', 'in_flight', 'stop_reason', 'revie
                  'decision_records', 'publication', 'task_brief', 'plan', 'plan_status', 'plan_progress',
                  'plan_refresh_history', 'plan_refresh_required',
                  'subtask_mappings', 'question_batches', 'question_handovers', 'question_limit',
-                 'platform_preflight')
+                 'platform_preflight', 'parallel_runs', 'integrations', 'implementation_slots')
 
 
 def _watch_options(parser):
@@ -49,6 +49,8 @@ def _execution_options(parser, name):
     parser.add_argument('--issue-comments', dest='issue_comments_enabled',
                         action=argparse.BooleanOptionalAction, default=None,
                         help='Issue任务等待澄清时自动发评论并轮询回复；--no-issue-comments只留本地答复')
+    parser.add_argument('--max-implementation-slots', type=int, choices=[1, 2])
+    parser.add_argument('--slot-timeout', dest='implementation_slot_timeout_seconds', type=float)
 
 
 def _task_options(parser, name):
@@ -112,7 +114,8 @@ def _run_settings(args):
     overrides = load_profile(args.profile) if getattr(args, 'profile', None) else {}
     overrides.update({key: getattr(args, key) for key in
                       ('max_context_bytes', 'max_tool_calls', 'max_run_cost_cny', 'max_rework',
-                       'memory_enabled', 'plan_enabled', 'issue_comments_enabled')
+                       'memory_enabled', 'plan_enabled', 'issue_comments_enabled',
+                       'max_implementation_slots', 'implementation_slot_timeout_seconds')
                       if getattr(args, key, None) is not None})
     return type(settings).model_validate({**settings.model_dump(), **overrides}), overrides
 

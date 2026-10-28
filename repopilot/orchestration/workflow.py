@@ -11,6 +11,7 @@ from repopilot.delivery.forge import ForgeError
 from repopilot.orchestration.session import execute_run
 from repopilot.orchestration import human
 from repopilot.orchestration import knowledge
+from repopilot.orchestration.slots import SlotManager
 from repopilot.knowledge.documents import KnowledgeFault
 from repopilot.collaboration.requests import resolve_request
 from repopilot.orchestration.state import TERMINAL, approval_digest, attach, canonical_hash
@@ -66,6 +67,7 @@ def create_job(task, settings, output_root, *, workspace=True, review=True,
         "plan_refresh_history": list(carried.get("plan_refresh_history") or []) if prior_plan else [],
         "plan_refresh_required": bool(carried.get("plan_refresh_required")) if prior_plan else False,
         "subtask_mappings": list(carried.get("subtask_mappings") or []) if prior_plan else [],
+        "parallel_runs": [], "integrations": [],
         "platform_preflight": None,
     }, issue_key=None if issue is None else f"{issue['repository']}#{issue['number']}", retry_of=retry_of)
     if issue and canonical_hash(issue) != canonical_hash(state["issue"]):
@@ -276,6 +278,10 @@ def snapshot(store, state, settings):
         "plan_refresh_history": state.get("plan_refresh_history", []),
         "plan_refresh_required": bool(state.get("plan_refresh_required")),
         "subtask_mappings": state.get("subtask_mappings", []),
+        "parallel_runs": state.get("parallel_runs", []),
+        "integrations": state.get("integrations", []),
+        "implementation_slots": SlotManager(store.root,
+            limit=settings.max_implementation_slots).snapshot(),
         "platform_preflight": state.get("platform_preflight"),
         "knowledge_snapshot_id": (state.get("knowledge_snapshot") or {}).get("snapshot_id"),
         "decision_records": state.get("decision_records", []),

@@ -161,4 +161,6 @@ def show(run_id, root):
             "plan_history": state.get("plan_history") or [],
             "plan_refresh_history": state.get("plan_refresh_history") or [],
             "subtask_mappings": state.get("subtask_mappings") or [],
+            "parallel_runs": state.get("parallel_runs") or [],
+            "integrations": state.get("integrations") or [],
             "platform_preflight": state.get("platform_preflight")}

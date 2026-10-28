@@ -1,20 +1,25 @@
 """各业务阶段只负责自己的动作与状态转换；检查点时机由执行器管理。"""
 
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
+from uuid import uuid4
 
 from repopilot.agents import loop as engine
 from repopilot.agents.trace import Trace
 from repopilot.agents.prompts import SYSTEM_PROMPT, REVIEW_PROMPT, PLANNER_PROMPT
-from repopilot.agents.reports import ImplementationReport, ReviewReport
+from repopilot.agents.reports import Decision, ImplementationReport, ReviewReport
 from repopilot.memory import context as memory_context
 from repopilot.core.config import RuntimeSettings, Task
 from repopilot.orchestration.state import approval_digest, attach
 from repopilot.orchestration import human
 from repopilot.orchestration import knowledge
+from repopilot.orchestration import parallel
+from repopilot.orchestration.slots import SlotFault, SlotManager
 from repopilot.planning import planner as planning
-from repopilot.planning.contracts import PlanReport
+from repopilot.planning.contracts import PlanFault, PlanReport
+from repopilot.storage.budget import RunLimit
 from repopilot.storage.jobs import StateError, timestamp
 from repopilot.execution.repository import Repository
 from repopilot.execution.sandbox import repository_session
@@ -177,7 +182,10 @@ class PhaseRunner:
 
     def implement(self, phase):
         if phase == "implement" and self.state.get("plan"):
-            self._implement_plan()
+            if self.state["plan"].get("split") == "parallel":
+                self._implement_parallel()
+            else:
+                self._implement_plan()
             return
         root = self.task.repository if self.workspace is None else self.workspace.repository()
         with repository_session(self.task, root, writable=self.workspace is not None,
@@ -271,6 +279,292 @@ class PhaseRunner:
         else:
             self.state["status"], self.state["stop_reason"] = "completed", "report"
 
+    def _parallel_payload(self, subtask, base_commit):
+        payload = self._subtask_payload(subtask)
+        payload["parallel"] = {"mode": "parallel", "base_commit": base_commit,
+                               "max_slots": min(2, self.settings.max_implementation_slots)}
+        return payload
+
+    def _parallel_ready(self, running_ids):
+        plan = self.state.get("plan") or {}
+        results = planning.result_map(self.state)
+        completed = planning.completed_ids(self.state)
+        nodes = {item["id"]: item for item in plan.get("subtasks") or []}
+        for identifier in plan.get("order") or []:
+            if identifier in running_ids or identifier in completed:
+                continue
+            node = nodes[identifier]
+            if all(results.get(dependency, {}).get("status") == "completed"
+                   for dependency in node.get("depends_on") or []):
+                return node
+        return None
+
+    def _record_parallel_run(self, info, status, **values):
+        runs = self.state.setdefault("parallel_runs", [])
+        entry = next((item for item in runs if item.get("attempt") == info["attempt"]), None)
+        if entry is None:
+            entry = {"attempt": info["attempt"], "subtask": info["subtask"]["id"],
+                     "worktree": str(info["workspace"].path) if info.get("workspace") else None,
+                     "base_commit": info.get("base_commit"), "started_at": info.get("started_at")}
+            runs.append(entry)
+        entry.update(status=status, updated_at=timestamp(), **values)
+        if status in {"completed", "failed", "interrupted", "blocked", "paused"}:
+            entry["finished_at"] = timestamp()
+        return entry
+
+    def _recover_parallel_runs(self):
+        changed = False
+        for item in self.state.get("parallel_runs") or []:
+            if item.get("status") == "running":
+                item["status"], item["finished_at"] = "interrupted", timestamp()
+                changed = True
+        if changed:
+            self.trace.event("parallel_runs_interrupted", count=sum(
+                1 for item in self.state.get("parallel_runs") or [] if item.get("status") == "interrupted"))
+            self.checkpoint()
+
+    def _append_integration(self, integration):
+        record = {**integration, "at": timestamp()}
+        self.state.setdefault("integrations", []).append(record)
+        return record
+
+    def _integrate_parallel_result(self, info, result):
+        """把子任务提交串行合入父整合工作区；普通冲突交给受控实现Agent。"""
+        parent, subtask = self.workspace, info["subtask"]
+        source, base = result["commit"], result["base_commit"]
+        before = head_commit(parent.repository())
+        parent.assert_clean(before)
+        clean, conflicts, applied = parallel.apply_integration(parent, source)
+        if not clean and not conflicts:
+            parent.abort_integration()
+            return {"status": "failed", "reason": "apply_failed",
+                    "returncode": applied.returncode, "conflicts": []}
+        report = None
+        if clean:
+            resolution = "clean"
+        else:
+            payload = {"request": self.task.request, "task_brief": self.state.get("task_brief"),
+                       "plan": planning.payload(self.state), "subtask": subtask,
+                       "conflict": {"files": conflicts, "source_commit": source,
+                                    "base_commit": base, "source_worktree": result.get("worktree")},
+                       "other_integrations": (self.state.get("integrations") or [])[-3:],
+                       "note": "冲突来自两个独立子任务；保留双方功能，无法判断接口／业务取舍时交人。"}
+            report = parallel.resolve_conflict(task=self.task, settings=self.settings,
+                control=self.control, trace=self.trace, workspace=parent, payload=payload,
+                model=self.model, edits=self.edits, material_tools=self._material_tools())
+            if report.get("status") != "resolved":
+                parent.abort_integration()
+                return {"status": "needs_input" if report.get("status") == "needs_clarification" else "failed",
+                        "report": report, "conflicts": conflicts}
+            markers = parent.unresolved_markers(conflicts)
+            if markers:
+                parent.abort_integration()
+                return {"status": "failed", "reason": "unresolved_conflict",
+                        "report": report, "conflicts": markers}
+            resolution = "model"
+        try:
+            commit = parent.commit(f"chore: 整合 {subtask['id']}（{source[:10]}）")
+        except WorkspaceError:
+            parent.abort_integration()
+            return {"status": "failed", "reason": "integration_commit_failed", "report": report,
+                    "conflicts": conflicts}
+        parent.finish_integration()
+        if not commit.get("created"):
+            return {"status": "failed", "reason": "empty_integration", "report": report,
+                    "conflicts": conflicts}
+        if parent.integration_conflicts():
+            return {"status": "failed", "reason": "unresolved_index_conflict", "report": report,
+                    "conflicts": parent.integration_conflicts()}
+        return {"status": "integrated", "source_commit": source, "base_commit": base,
+                "integrated_commit": commit["commit"], "resolution": resolution,
+                "conflicts": conflicts, "report": report, "worktree": result.get("worktree")}
+
+    def _handle_parallel_result(self, info, result):
+        subtask = info["subtask"]
+        report = result.get("report") or {}
+        self.state["report"] = report
+        self.trace.save(f"parallel-result-{info['attempt']}.json", report)
+        decision_models = [Decision.model_validate(item) for item in report.get("decisions") or []]
+        decisions = [item.model_dump(mode="json") for item in decision_models]
+        knowledge.record_decisions(self.state, self.store_root, "implement", decision_models,
+                                   (self.settings.api_key.get_secret_value(),))
+        evidence = report.get("evidence") or []
+        if report.get("status") == "needs_clarification":
+            planning.record_result(self.state, subtask, status="needs_clarification",
+                summary=report.get("summary") or "子任务需要澄清", evidence=evidence,
+                decisions=decisions, source_commit=result.get("commit"),
+                worktree=result.get("worktree"), base_commit=result.get("base_commit"),
+                started_at=result.get("started_at"))
+            self._record_parallel_run(info, "paused", summary=report.get("summary"))
+            human.wait_for_clarification(self.state, self.store_root,
+                summary=report.get("summary") or "子任务需要澄清",
+                questions=report.get("questions") or [report.get("summary") or "需要补充信息"],
+                limit=self.settings.max_question_batches,
+                blocking={"phase": "implement", "subtask": subtask["id"]})
+            return False
+        if report.get("status") != "implemented" or not result.get("commit"):
+            status = report.get("status") or "blocked"
+            planning.record_result(self.state, subtask, status=status,
+                summary=report.get("summary") or "子任务阻塞", evidence=evidence,
+                decisions=decisions, source_commit=result.get("commit"),
+                worktree=result.get("worktree"), base_commit=result.get("base_commit"),
+                started_at=result.get("started_at"))
+            self._record_parallel_run(info, "blocked", summary=report.get("summary"))
+            self.state["status"], self.state["stop_reason"] = "completed", f"subtask_{status}"
+            return False
+        integration = self._integrate_parallel_result(info, result)
+        if integration["status"] != "integrated":
+            status = "conflict" if integration["status"] == "needs_input" else "failed"
+            planning.record_result(self.state, subtask, status=status,
+                summary=(integration.get("report") or {}).get("summary") or integration.get("reason")
+                        or "内部整合未完成", evidence=evidence, decisions=decisions,
+                source_commit=result.get("commit"), worktree=result.get("worktree"),
+                base_commit=result.get("base_commit"), started_at=result.get("started_at"),
+                integration={key: integration.get(key) for key in
+                             ("status", "reason", "conflicts", "resolution")})
+            self._record_parallel_run(info, "paused" if status == "conflict" else "failed",
+                                      summary=(integration.get("report") or {}).get("summary"))
+            self._append_integration({"subtask": subtask["id"], "status": status,
+                "source_commit": result.get("commit"), "base_commit": result.get("base_commit"),
+                "conflicts": integration.get("conflicts") or [],
+                "report": (integration.get("report") or {}).get("summary")})
+            if status == "conflict":
+                question = ((integration.get("report") or {}).get("questions")
+                            or ["内部整合冲突需要确认保留哪一方行为；请补充接口／业务取舍。"])
+                human.wait_for_clarification(self.state, self.store_root,
+                    summary=(integration.get("report") or {}).get("summary") or "内部整合冲突",
+                    questions=question, limit=self.settings.max_question_batches,
+                    blocking={"phase": "integrate", "subtask": subtask["id"]})
+            else:
+                self.state["status"] = "phase_error"
+                self.state["stop_reason"] = f"integration_{integration.get('reason') or 'failed'}"
+            return False
+        self._append_integration({"subtask": subtask["id"], "status": "integrated",
+            "source_commit": integration["source_commit"], "base_commit": integration["base_commit"],
+            "integrated_commit": integration["integrated_commit"],
+            "resolution": integration["resolution"], "conflicts": integration["conflicts"],
+            "worktree": integration.get("worktree")})
+        planning.record_result(self.state, subtask, status="completed",
+            summary=report.get("summary") or "子任务完成", commit=integration["integrated_commit"],
+            evidence=evidence, decisions=decisions, source_commit=integration["source_commit"],
+            worktree=integration.get("worktree"), base_commit=integration["base_commit"],
+            integration={"status": "integrated", "resolution": integration["resolution"],
+                         "integrated_commit": integration["integrated_commit"]},
+            started_at=result.get("started_at"))
+        self._record_parallel_run(info, "completed", commit=integration["integrated_commit"],
+                                  source_commit=integration["source_commit"],
+                                  summary=report.get("summary"))
+        self.state["expected_head"] = integration["integrated_commit"]
+        self.state["workspace_snapshot"] = source_snapshot(self.workspace.repository())
+        self.trace.event("subtask_integrated", subtask=subtask["id"],
+                         source_commit=integration["source_commit"],
+                         integrated_commit=integration["integrated_commit"],
+                         resolution=integration["resolution"])
+        return True
+
+    def _implement_parallel(self):
+        """按依赖启动最多2个独立worktree实现，再串行整合到父工作区。"""
+        if self.workspace is None:
+            raise StateError("plan_requires_workspace")
+        parent = self.workspace
+        limit = min(2, self.settings.max_implementation_slots)
+        slots = SlotManager(self.store_root, limit=limit,
+                            lease_seconds=max(120, int(self.settings.run_timeout_seconds) + 60))
+        material_tools = self._material_tools()
+        self._recover_parallel_runs()
+        running, stop = {}, False
+        stop_status = stop_reason = None
+        with ThreadPoolExecutor(max_workers=limit) as pool:
+            try:
+                while True:
+                    for info in running.values():
+                        slots.touch(info["slot"])
+                    done = set()
+                    if running:
+                        done, _ = wait(list(running), timeout=1, return_when=FIRST_COMPLETED)
+                    for future in list(done):
+                        info = running.pop(future)
+                        slots.release(info["slot"])
+                        try:
+                            result = future.result()
+                        except Exception as exc:
+                            self.trace.event("parallel_worker_failed", subtask=info["subtask"]["id"],
+                                             error_type=type(exc).__name__)
+                            self._record_parallel_run(info, "failed", error_type=type(exc).__name__)
+                            stop = True
+                            if isinstance(exc, RunLimit):
+                                stop_status, stop_reason = "limit_reached", str(exc)
+                            else:
+                                stop_status, stop_reason = "phase_error", f"parallel_{type(exc).__name__}"
+                            break
+                        if not self._handle_parallel_result(info, result):
+                            stop = True
+                            break
+                        self.checkpoint()
+                    if stop:
+                        break
+                    while len(running) < limit:
+                        subtask = self._parallel_ready({item["subtask"]["id"] for item in running.values()})
+                        if subtask is None:
+                            break
+                        planning.dependencies_done(self.state, subtask, parent.repository())
+                        parent.assert_clean(head_commit(parent.repository()))
+                        base_commit = head_commit(parent.repository())
+                        workspace = parallel.create_worktree(self.task, self.store_root,
+                            self.state["run_id"], subtask["id"], base_commit)
+                        owner = f"{self.state['run_id']}:{subtask['id']}:{uuid4().hex[:8]}"
+                        try:
+                            slots.acquire(owner, timeout=self.settings.implementation_slot_timeout_seconds)
+                        except SlotFault as exc:
+                            workspace.release()
+                            stop, stop_status, stop_reason = True, "limit_reached", str(exc)
+                            break
+                        info = {"subtask": subtask, "workspace": workspace, "base_commit": base_commit,
+                                "slot": owner, "attempt": uuid4().hex[:12], "started_at": timestamp()}
+                        self._record_parallel_run(info, "running")
+                        self.trace.event("parallel_subtask_dispatched", subtask=subtask["id"],
+                                         base_commit=base_commit, worktree=str(workspace.path))
+                        self.checkpoint()
+                        control = self.control.fork("implement")
+                        trace = self.trace.fork()
+                        future = pool.submit(parallel.run_subtask, task=self.task,
+                            settings=self.settings, control=control, trace=trace,
+                            workspace=workspace, payload=self._parallel_payload(subtask, base_commit),
+                            model=self.model, edits=self.edits, material_tools=material_tools)
+                        running[future] = info
+                    if stop:
+                        break
+                    if not running:
+                        if planning.status(self.state)["state"] == "completed":
+                            break
+                        if any(item.get("status") != "completed"
+                               for item in (self.state.get("plan_progress") or {}).get("results") or []):
+                            break
+                        raise PlanFault("parallel_schedule_stalled")
+            finally:
+                # 停止派发后等待已开始worker结束；不把未处理结果悄悄整合。
+                for future, info in list(running.items()):
+                    try:
+                        future.result()
+                    except Exception:
+                        pass
+                    slots.release(info["slot"])
+                    self._record_parallel_run(info, "interrupted")
+                running.clear()
+                self.checkpoint()
+        if stop_status and self.state["status"] == "running":
+            self.state["status"], self.state["stop_reason"] = stop_status, stop_reason
+        if stop:
+            return
+        status = planning.status(self.state)["state"]
+        if status != "completed":
+            self.state["status"], self.state["stop_reason"] = "phase_error", "parallel_schedule_incomplete"
+            return
+        if self.state["review_enabled"]:
+            self.state["phase"] = "anchor"
+        else:
+            self.state["status"], self.state["stop_reason"] = "completed", "report"
+
     def anchor(self):
         if self.state.get("plan") and planning.status(self.state)["state"] != "completed":
             raise StateError("plan_incomplete")
@@ -301,6 +595,8 @@ class PhaseRunner:
         plan_view = planning.payload(self.state)
         if plan_view:
             payload["plan"] = plan_view
+        if self.state.get("integrations"):
+            payload["integrations"] = self.state["integrations"][-8:]
         if self.state["history"]:
             payload["previous_findings"] = self.state["history"][-1]["findings"]
         self._attach_memory(payload, 'review')

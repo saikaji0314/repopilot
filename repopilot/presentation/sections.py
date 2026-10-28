@@ -83,6 +83,24 @@ def subtask_reports(state, root):
         ["子任务", "标题", "状态", "摘要", "证据数", "提交"], rows)
 
 
+def integrations(state, root):
+    records = state.get("integrations") or []
+    if not records:
+        return ""
+    rows = []
+    for item in records:
+        conflicts = item.get("conflicts") or []
+        rows.append([escape(str(item.get("subtask"))), escape(str(item.get("status"))),
+                     f"<code>{escape(str(item.get('source_commit') or '')[:10])}</code>",
+                     f"<code>{escape(str(item.get('integrated_commit') or '')[:10])}</code>",
+                     escape(str(item.get("resolution") or "")),
+                     escape(redact("；".join(str(name) for name in conflicts), root)),
+                     escape(str(item.get("at") or ""))])
+    return ('<h2>内部整合</h2><p class="note">独立子任务提交依次合入父任务临时工作区；'
+            '冲突修复不能静默删除另一侧功能。</p>' + table(
+            ["子任务", "状态", "来源提交", "整合提交", "处理", "冲突文件", "时间"], rows))
+
+
 def human_requests(state, root):
     requests = state.get("human_requests") or []
     if not requests:

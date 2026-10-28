@@ -2,7 +2,9 @@
 
 截至 2026-10-18，RepoPilot 是面向可信本机仓库的 Issue 驱动研发运行时，支持默认本机和可选 Docker 执行后端。当前交付终点是人工批准后的 GitHub 草稿 PR；尚未覆盖原愿景中的自动合并和软件发布。本文描述实际代码，未来方向不视作已有能力。
 
-2026-10-27新增：工作区任务可以本地等待需求补充，使用CLI记录版本绑定的答复后恢复；批准和现场恢复进入同一请求记录。详见[人工协作](HUMAN.md)。M3进一步加入默认规划阶段、任务说明版本、集中提问批次、Issue评论自动投递／有节制轮询与按需子Issue映射，见[计划](PLANNING.md)；并行实现、双视角审核和真实平台写入仍未接入，不能从本地等待或模拟平台能力推断已具备。
+2026-10-27新增：工作区任务可以本地等待需求补充，使用CLI记录版本绑定的答复后恢复；批准和现场恢复进入同一请求记录。详见[人工协作](HUMAN.md)。M3进一步加入默认规划阶段、任务说明版本、集中提问批次、Issue评论自动投递／有节制轮询与按需子Issue映射，见[计划](PLANNING.md)。
+
+2026-10-28 M4新增[并行实现与内部整合](PARALLEL.md)：可并行计划最多2个全局实现槽位，每个子任务独立worktree、依赖从已整合父HEAD开始，完成后串行合入父临时工作区并做组合检查。双视角审核、AB争议复核和真实平台写入仍未接入，不能从本地线程并行或模拟平台能力推断已具备。
 
 同日M2新增[项目资料与决定管理](KNOWLEDGE.md)：正文版本文件、SQLite增量索引、版本确认和固定清单，现有实现／审核可分段读取原文，资料变化触发人工刷新。结构化机器决定是提议，人工答复带来源导出为任务资料；尚无真实模型收益结论。
 
@@ -14,7 +16,7 @@ M3本地机制验证见[增量27](VALIDATION-27.md)：确定性模型与模拟�
 | --- | --- | --- |
 | 以 Issue 触发 | 手动 URL 接入；按登记仓库、标签和创建时间轮询；队列去重 | 真实 Issue #1 手动接入，#3 自动接入；使用轮询，没有 webhook |
 | 验证问题、确认需求 | 实现／审核可提出问题，工作区任务保存现场等待CLI答复，恢复时传递业务补充并更新证据；新任务默认先规划，Issue任务等待时自动发问题批次到父Issue评论并由监听器有节制地读取负责人回复 | 平台评论只能采纳登记负责人，只有模拟协议和本地队列验证；没有真实平台评论往返结论，其他评论仅作线索 |
-| 规划与子任务 | 默认规划Agent只读资料和源码，生成带验收／依赖／修改边界的计划；程序校验无环、按拓扑顺序逐个子任务执行并单独提交；按需映射子Issue，重试不重复创建 | 只有顺序执行和单一worktree；没有并行槽位、子任务独立worktree、内部整合或按子任务双审（M4／M5） |
+| 规划与子任务 | 默认规划Agent只读资料和源码，生成带验收／依赖／修改边界的计划；程序校验无环、按拓扑排序，支持顺序或最多2路独立worktree并行；结果串行整合到父临时工作区并做组合检查；按需映射子Issue，重试不重复创建 | 真实模型并行效果和Docker并行未验证；没有按子任务双审或争议复核（M5）；暂停后不自动续用未提交的并行编辑 |
 | 开独立工作区 | 固定基线提交，每次运行独立 Git worktree，核对原仓库与远端身份 | 本机 Git；不自动为各语言安装环境或依赖 |
 | 写代码、测试 | 通用 UTF-8 文件工具、精确替换与写入、命名检查；限制编辑与调用次数 | 工具不依赖 Python AST；Python、JavaScript 小样例已验证，不代表所有语言生态都已验证 |
 | 审核与返工循环 | 编排层独立重跑全部登记检查；只读审核 Agent；有限次返工并重新提交、检查和审核 | Docker 模式使用新容器复核，默认模式仍在本机；审核绑定提交，检查失败可否决模型批准；仍需要人判断需求和测试是否充分 |
@@ -65,7 +67,8 @@ flowchart TD
 | [cli.py](../../repopilot/cli.py) | 参数解析、按命令加载凭证、调用应用操作、统一 JSON 与退出码；`main` 不承载整套业务 |
 | [orchestration/workflow.py](../../repopilot/orchestration/workflow.py) | `create_job/start/resume/retry/decide/recover/snapshot`：任务身份、生命周期、审批与结果；入口协议保持兼容 |
 | [orchestration/session.py](../../repopilot/orchestration/session.py) | `RunSession`：恢复计数与活跃时间、统一保存脱敏检查点；`execute_run` 调度阶段，集中映射错误状态 |
-| [orchestration/phases.py](../../repopilot/orchestration/phases.py) | `PhaseRunner` 每个阶段一个方法；实现／审核载荷与结果转换分开，检查点由执行会话控制，固定基线仍在副作用前落盘 |
+| [orchestration/phases.py](../../repopilot/orchestration/phases.py) | `PhaseRunner` 每个阶段一个方法；实现／审核载荷与结果转换分开，检查点由执行会话控制，固定基线仍在副作用前落盘；并行计划在这里调度worker和整合 |
+| [orchestration/parallel.py](../../repopilot/orchestration/parallel.py)、[orchestration/slots.py](../../repopilot/orchestration/slots.py) | 独立worktree子任务执行、cherry-pick串行整合和冲突修复入口；跨运行SQLite槽位租约，默认最多2个实现Agent |
 | [orchestration/state.py](../../repopilot/orchestration/state.py) | 终态集合、规范哈希、批准摘要、从持久化状态定位工作区；避免发布层依赖整套执行流程 |
 | [agents/loop.py](../../repopilot/agents/loop.py) | 角色内循环、上下文与进度中间件、用量控制、独立检查入口 |
 | [agents/context.py](../../repopilot/agents/context.py) | 阶段内源码观察工作集、有界请求及会话更新；与跨运行仓库记忆分开，见[上下文](CONTEXT.md) |
@@ -92,7 +95,7 @@ flowchart TD
 repopilot/
   cli.py                 命令入口与参数，不承载业务流程
   core/config.py         任务、模型与执行后端契约
-  orchestration/         workflow生命周期、session检查点、phases业务阶段、state版本规则
+  orchestration/         workflow生命周期、session检查点、phases业务阶段、parallel并行整合、slots槽位、state版本规则
   collaboration/         人工请求、提问批次与Issue评论正文，不承载模型循环
   planning/              任务说明、计划校验与顺序执行辅助、子Issue映射
   agents/                loop循环与限额、models适配、reports契约、prompts角色提示、trace证据

@@ -14,6 +14,12 @@ class Trace:
         self.lock = Lock()
         self.on_event = None
 
+    def fork(self):
+        """并行worker共用事件文件锁，但不触发父会话的检查点回调。"""
+        clone = Trace(self.directory, self.secret)
+        clone.lock = self.lock
+        return clone
+
     def encode(self, value) -> str:
         text = json.dumps(value, ensure_ascii=False, indent=2)
         return text.replace(json.dumps(self.secret, ensure_ascii=False)[1:-1], "[REDACTED]")

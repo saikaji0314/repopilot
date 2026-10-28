@@ -154,10 +154,13 @@ def set_current(state, subtask_id):
 
 
 def record_result(state, subtask, *, status, summary, commit=None, evidence=None, decisions=None,
-                  started_at=None):
+                  started_at=None, source_commit=None, worktree=None, base_commit=None,
+                  integration=None):
     progress = state.setdefault("plan_progress", {"order": [], "current": None, "results": []})
     record = {"id": subtask["id"], "title": subtask["title"], "status": status, "summary": summary,
-              "commit": commit, "evidence": list(evidence or []), "decisions": list(decisions or []),
+              "commit": commit, "source_commit": source_commit, "worktree": worktree,
+              "base_commit": base_commit, "integration": integration,
+              "evidence": list(evidence or []), "decisions": list(decisions or []),
               "started_at": started_at, "finished_at": timestamp()}
     progress["results"] = [item for item in progress.get("results") or [] if item.get("id") != subtask["id"]]
     progress["results"].append(record)
