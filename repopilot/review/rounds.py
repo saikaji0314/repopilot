@@ -9,7 +9,7 @@
 
 from repopilot.agents.reports import ReviewReport
 from repopilot.orchestration import human
-from repopilot.storage.jobs import timestamp
+from repopilot.storage.jobs import StateError, timestamp
 
 from . import basis as basis_store
 from . import disputes, merge, outcome, runner
@@ -133,7 +133,7 @@ def run(*, state, task, settings, control, trace, workspace, store_root, model, 
                                  [finding.model_dump(mode="json") for finding in findings])
     summary = merge.combine_summary(reports, findings, verdict)
     questions = merge.response_questions(reports)
-    undetermined = _undetermined(state, findings)
+    undetermined = _undetermined(state, findings, basis)
     report, history, record = _finalize(state, draft, basis, reports, findings, verdict,
                                         summary, questions, undetermined)
     state["review_rounds"].append(record)
@@ -169,10 +169,12 @@ def _build_draft(state, round_number, basis, reports, previous):
              "findings": [item.model_dump(mode="json") for item in [*updated, *merged]],
              "disputes": [], "conflicts": []}
     for finding, positions in conflicts:
-        record = disputes.for_key(state, finding.key)
-        if record is None:
+        reused = disputes.reuse_outcome(state, finding, basis)
+        if reused is None:
             record = disputes.create(state, round_number=round_number, finding=finding,
                                      positions=positions, basis=basis)
+        else:
+            record = reused[1]
         _link_conflict(draft, finding, positions, record)
         if record["id"] not in draft["disputes"]:
             draft["disputes"].append(record["id"])
@@ -224,33 +226,43 @@ def _run_disputes(*, state, task, settings, control, trace, root, model, materia
         base = dict(shared_payload)
         base.pop("previous_findings", None)
         base.pop("rework", None)
-        if record.get("a") is None or record.get("b") is None:
-            pairs = run_dispute_pair(task=task, settings=settings, control=control, trace=trace,
-                root=root, payloads={"a": disputes.payload(record, base, side="a"),
-                                     "b": disputes.payload(record, base, side="b")},
-                model=model, materials=materials, session_factory=session_factory)
+        missing = [side for side in ("a", "b") if record.get(side) is None]
+        if missing:
+            def on_report(side, report, dispute_id=record["id"]):
+                current = disputes.find(state, dispute_id)
+                current[side] = report.model_dump(mode="json")
+                state["disputes"] = [current if item.get("id") == dispute_id else item
+                                     for item in state["disputes"]]
+                checkpoint()
+
+            run_dispute_pair(task=task, settings=settings, control=control, trace=trace,
+                root=root, payloads={side: disputes.payload(record, base, side=side)
+                                     for side in missing},
+                model=model, materials=materials, sides=missing, on_report=on_report,
+                session_factory=session_factory)
             record = disputes.find(state, entry["dispute"])
-            record.update(a=pairs["a"].model_dump(mode="json"),
-                          b=pairs["b"].model_dump(mode="json"))
-            state["disputes"] = [record if item.get("id") == record["id"] else item
-                                 for item in state["disputes"]]
-            checkpoint()
             trace.event("dispute_ab_finished", dispute=record["id"],
-                        a=pairs["a"].judgement, b=pairs["b"].judgement)
+                        a=(record.get("a") or {}).get("judgement"),
+                        b=(record.get("b") or {}).get("judgement"))
         record = disputes.find(state, entry["dispute"])
+        if record.get("a") is None or record.get("b") is None:
+            raise StateError("dispute_ab_incomplete")
         if record.get("c") is None:
             arbitration_payload = disputes.payload(record, base,
                 reports={"a": record["a"], "b": record["b"]})
             arbitration = run_arbitration(task=task, settings=settings, control=control,
                 trace=trace, root=root, payload=arbitration_payload, model=model,
                 materials=materials, session_factory=session_factory)
+            record = disputes.find(state, entry["dispute"])
+            record["c"] = arbitration.model_dump(mode="json")
+            state["disputes"] = [record if item.get("id") == record["id"] else item
+                                 for item in state["disputes"]]
+            checkpoint()
             trace.event("dispute_arbitration_finished", dispute=record["id"],
                         outcome=arbitration.outcome)
-            disputes.apply_reports(state, record["id"], a=record["a"], b=record["b"],
-                                   c=arbitration.model_dump(mode="json"))
-        else:
-            disputes.apply_reports(state, record["id"], a=record["a"], b=record["b"],
-                                   c=record["c"])
+        record = disputes.find(state, entry["dispute"])
+        disputes.apply_reports(state, record["id"], a=record["a"], b=record["b"],
+                               c=record["c"])
         checkpoint()
 
 
@@ -263,13 +275,14 @@ def _set_finding(draft, finding_id, *, status, resolution):
             item["resolution"] = resolution
 
 
-def _undetermined(state, findings) -> list[str]:
-    records = {record["key"]: record for record in state.get("disputes") or []}
+def _undetermined(state, findings, basis) -> list[str]:
+    records = {(record["key"], record.get("commit"), record.get("basis_hash")): record
+               for record in state.get("disputes") or []}
     result = []
     for finding in findings:
         if finding.status != "disputed":
             continue
-        record = records.get(finding.key)
+        record = records.get((finding.key, basis.get("commit"), basis.get("hash")))
         if record is not None and record.get("outcome") == "undetermined":
             result.append(record["id"])
     return result
@@ -333,7 +346,8 @@ def _reuse(state, root, reused, basis, trace, checkpoint):
     state.pop("review_pending", None)
     state.pop("review_draft", None)
     for dispute_id in _undetermined(
-            state, [MergedFinding.model_validate(item) for item in report.get("findings") or []]):
+            state, [MergedFinding.model_validate(item) for item in report.get("findings") or []],
+            basis):
         row = disputes.find(state, dispute_id)
         request = human.wait_for_dispute(state, root, dispute=row)
         row["human_request_id"] = request.id

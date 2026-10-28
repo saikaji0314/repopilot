@@ -110,8 +110,12 @@ class ReviewReport(Contract):
             raise ValueError("changes_requested requires at least one finding or a still_open response")
         if self.verdict == "approved" and any(item.severity in {"blocker", "major"} for item in self.findings):
             raise ValueError("approved cannot carry a blocker or major finding")
-        if self.verdict == "approved" and any(item.status == "still_open" for item in self.responses):
-            raise ValueError("approved cannot leave a previous finding still_open")
+        if self.verdict == "approved" and any(
+                item.status not in {"resolved", "invalid"} for item in self.responses):
+            raise ValueError("approved cannot leave a previous finding still_open or unverifiable")
+        if self.verdict == "approved" and any(
+                item.evidence_status == "insufficient_information" for item in self.responses):
+            raise ValueError("approved cannot close previous findings without verifiable evidence")
         identifiers = [item.finding_id for item in self.responses]
         if len(set(identifiers)) != len(identifiers):
             raise ValueError("each previous finding may be answered only once")

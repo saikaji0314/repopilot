@@ -93,8 +93,9 @@ def run_dispute_reviewer(*, side, task, settings, control, trace, root, payload,
 
 
 def run_dispute_pair(*, task, settings, control, trace, root, payloads, model, materials,
-                     session_factory=None):
+                     sides=("a", "b"), on_report=None, session_factory=None):
     reports, errors = {}, {}
+    targets = [side for side in sides if side in {"a", "b"}]
 
     def work(side):
         worker = control.fork("dispute")
@@ -104,15 +105,20 @@ def run_dispute_pair(*, task, settings, control, trace, root, payloads, model, m
                                     model=model, materials=materials,
                                     session_factory=session_factory)
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        futures = {pool.submit(work, side): side for side in ("a", "b")}
+    with ThreadPoolExecutor(max_workers=max(1, len(targets))) as pool:
+        futures = {pool.submit(work, side): side for side in targets}
         for future in as_completed(futures):
             side = futures[future]
             try:
-                reports[side] = future.result()
+                report = future.result()
             except BaseException as exc:
                 errors[side] = exc
                 trace.event("dispute_reviewer_error", side=side, error_type=type(exc).__name__)
+                continue
+            reports[side] = report
+            if on_report is not None:
+                # 每侧结果立即落盘；恢复只运行缺失侧，不重跑已完成的复核。
+                on_report(side, report)
     if errors:
         raise _primary(errors)
     return reports

@@ -151,7 +151,12 @@ def _firm(position) -> bool:
 
 def resolve_previous(round_number: int, previous: list[MergedFinding],
                      reports: dict[str, ReviewReport], new_findings: list[MergedFinding]):
-    """按复审回应更新上一轮发现；返回 (更新后的发现, 新争议, 被重申而不再新建的ID)。"""
+    """按复审回应更新上一轮发现；返回 (更新后的发现, 新争议, 被重申而不再新建的ID)。
+
+    关闭旧发现需要两个视角都给出可核对的关闭意见；漏答、unable_to_verify 或
+    evidence_status=insufficient_information 都只能保留为待补证据。真实冲突优先于
+    “重报旧发现”的去重分支，避免审核者多列一条 finding 就吞掉相反证据。
+    """
 
     updated: list[MergedFinding] = []
     conflicts: list[tuple[MergedFinding, list[dict]]] = []
@@ -163,27 +168,38 @@ def resolve_previous(round_number: int, previous: list[MergedFinding],
         positions = _positions(reports, finding.id)
         items = positions
         still = [item for item in items if item["status"] == "still_open"]
-        cleared = [item for item in items if item["status"] in {"resolved", "invalid"}]
+        closing = [item for item in items if item["status"] in {"resolved", "invalid"}]
+        firm_still = [item for item in still if _firm(item)]
+        firm_clearing = [item for item in closing if _firm(item)]
         reassertion = next((new for new in new_findings
                             if _same_reported(finding, new)), None)
         resolution = {"round": round_number, "responses": items}
-        if reassertion is not None:
+        if (finding.severity in {"blocker", "major"}
+                and firm_still and firm_clearing):
+            # 真实冲突优先于去重，但重复 finding 仍要并回原ID，不能让同一问题出现两次。
+            status, resolution["conflict"] = "disputed", True
+            if reassertion is not None:
+                reasserted.append(finding.id)
+                new_findings.remove(reassertion)
+                resolution["reasserted"] = True
+        elif reassertion is not None:
             reasserted.append(finding.id)
             new_findings.remove(reassertion)
             resolution["reasserted"] = True
             status = "open"
-        elif (finding.severity in {"blocker", "major"}
-              and any(_firm(item) for item in still) and any(_firm(item) for item in cleared)):
-            # 只有会影响批准的严重发现才值得再开A／B＋C；偏好类分歧记录后继续。
-            status, resolution["conflict"] = "disputed", True
         elif still:
             status = "open"
-        elif cleared and any(_firm(item) for item in cleared):
-            status = "invalid" if all(item["status"] == "invalid" for item in cleared) else "closed"
+        elif (len(closing) == len(items) and len(items) > 0
+              and all(_firm(item) for item in closing)):
+            status = "invalid" if all(item["status"] == "invalid" for item in closing) else "closed"
         else:
-            # 两边都说“已解决／不是问题”却没有可核对证据，不能据此关闭；保留为待补证据。
+            # 一方漏答、明确无法核验或只给信息不足时，不能据此关闭或批准。
             status = "unverified" if finding.severity in {"blocker", "major"} else "open"
             resolution["evidence_gap"] = True
+            resolution["incomplete"] = any(
+                item["status"] in {"missing", "unable_to_verify"}
+                or item["evidence_status"] == "insufficient_information"
+                for item in items)
         resolution["status"] = status
         updated_finding = finding.model_copy(update={
             "status": status,

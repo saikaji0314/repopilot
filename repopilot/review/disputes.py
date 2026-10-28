@@ -1,7 +1,8 @@
-"""具体争议的记录、A／B／C 结论应用与同版本去重。
+"""具体争议的记录、A／B／C 结论应用与版本边界。
 
-只有两位审核者对同一发现给出有依据的相反判断才创建争议；每个发现键在本次运行中
-最多启动一次 A／B＋C。已有人工判断的同一争议不因换提交或继续执行而重复复核。
+只有两位审核者对同一发现给出有依据的相反判断才创建争议；同一提交、同一审核依据
+中的同一发现最多启动一次 A／B＋C。旧提交／旧依据的结论只作历史，不会自动排除
+新候选上的同名发现；需要重新核对或交人，不能把过期结论当成当前证据。
 """
 
 from repopilot.storage.jobs import timestamp
@@ -22,7 +23,17 @@ def find(state, dispute_id: str) -> dict:
 
 
 def for_key(state, key: str):
+    """仅为历史查看保留；判断是否可复用必须使用[reuse_outcome]。"""
+
     return next((record for record in reversed(records(state)) if record.get("key") == key), None)
+
+
+def for_candidate(state, key: str, commit: str, basis_hash: str):
+    """同提交且同审核依据才属于同一个可复用争议。"""
+
+    return next((record for record in reversed(records(state))
+                 if record.get("key") == key and record.get("commit") == commit
+                 and record.get("basis_hash") == basis_hash), None)
 
 
 def create(state, *, round_number: int, finding: merge.MergedFinding, positions: list[dict],
@@ -36,10 +47,11 @@ def create(state, *, round_number: int, finding: merge.MergedFinding, positions:
     return record.model_dump(mode="json")
 
 
-def reuse_outcome(state, finding: merge.MergedFinding):
-    """同一发现键已有复核／人工结论时复用，不重新开一轮三人复核。"""
+def reuse_outcome(state, finding: merge.MergedFinding, basis: dict):
+    """只有同提交、同审核依据的争议结论可以复用。"""
 
-    record = for_key(state, finding.key)
+    record = for_candidate(state, finding.key, str(basis.get("commit") or ""),
+                           str(basis.get("hash") or ""))
     if record is None:
         return None
     outcome = record.get("outcome")

@@ -14,7 +14,7 @@ from repopilot.agents.reports import ArbitrationReport, DisputeReviewReport, Rev
 from repopilot.orchestration import human, workflow
 from repopilot.orchestration.state import approval_digest
 from repopilot.review import basis as review_basis
-from repopilot.review import gate, merge, outcome, runner
+from repopilot.review import disputes, gate, merge, outcome, runner
 from repopilot.storage.jobs import JobStore, StateError
 from tests.runtime.test_review_loop import (
     FakeModel, implement_done, implement_fix_report, setup, turn,
@@ -383,8 +383,10 @@ def test_agreement_without_evidence_does_not_close_the_finding(tmp_path):
     scripts = Scripted([
         {"correctness": review("changes_requested", findings=[finding()]),
          "context": review("changes_requested", findings=[finding()])},
-        {"correctness": review(responses=[response("r1-f1", evidence_status="insufficient_information")]),
-         "context": review(responses=[response("r1-f1", evidence_status="insufficient_information")])},
+        {"correctness": review("unable_to_review",
+            responses=[response("r1-f1", evidence_status="insufficient_information")]),
+         "context": review("unable_to_review",
+            responses=[response("r1-f1", evidence_status="insufficient_information")])},
     ])
     result = start(task, settings, root, scripts,
                    [*implementation(), turn("write_file", {"path": "app.py", "content": "value = 3\n"}),
@@ -393,6 +395,196 @@ def test_agreement_without_evidence_does_not_close_the_finding(tmp_path):
     finding_state = JobStore(root).get(result["run_id"])["review_report"]["findings"][0]
     assert finding_state["status"] == "unverified"
     assert result["review"]["rework_attempts"] == 1
+
+
+def test_previous_finding_needs_both_perspectives_to_close_with_evidence():
+    first = {"correctness": ReviewReport.model_validate(
+                 review("changes_requested", findings=[finding()])),
+             "context": ReviewReport.model_validate(review())}
+    previous = merge.merge_findings(1, first)
+    incomplete = [
+        {"correctness": ReviewReport.model_validate(review(responses=[response("r1-f1")])),
+         "context": ReviewReport.model_validate(review())},
+        {"correctness": ReviewReport.model_validate(review(responses=[response("r1-f1")])),
+         "context": ReviewReport.model_validate(review("unable_to_review", responses=[
+             response("r1-f1", "unable_to_verify",
+                      evidence_status="insufficient_information")]))},
+        {"correctness": ReviewReport.model_validate(review("unable_to_review", responses=[
+             response("r1-f1", evidence_status="insufficient_information")])),
+         "context": ReviewReport.model_validate(review("unable_to_review", responses=[
+             response("r1-f1", evidence_status="insufficient_information")]))},
+    ]
+    for reports in incomplete:
+        updated, conflicts, _ = merge.resolve_previous(2, previous, reports, [])
+        assert updated[0].status == "unverified", reports
+        assert updated[0].blocking is True
+        assert not conflicts
+        verdict = merge.verdict_from({key: value.verdict for key, value in reports.items()},
+                                     [item.model_dump(mode="json") for item in updated])
+        assert verdict != "approved"
+    closed = {"correctness": ReviewReport.model_validate(review(responses=[response("r1-f1")])),
+              "context": ReviewReport.model_validate(review(responses=[response("r1-f1")]))}
+    updated, conflicts, _ = merge.resolve_previous(2, previous, closed, [])
+    assert updated[0].status == "closed" and not conflicts
+    disputed = {"correctness": ReviewReport.model_validate(review(responses=[response("r1-f1")])),
+                "context": ReviewReport.model_validate(review("changes_requested", responses=[
+                    response("r1-f1", "still_open")]))}
+    updated, conflicts, _ = merge.resolve_previous(2, previous, disputed, [])
+    assert updated[0].status == "disputed" and len(conflicts) == 1
+
+
+@pytest.mark.parametrize("other", [
+    [],
+    [response("r1-f1", "unable_to_verify", evidence_status="insufficient_information")],
+])
+def test_incomplete_rereview_cannot_close_or_approve(tmp_path, other):
+    task, settings, root = setup(tmp_path)
+    scripts = Scripted([
+        {"correctness": review("changes_requested", findings=[finding()]),
+         "context": review()},
+        {"correctness": review(responses=[response("r1-f1")]),
+         "context": review(responses=other)},
+    ])
+    result = start(task, settings, root, scripts,
+                   [*implementation(), turn("write_file", {"path": "app.py", "content": "value = 3\n"}),
+                    implement_fix_report()])
+    assert result["status"] != "awaiting_approval", result
+    assert result["status"] == "review_inconclusive", result
+    state = JobStore(root).get(result["run_id"])
+    if state.get("review_report"):
+        assert state["review_report"]["verdict"] != "approved"
+        assert merge.approval_problems(state)
+    with pytest.raises(StateError, match="not_waiting_for_approval"):
+        workflow.decide(result["run_id"], root, commit=state["reviewed_commit"],
+                        approved=True, reason="不应批准未核验的复审")
+
+
+def test_dispute_outcome_is_reused_only_for_the_same_candidate_and_basis():
+    first = {"correctness": ReviewReport.model_validate(
+                 review("changes_requested", findings=[finding()])),
+             "context": ReviewReport.model_validate(review())}
+    found = merge.merge_findings(1, first)[0]
+    state = {"disputes": [{"id": "d-1", "key": found.key, "commit": "c" * 40,
+                           "basis_hash": "b" * 64, "outcome": "refuted",
+                           "finding": found.model_dump(mode="json")}]}
+    reused = disputes.reuse_outcome(state, found, {"commit": "c" * 40, "hash": "b" * 64})
+    assert reused and reused[0] == "refuted"
+    assert disputes.reuse_outcome(state, found, {"commit": "d" * 40, "hash": "b" * 64}) is None
+    assert disputes.reuse_outcome(state, found, {"commit": "c" * 40, "hash": "e" * 64}) is None
+
+
+def test_reasserting_a_finding_does_not_suppress_a_real_conflict(tmp_path, monkeypatch):
+    task, settings, root = setup(tmp_path, max_rework=1)
+    scripts = Scripted([
+        {"correctness": review("changes_requested", findings=[finding()]),
+         "context": review()},
+        {"correctness": review(responses=[response("r1-f1")]),
+         "context": review("changes_requested", findings=[finding()],
+                           responses=[response("r1-f1", "still_open")])},
+    ])
+    dispute_reviewer, arbitration = dispute_scripts(c_outcome="undetermined", comparison=[])
+    monkeypatch.setattr(runner, "run_dispute_reviewer", dispute_reviewer)
+    monkeypatch.setattr(runner, "run_arbitration", arbitration)
+    result = start(task, settings, root, scripts,
+                   [*implementation(), turn("write_file", {"path": "app.py", "content": "value = 3\n"}),
+                    implement_fix_report()])
+    assert result["status"] == "needs_input", result
+    assert result["review"]["rework_attempts"] == 1, "争议不应被当成已确认缺陷继续返工到限"
+    assert result["disputes"] and result["disputes"][0]["finding"]["id"] == "r1-f1"
+    state = JobStore(root).get(result["run_id"])
+    finding_state = next(item for item in state["review_report"]["findings"]
+                         if item["id"] == "r1-f1")
+    assert finding_state["status"] == "disputed"
+    assert finding_state["resolution"]["dispute"] == result["disputes"][0]["id"]
+    assert result["disputes"][0]["positions"][1]["status"] == "still_open"
+    identifiers = [item["id"] for item in state["review_report"]["findings"]]
+    assert identifiers.count("r1-f1") == 1 and "r2-f1" not in identifiers, \
+        "重报的同一问题应并回原ID，不能生成第二条阻断发现"
+
+
+def test_stale_refutation_is_rechecked_for_the_new_candidate(tmp_path, monkeypatch):
+    task, settings, root = setup(tmp_path)
+    second = finding("另一个阻断问题", line=4)
+    scripts = Scripted([
+        {"correctness": review("changes_requested", findings=[finding(), second]),
+         "context": review()},
+        {"correctness": review("changes_requested",
+            responses=[response("r1-f1"), response("r1-f2", "still_open")]),
+         "context": review("changes_requested",
+            responses=[response("r1-f1", "still_open"), response("r1-f2", "still_open")])},
+        {"correctness": review("changes_requested", findings=[finding()],
+                               responses=[response("r1-f2")]),
+         "context": review(responses=[response("r1-f2")])},
+        {"correctness": review(responses=[response("r3-f1",
+             observation="当前候选已有防护")]),
+         "context": review("changes_requested", responses=[response(
+             "r3-f1", "still_open", observation="当前候选删掉了必要防护")])},
+    ])
+    reviewer, arbitration = dispute_scripts(c_outcome="refuted")
+    arbitration_calls = []
+
+    def record_arbitration(**kwargs):
+        arbitration_calls.append(kwargs["payload"]["review_target"]["commit"])
+        return arbitration(**kwargs)
+    monkeypatch.setattr(runner, "run_dispute_reviewer", reviewer)
+    monkeypatch.setattr(runner, "run_arbitration", record_arbitration)
+    result = start(task, settings, root, scripts, [*implementation(),
+        turn("write_file", {"path": "app.py", "content": "value = 3\n"}), implement_fix_report(),
+        turn("write_file", {"path": "app.py", "content": "value = 4\n"}), implement_fix_report(),
+        turn("write_file", {"path": "app.py", "content": "value = 5\n"}), implement_fix_report()])
+    assert result["status"] == "awaiting_approval", result
+    state = JobStore(root).get(result["run_id"])
+    current = state["reviewed_commit"]
+    assert len(state["disputes"]) == 2, "新候选上的同一发现必须重新核对，不能沿用旧排除结论"
+    assert state["disputes"][0]["commit"] != current
+    assert state["disputes"][1]["commit"] == current
+    assert len(arbitration_calls) == 2 and arbitration_calls[-1] == current
+    finding_state = next(item for item in state["review_report"]["findings"]
+                         if item["id"] == "r3-f1")
+    assert finding_state["status"] == "invalid"
+    assert finding_state["resolution"]["dispute"] == state["disputes"][1]["id"]
+    assert "reused" not in finding_state["resolution"]
+    assert merge.approval_problems(state) == []
+
+
+def test_completed_ab_side_is_reused_after_the_other_side_is_interrupted(tmp_path, monkeypatch):
+    task, settings, root = setup(tmp_path)
+    scripts = Scripted([
+        {"correctness": review("changes_requested", findings=[finding()]),
+         "context": review()},
+        {"correctness": review(responses=[response("r1-f1")]),
+         "context": review("changes_requested", responses=[response("r1-f1", "still_open")])},
+    ])
+    reviewer, arbitration = dispute_scripts(c_outcome="undetermined", comparison=[])
+    counts = {"a": 0, "b": 0}
+    lock = threading.Lock()
+
+    def flaky(*, side, **kwargs):
+        with lock:
+            counts[side] += 1
+            attempt = counts[side]
+        if side == "b" and attempt == 1:
+            raise KeyboardInterrupt()
+        return reviewer(side=side, **kwargs)
+    monkeypatch.setattr(runner, "run_dispute_reviewer", flaky)
+    monkeypatch.setattr(runner, "run_arbitration", arbitration)
+    first = start(task, settings, root, scripts,
+                  [*implementation(), turn("write_file", {"path": "app.py", "content": "value = 3\n"}),
+                   implement_fix_report()])
+    assert first["status"] == "interrupted", first
+    state = JobStore(root).get(first["run_id"])
+    assert counts["a"] == 1 and counts["b"] == 1
+    completed_a = state["disputes"][0]["a"]
+    assert completed_a is not None, "已完成的A侧结论必须落盘"
+    workflow.recover(first["run_id"], root, commit=state["reviewed_commit"],
+                     reason="核对A侧已完成、B侧中断的争议现场")
+    done = resume(first["run_id"], settings, root, scripts, [])
+    assert done["status"] == "needs_input", done
+    assert counts["a"] == 1, "恢复不得重跑已完成的A侧"
+    assert counts["b"] == 2
+    saved = JobStore(root).get(first["run_id"])
+    assert saved["disputes"][0]["a"] == completed_a
+    assert saved["disputes"][0]["c"]["outcome"] == "undetermined"
 
 
 def test_review_show_needs_no_credentials_and_reports_evidence(tmp_path, monkeypatch):

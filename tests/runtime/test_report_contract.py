@@ -111,6 +111,14 @@ def test_review_responses_must_be_unique_and_cannot_approve_still_open():
     with pytest.raises(ValidationError, match="still_open"):
         ReviewReport.model_validate({"verdict": "approved", "summary": "s", "responses": [
             {"finding_id": "r1-f1", "status": "still_open", "observation": "仍未修复"}]})
+    with pytest.raises(ValidationError, match="unverifiable"):
+        ReviewReport.model_validate({"verdict": "approved", "summary": "s", "responses": [
+            {"finding_id": "r1-f1", "status": "unable_to_verify",
+             "observation": "无法核验"}]})
+    with pytest.raises(ValidationError, match="verifiable evidence"):
+        ReviewReport.model_validate({"verdict": "approved", "summary": "s", "responses": [
+            {"finding_id": "r1-f1", "status": "resolved",
+             "evidence_status": "insufficient_information", "observation": "证据不足"}]})
     changes = ReviewReport.model_validate({"verdict": "changes_requested", "summary": "s",
                                            "responses": [
         {"finding_id": "r1-f1", "status": "still_open", "observation": "仍未修复"}]})
