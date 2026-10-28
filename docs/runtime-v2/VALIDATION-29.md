@@ -21,9 +21,10 @@
 命令：
 
 ```text
-python -m pytest tests/runtime/test_dual_review.py tests/runtime/test_report_contract.py -q -p no:cacheprovider --basetemp .local/tmp/m5-dual9 --tb=short
-python -m pytest tests/evaluation/test_solver.py tests/runtime/test_dual_review.py -q -p no:cacheprovider --basetemp .local/tmp/m5-eval1 --tb=short
-python -m pytest tests -q -p no:cacheprovider --basetemp .local/tmp/m5-full4 --tb=short
+python -m pytest tests/runtime/test_dual_review.py tests/runtime/test_report_contract.py tests/evaluation/test_solver.py -q -p no:cacheprovider --basetemp .local/tmp/m5-targeted-final --tb=short
+python -m pytest .local/evidence/m5-independent-review/test_probes.py -q -p no:cacheprovider --basetemp .local/tmp/m5-original-probes2 --tb=line
+python -m pytest .local/evidence/m5-review-fixes/test_fixed_probes.py -q -s -p no:cacheprovider --basetemp .local/tmp/m5-fixed-probes2 --tb=short
+python -m pytest tests -q -p no:cacheprovider --basetemp .local/tmp/m5-r1r4-full2 --tb=short
 ```
 
 ## 结果
