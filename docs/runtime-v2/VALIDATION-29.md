@@ -69,10 +69,10 @@ python -m pytest tests -q -p no:cacheprovider --basetemp .local/tmp/m5-r5-full -
 | 定向复审安全探针（含R5） | 9 passed，38.67秒 |
 | 原独立缺陷探针 | 6项断言失败（缺陷不再复现），22.74秒 |
 | 改写后的安全探针 | 6 passed，24.58秒 |
-| 双审／契约／评测接线 | 33 passed（R5新增用例后），73.15秒 |
+| 双审／契约 | 33 passed（R5新增用例后），73.15秒 |
 | 完整`tests` | 696 passed，16 skipped，696.73秒 |
 
-原始复现输出、安全探针输出、定向复审探针、47项和全量输出保存在`.local/evidence/increment-29/review-fixes/`与`.local/evidence/m5-independent-rereview/`。
+原始复现输出、安全探针输出、定向复审探针和全量输出保存在`.local/evidence/increment-29/review-fixes/`与`.local/evidence/m5-independent-rereview/`。
 
 ## 验收场景对应
 
