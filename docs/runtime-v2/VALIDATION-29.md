@@ -25,7 +25,8 @@ python -m pytest tests/runtime/test_dual_review.py tests/runtime/test_report_con
 python -m pytest .local/evidence/m5-independent-review/test_probes.py -q -p no:cacheprovider --basetemp .local/tmp/m5-original-probes2 --tb=line
 python -m pytest .local/evidence/m5-review-fixes/test_fixed_probes.py -q -s -p no:cacheprovider --basetemp .local/tmp/m5-fixed-probes2 --tb=short
 python -m pytest .local/evidence/m5-independent-rereview/test_rereview_probes.py -q -p no:cacheprovider --basetemp .local/tmp/m5rr --tb=short
-python -m pytest tests -q -p no:cacheprovider --basetemp .local/tmp/m5-r5-full --tb=short
+python -m pytest .local/evidence/m5-final-rereview/test_upgrade_recovery.py -q -s -p no:cacheprovider --basetemp .local/tmp/m5f3 --tb=short
+python -m pytest tests -q -p no:cacheprovider --basetemp .local/tmp/m5-r6-full --tb=short
 ```
 
 ## 结果
@@ -73,6 +74,26 @@ python -m pytest tests -q -p no:cacheprovider --basetemp .local/tmp/m5-r5-full -
 | 完整`tests` | 696 passed，16 skipped，696.73秒 |
 
 原始复现输出、安全探针输出、定向复审探针和全量输出保存在`.local/evidence/increment-29/review-fixes/`与`.local/evidence/m5-independent-rereview/`。
+
+## 最终复核R6修复
+
+最终复核确认R1—R5关闭，但发现R6：R5修复前保存的争议记录没有`dispute_basis_hash`；C已给出`undetermined`并在生成人工请求前中断，升级后恢复时`_undetermined`用新实质依据哈希查找旧记录，找不到旧争议，因而没有可答复的`dispute`请求。
+
+- 修复：把“同提交＋同实质依据”的匹配统一到`disputes.for_candidate`；新格式记录按实质依据哈希匹配，旧格式没有该字段时仅在完整依据哈希也相同时受控回退；复用结论与未决争议查找使用同一规则。
+- 保留R5：同提交、同实质依据下仅返工计数变化不重开；保留R2：提交或实质证据变化仍使旧争议失效。
+- 新增`test_legacy_undetermined_dispute_is_still_decidable_after_upgrade`单元回归；定向复审的升级恢复探针新旧格式各1项通过。
+
+最终检查：
+
+| 检查 | 结果 |
+| --- | --- |
+| 定向复审R1—R5安全探针 | 9 passed，38.67秒 |
+| 新旧格式未决争议恢复 | 2 passed（含在11项探针运行中） |
+| 定向复审与R6探针合计 | 11 passed，49.46秒 |
+| 双审／契约与R6恢复 | 36 passed，84.78秒 |
+| 完整`tests` | 697 passed，16 skipped，700.38秒 |
+
+原始复现输出、R1—R6探针、升级恢复证据和全量输出保存在`.local/evidence/increment-29/review-fixes/`、`.local/evidence/m5-independent-rereview/`与`.local/evidence/m5-final-rereview/`。
 
 ## 验收场景对应
 

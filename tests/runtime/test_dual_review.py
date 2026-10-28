@@ -14,7 +14,7 @@ from repopilot.agents.reports import ArbitrationReport, DisputeReviewReport, Rev
 from repopilot.orchestration import human, workflow
 from repopilot.orchestration.state import approval_digest
 from repopilot.review import basis as review_basis
-from repopilot.review import disputes, gate, merge, outcome, runner
+from repopilot.review import disputes, gate, merge, outcome, rounds, runner
 from repopilot.storage.jobs import JobStore, StateError
 from tests.runtime.test_review_loop import (
     FakeModel, implement_done, implement_fix_report, setup, turn,
@@ -628,6 +628,30 @@ def test_noop_rework_cannot_repeat_ab_on_same_commit(tmp_path, monkeypatch):
     assert state["disputes"][0]["commit"] == state["reviewed_commit"]
     assert state["review_report"]["findings"][0]["status"] == "open"
     assert result["review"]["rework_attempts"] == 2
+
+
+def test_legacy_undetermined_dispute_is_still_decidable_after_upgrade():
+    first = {"correctness": ReviewReport.model_validate(
+                 review("changes_requested", findings=[finding()])),
+             "context": ReviewReport.model_validate(review())}
+    found = merge.merge_findings(1, first)[0].model_copy(update={"status": "disputed"})
+    basis = {"commit": "c" * 40, "base_commit": "d" * 40, "verified_sha256": "e" * 64,
+             "knowledge_snapshot_id": "k", "brief_revision": 1, "brief_sha256": "f" * 64,
+             "plan_version": "plan-1", "requirements_revision": 0, "rework": 1,
+             "hash": "9" * 64}
+    legacy = {"id": "d-1", "key": found.key, "commit": basis["commit"],
+              "basis_hash": basis["hash"], "outcome": "undetermined",
+              "finding": found.model_dump(mode="json")}
+    state = {"disputes": [legacy]}
+    assert rounds._undetermined(state, [found], basis) == ["d-1"]
+    assert disputes.for_candidate(state, found.key, basis)["id"] == "d-1"
+    changed = {**basis, "rework": 2, "hash": "8" * 64}
+    assert rounds._undetermined(state, [found], changed) == [], \
+        "旧格式没有实质依据字段，只能在完整依据也相同时回退"
+    upgraded = {**legacy, "dispute_basis_hash": review_basis.dispute_hash(basis)}
+    state = {"disputes": [upgraded]}
+    assert rounds._undetermined(state, [found], changed) == ["d-1"], \
+        "新格式按实质依据复用，不因返工计数变化丢失未决请求"
 
 
 def test_review_show_needs_no_credentials_and_reports_evidence(tmp_path, monkeypatch):

@@ -29,13 +29,24 @@ def for_key(state, key: str):
     return next((record for record in reversed(records(state)) if record.get("key") == key), None)
 
 
-def for_candidate(state, key: str, commit: str, dispute_key: str):
-    """同一提交且同一实质依据才属于同一个可复用争议。"""
+def for_candidate(state, key: str, basis: dict):
+    """同提交且同实质依据才属于同一个可复用争议。
 
-    return next((record for record in reversed(records(state))
-                 if record.get("key") == key and record.get("commit") == commit
-                 and (record.get("dispute_basis_hash") or record.get("basis_hash")) == dispute_key),
-                None)
+    旧记录没有 dispute_basis_hash 时，只在完整依据哈希也相同时回退；
+    这与未决争议的恢复查找使用同一规则。
+    """
+
+    dispute_key = basis_store.dispute_hash(basis)
+    for record in reversed(records(state)):
+        if record.get("key") != key or record.get("commit") != str(basis.get("commit") or ""):
+            continue
+        stored = record.get("dispute_basis_hash")
+        if stored:
+            if stored == dispute_key:
+                return record
+        elif record.get("basis_hash") == basis.get("hash"):
+            return record
+    return None
 
 
 def create(state, *, round_number: int, finding: merge.MergedFinding, positions: list[dict],
@@ -53,15 +64,7 @@ def create(state, *, round_number: int, finding: merge.MergedFinding, positions:
 def reuse_outcome(state, finding: merge.MergedFinding, basis: dict):
     """同提交、同实质依据的争议结论可以复用；返工计数变化不算新依据。"""
 
-    key = basis_store.dispute_hash(basis)
-    record = for_candidate(state, finding.key, str(basis.get("commit") or ""), key)
-    if record is None:
-        # 兼容本次升级前已写入、没有dispute_basis_hash的旧记录：只在完整依据相同时复用。
-        record = next((item for item in reversed(records(state))
-                       if item.get("key") == finding.key
-                       and item.get("commit") == str(basis.get("commit") or "")
-                       and not item.get("dispute_basis_hash")
-                       and item.get("basis_hash") == basis.get("hash")), None)
+    record = for_candidate(state, finding.key, basis)
     if record is None:
         return None
     outcome = record.get("outcome")
