@@ -7,6 +7,7 @@
 
 from repopilot.storage.jobs import timestamp
 
+from . import basis as basis_store
 from . import merge
 from .contracts import DisputePosition, DisputeRecord
 
@@ -28,19 +29,21 @@ def for_key(state, key: str):
     return next((record for record in reversed(records(state)) if record.get("key") == key), None)
 
 
-def for_candidate(state, key: str, commit: str, basis_hash: str):
-    """同提交且同审核依据才属于同一个可复用争议。"""
+def for_candidate(state, key: str, commit: str, dispute_key: str):
+    """同一提交且同一实质依据才属于同一个可复用争议。"""
 
     return next((record for record in reversed(records(state))
                  if record.get("key") == key and record.get("commit") == commit
-                 and record.get("basis_hash") == basis_hash), None)
+                 and (record.get("dispute_basis_hash") or record.get("basis_hash")) == dispute_key),
+                None)
 
 
 def create(state, *, round_number: int, finding: merge.MergedFinding, positions: list[dict],
            basis: dict) -> dict:
     record = DisputeRecord(id=f"d-{len(records(state)) + 1}", key=finding.key,
         round=round_number, commit=str(state.get("reviewed_commit") or ""),
-        basis_hash=basis["hash"], finding=finding.model_dump(mode="json"),
+        basis_hash=basis["hash"], dispute_basis_hash=basis_store.dispute_hash(basis),
+        finding=finding.model_dump(mode="json"),
         positions=[DisputePosition.model_validate(item) for item in positions],
         created_at=timestamp())
     state.setdefault("disputes", []).append(record.model_dump(mode="json"))
@@ -48,10 +51,17 @@ def create(state, *, round_number: int, finding: merge.MergedFinding, positions:
 
 
 def reuse_outcome(state, finding: merge.MergedFinding, basis: dict):
-    """只有同提交、同审核依据的争议结论可以复用。"""
+    """同提交、同实质依据的争议结论可以复用；返工计数变化不算新依据。"""
 
-    record = for_candidate(state, finding.key, str(basis.get("commit") or ""),
-                           str(basis.get("hash") or ""))
+    key = basis_store.dispute_hash(basis)
+    record = for_candidate(state, finding.key, str(basis.get("commit") or ""), key)
+    if record is None:
+        # 兼容本次升级前已写入、没有dispute_basis_hash的旧记录：只在完整依据相同时复用。
+        record = next((item for item in reversed(records(state))
+                       if item.get("key") == finding.key
+                       and item.get("commit") == str(basis.get("commit") or "")
+                       and not item.get("dispute_basis_hash")
+                       and item.get("basis_hash") == basis.get("hash")), None)
     if record is None:
         return None
     outcome = record.get("outcome")

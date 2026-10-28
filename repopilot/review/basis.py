@@ -7,6 +7,15 @@
 from repopilot.orchestration.state import canonical_hash
 from repopilot.storage.jobs import timestamp
 
+# 争议去重只承认实质依据；返工计数变化本身不构成“新证据”，不能重开同一提交上的同一争议。
+DISPUTE_BASIS_FIELDS = ("commit", "base_commit", "verified_sha256", "knowledge_snapshot_id",
+                        "brief_revision", "brief_sha256", "plan_version",
+                        "requirements_revision")
+
+
+def dispute_hash(basis: dict) -> str:
+    return canonical_hash({key: basis.get(key) for key in DISPUTE_BASIS_FIELDS})
+
 
 def ensure(state) -> None:
     """旧运行没有M5字段时补默认值；不删除历史审核或争议。"""

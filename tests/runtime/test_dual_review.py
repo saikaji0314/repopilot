@@ -587,6 +587,49 @@ def test_completed_ab_side_is_reused_after_the_other_side_is_interrupted(tmp_pat
     assert saved["disputes"][0]["c"]["outcome"] == "undetermined"
 
 
+def test_dispute_basis_ignores_rework_but_tracks_substantive_evidence():
+    basis = {"commit": "c" * 40, "base_commit": "d" * 40, "verified_sha256": "e" * 64,
+             "knowledge_snapshot_id": "k", "brief_revision": 1, "brief_sha256": "f" * 64,
+             "plan_version": "plan-1", "requirements_revision": 0, "rework": 1}
+    same = {**basis, "rework": 2}
+    assert review_basis.dispute_hash(basis) == review_basis.dispute_hash(same)
+    for field, value in (("commit", "a" * 40), ("base_commit", "b" * 40),
+                         ("verified_sha256", "1" * 64), ("knowledge_snapshot_id", "other"),
+                         ("brief_revision", 2), ("brief_sha256", "2" * 64),
+                         ("plan_version", "plan-2"), ("requirements_revision", 1)):
+        changed = {**basis, field: value}
+        assert review_basis.dispute_hash(changed) != review_basis.dispute_hash(basis), field
+
+
+def test_noop_rework_cannot_repeat_ab_on_same_commit(tmp_path, monkeypatch):
+    task, settings, root = setup(tmp_path, max_rework=2)
+    scripts = Scripted([
+        {"correctness": review("changes_requested", findings=[finding()]),
+         "context": review()},
+        {"correctness": review(responses=[response("r1-f1")]),
+         "context": review("changes_requested", responses=[response("r1-f1", "still_open")])},
+        {"correctness": review(responses=[response("r1-f1")]),
+         "context": review("changes_requested", responses=[response("r1-f1", "still_open")])},
+    ])
+    reviewer, arbitration = dispute_scripts(c_outcome="confirmed")
+    arbitration_calls = []
+
+    def record_arbitration(**kwargs):
+        arbitration_calls.append(kwargs["payload"]["review_target"]["commit"])
+        return arbitration(**kwargs)
+    monkeypatch.setattr(runner, "run_dispute_reviewer", reviewer)
+    monkeypatch.setattr(runner, "run_arbitration", record_arbitration)
+    result = start(task, settings, root, scripts, [*implementation(),
+        implement_fix_report(), implement_fix_report()])
+    assert result["status"] == "rework_limit_reached", result
+    state = JobStore(root).get(result["run_id"])
+    assert len(arbitration_calls) == 1, "只改变返工计数不能重开同一提交上的同一争议"
+    assert len(state["disputes"]) == 1
+    assert state["disputes"][0]["commit"] == state["reviewed_commit"]
+    assert state["review_report"]["findings"][0]["status"] == "open"
+    assert result["review"]["rework_attempts"] == 2
+
+
 def test_review_show_needs_no_credentials_and_reports_evidence(tmp_path, monkeypatch):
     task, settings, root = setup(tmp_path)
     scripts = Scripted([{

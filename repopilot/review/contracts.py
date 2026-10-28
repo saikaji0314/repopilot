@@ -83,6 +83,8 @@ class DisputeRecord(Contract):
     round: int = Field(ge=1)
     commit: str = Field(min_length=8)
     basis_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    # 实质依据哈希（不含返工计数）；旧记录可缺省，读取时回退到 basis_hash。
+    dispute_basis_hash: str = ""
     finding: dict
     positions: list[DisputePosition] = Field(min_length=2, max_length=2)
     a: dict | None = None

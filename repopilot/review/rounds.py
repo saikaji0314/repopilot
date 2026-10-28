@@ -276,13 +276,15 @@ def _set_finding(draft, finding_id, *, status, resolution):
 
 
 def _undetermined(state, findings, basis) -> list[str]:
-    records = {(record["key"], record.get("commit"), record.get("basis_hash")): record
+    dispute_key = basis_store.dispute_hash(basis)
+    records = {(record["key"], record.get("commit"),
+                record.get("dispute_basis_hash") or record.get("basis_hash")): record
                for record in state.get("disputes") or []}
     result = []
     for finding in findings:
         if finding.status != "disputed":
             continue
-        record = records.get((finding.key, basis.get("commit"), basis.get("hash")))
+        record = records.get((finding.key, basis.get("commit"), dispute_key))
         if record is not None and record.get("outcome") == "undetermined":
             result.append(record["id"])
     return result

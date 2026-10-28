@@ -24,7 +24,8 @@
 python -m pytest tests/runtime/test_dual_review.py tests/runtime/test_report_contract.py tests/evaluation/test_solver.py -q -p no:cacheprovider --basetemp .local/tmp/m5-targeted-final --tb=short
 python -m pytest .local/evidence/m5-independent-review/test_probes.py -q -p no:cacheprovider --basetemp .local/tmp/m5-original-probes2 --tb=line
 python -m pytest .local/evidence/m5-review-fixes/test_fixed_probes.py -q -s -p no:cacheprovider --basetemp .local/tmp/m5-fixed-probes2 --tb=short
-python -m pytest tests -q -p no:cacheprovider --basetemp .local/tmp/m5-r1r4-full2 --tb=short
+python -m pytest .local/evidence/m5-independent-rereview/test_rereview_probes.py -q -p no:cacheprovider --basetemp .local/tmp/m5rr --tb=short
+python -m pytest tests -q -p no:cacheprovider --basetemp .local/tmp/m5-r5-full --tb=short
 ```
 
 ## 结果
@@ -52,16 +53,26 @@ python -m pytest tests -q -p no:cacheprovider --basetemp .local/tmp/m5-r1r4-full
 | R3 重报旧发现吞掉双方冲突 | 争议判定先于“重报去重”；一方坚持、另一方有依据排除时进入争议并保留原发现ID，不因审核者多列一条 finding 而继续返工。新增完整工作流回归。 |
 | R4 A／B一侧完成后中断会重跑 | A／B每侧报告完成即写入争议记录和检查点；恢复只运行缺失侧，C只在两侧齐备后执行；C结果也先落盘再应用。新增中断恢复回归，确认A调用1次、B在恢复后补1次。 |
 
-在原独立探针上，六项缺陷断言全部不再复现（预期失败）；改写为安全行为断言后的六项探针全部通过。最终检查：
+在原独立探针上，六项缺陷断言全部不再复现（预期失败）；改写为安全行为断言后的六项探针全部通过。定向复审随后确认R1—R4关闭，但发现R5：返工计数本身进入审核依据哈希，导致同一提交、同一实质证据下的同一争议在无改动返工时再次启动A／B＋C。
+
+## 定向复审R5修复
+
+- 新增“实质依据哈希”：候选提交、基线、独立检查、资料清单、任务说明、计划、需求版本；**不包含返工计数**。
+- 争议记录同时保存完整审核依据哈希和实质依据哈希；复用只按同提交＋同实质依据，单纯返工计数变化不再重开同一争议；提交或实质证据变化仍产生新记录并重新核对。
+- 旧记录没有实质依据字段时，仅在完整依据也相同时回退复用。
+- 新增`test_noop_rework_cannot_repeat_ab_on_same_commit`和实质依据字段单元回归；定向复审的`test_rereview_probes.py`（含R5、R1—R4及C检查点恢复）9项全部通过，38.67秒。
+
+最终检查：
 
 | 检查 | 结果 |
 | --- | --- |
+| 定向复审安全探针（含R5） | 9 passed，38.67秒 |
 | 原独立缺陷探针 | 6项断言失败（缺陷不再复现），22.74秒 |
 | 改写后的安全探针 | 6 passed，24.58秒 |
-| 双审／契约／评测接线 | 47 passed，80.63秒 |
-| 完整`tests` | 694 passed，16 skipped，685.35秒 |
+| 双审／契约／评测接线 | 33 passed（R5新增用例后），73.15秒 |
+| 完整`tests` | 696 passed，16 skipped，696.73秒 |
 
-原始复现输出、安全探针输出、47项和全量输出保存在`.local/evidence/increment-29/review-fixes/`。
+原始复现输出、安全探针输出、定向复审探针、47项和全量输出保存在`.local/evidence/increment-29/review-fixes/`与`.local/evidence/m5-independent-rereview/`。
 
 ## 验收场景对应
 
