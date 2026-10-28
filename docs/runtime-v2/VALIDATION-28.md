@@ -1,6 +1,6 @@
 # 增量28：M4 并行实现与内部整合
 
-日期：2026-10-28。基线：dev/3fc250b；初始实现b685c69，独立复审修复2968b2e。对应原始规格第7节及A07／A09；实现范围只到本地并行、独立worktree、槽位、串行整合和组合检查，不包含M5双审、AB复核或真实平台效果验收。
+日期：2026-10-28。基线：dev/3fc250b；初始实现b685c69，独立复审修复2968b2e、7e9014c。对应原始规格第7节及A07／A09；实现范围只到本地并行、独立worktree、槽位、串行整合和组合检查，不包含M5双审、AB复核或真实平台效果验收。
 
 ## 本轮交付
 
@@ -41,15 +41,15 @@
 
 | 检查 | 结果 |
 | --- | --- |
-| M4专项 | 15项通过（并行、依赖、冲突、局部暂停、槽位、费用预留、硬退出计数、异常整合恢复、组合批准等） |
-| 完整回归 | **668通过／16跳过，563.65秒** |
+| M4专项 | 16项通过（并行、依赖、冲突、局部暂停、槽位、费用预留、硬退出计数、异常整合恢复、恢复后转人工、组合批准等） |
+| 完整回归 | **669通过／16跳过，573.85秒** |
 
 命令：
 
 ```powershell
-$t = (Resolve-Path .local).Path + '\tmp\m4-final2-system-temp'
+$t = (Resolve-Path .local).Path + '\tmp\m4-final3-system-temp'
 $env:TEMP=$t; $env:TMP=$t; $env:TMPDIR=$t; $env:GIT_CEILING_DIRECTORIES=$t
-python -m pytest tests -q -p no:cacheprovider --basetemp .local/tmp/m4-fix-final2 --tb=short
+python -m pytest tests -q -p no:cacheprovider --basetemp .local/tmp/m4-fix-final3 --tb=short
 ```
 
 测试入口：[并行与整合](../../tests/runtime/test_parallel.py)。本地探针另验证了：两个独立worker都从同一父基线启动；依赖第三任务看到第一任务整合后的文件；冲突在父工作区产生`UU`，受控修复提交后文件保留双方内容；未解决时回滚后父工作区无冲突标记；槽位占满时无计划实现被拒绝；局部澄清时独立任务继续整合；resolver额度异常后recover可继续；并发费用不越过运行上限；硬退出后工具／编辑计数可恢复。
