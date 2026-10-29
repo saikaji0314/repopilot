@@ -63,6 +63,8 @@ GitHub 仅接收标准 `https://github.com/OWNER/REPO/issues/N`；Issue 必须�
 
 ## 验证与来源
 
+当前版本的完整免费回归、真实Docker补测及新题实测准备见[增量33](VALIDATION-33.md)。798项去重通过不代表新增Approve／冲突更新／合并链路已完成真实验收。
+
 历史增量：[调查](VALIDATION-01.md)、[工作区](VALIDATION-02.md)、[审核返工](VALIDATION-03.md)。持久化与审批的历史实现见[增量 4](VALIDATION-04.md)，真实交付与常驻监听见[增量 5](VALIDATION-05.md)，展示步骤见[演示](DEMO.md)，区分确定性模拟、真实本地 Git／检查、真实模型和真实 GitHub 写入，不能互相代替。
 
 [SWE-bench 接入协议](../../evals/swebench/README.md)提供单题输入边界与官方补丁导出；[增量13](VALIDATION-13.md)记录实际评分环境预检，尚非模型修复效果评测。[增量27](VALIDATION-27.md)记录M3计划、集中提问、评论渠道和子Issue映射的本地机制验证；[增量28](VALIDATION-28.md)记录M4并行与整合的本地机制验证。

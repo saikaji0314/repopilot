@@ -224,7 +224,12 @@ def test_real_docker_tools_verify_and_checkpoint_resume(tmp_path, language, monk
     checks = json.loads((directory / 'verification.json').read_text(encoding='utf-8'))
     assert checks[0]['exit_code'] == 0 and 'isolated-check' in checks[0]['output_tail']
     events = [json.loads(x) for x in (directory / 'events.jsonl').read_text(encoding='utf-8').splitlines()]
-    assert len([x for x in events if x['event'] == 'sandbox_ready']) == 3
+    # Implementation, independent verification, and each review perspective
+    # use their own container. The former single reviewer needed only three.
+    assert len([x for x in events if x['event'] == 'sandbox_ready']) == 4
+    assert len({x['container'] for x in events if x['event'] == 'sandbox_preparing'}) == 4
+    assert len([x for x in events if x['event'] == 'sandbox_verified']) == 3
+    assert set(JobStore(root).get(result['run_id'])['review_report']['perspectives']) == {'correctness', 'context'}
     assert all(x['image'] == config.image for x in events if x['event'] == 'sandbox_ready')
     assert all(x['complete'] for x in events if x['event'] == 'sandbox_cleanup')
     assert (task.repository / 'app.py').read_text(encoding='utf-8') == 'value = 1\n'
