@@ -198,7 +198,8 @@ class Workspace:
                 raise WorkspaceError("sensitive_or_linked_change") from None
         run_git(worktree, "add", "--all")
         staged = run_git(worktree, "diff", "--cached", "--name-only").stdout.decode("utf-8", errors="replace")
-        if not staged.strip():
+        merge_pending = run_git(worktree, 'rev-parse', '-q', '--verify', 'MERGE_HEAD', check=False).returncode == 0
+        if not staged.strip() and not merge_pending:
             return {"commit": head_commit(worktree), "created": False, "files": []}
         # linked worktree 默认共享仓库配置；身份只对本次命令生效。
         run_git(worktree, "-c", "user.name=RepoPilot", "-c", "user.email=repopilot@localhost",

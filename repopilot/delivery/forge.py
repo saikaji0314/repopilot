@@ -141,12 +141,30 @@ def open_forge(subject, *, transport=None, token=None, env_file=None):
         origin = Origin(parsed["provider"], parsed["host"], parsed["repository"])
     else:
         origin = parse_remote(subject)
-    token = token or load_token(origin.provider, env_file)
     if origin.provider == "github":
         from .github import GitHub
-        return GitHub(token, host=origin.host, transport=transport)
+        path = default_env_file() if env_file is None else Path(env_file)
+        values = dotenv_values(path, interpolate=False) if path.exists() else {}
+        def configured(name, default=''):
+            return str(os.environ.get(name, values.get(name) or default)).strip()
+        mode = configured('GITHUB_AUTH', 'token')
+        if token is None and mode == 'app':
+            from .github_app import InstallationAuth
+            key_file = configured('GITHUB_APP_PRIVATE_KEY_FILE')
+            if not key_file:
+                raise ForgeError('github_app_private_key_file_required')
+            auth = InstallationAuth(configured('GITHUB_APP_ID'), configured('GITHUB_APP_INSTALLATION_ID'),
+                (path.parent / Path(key_file).expanduser()).resolve(), transport=transport)
+            try:
+                return GitHub('', host=origin.host, transport=transport, app_auth=auth)
+            except Exception:
+                auth.close()
+                raise
+        if token is None and mode != 'token':
+            raise ForgeError('invalid_github_auth_mode')
+        return GitHub(token or load_token(origin.provider, env_file), host=origin.host, transport=transport)
     from .gitlab import GitLab
-    return GitLab(token, host=origin.host, transport=transport)
+    return GitLab(token or load_token(origin.provider, env_file), host=origin.host, transport=transport)
 
 
 def publish(run_id, root, forge, *, note=None):
@@ -333,6 +351,8 @@ def git_auth_environment(host, username, token):
     """用 basic 认证头推送；令牌不进入命令参数、远端 URL 或 git 配置文件。"""
     import base64
     encoded = base64.b64encode(f"{username}:{token}".encode()).decode()
-    return {"GIT_CONFIG_COUNT": "1",
+    proxy = {key: value for key, value in os.environ.items()
+             if key.upper() in {'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY'} and value}
+    return {**proxy, "GIT_CONFIG_COUNT": "1",
             "GIT_CONFIG_KEY_0": f"http.https://{host}/.extraheader",
             "GIT_CONFIG_VALUE_0": f"AUTHORIZATION: basic {encoded}"}

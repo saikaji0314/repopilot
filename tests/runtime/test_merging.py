@@ -55,7 +55,9 @@ class Remote:
         if path == prefix + '/pulls/2/merge-async' and request.method == 'PUT':
             self.submit_count += 1
             checkpoint = JobStore(self.root).get(self.state['run_id'])['merge']
-            assert checkpoint['status'] == 'submitting' and checkpoint['intent']['review']['id'] == 41
+            approvals=[x for x in self.reviews if x.get('state')=='APPROVED'
+                       and (x.get('user') or {}).get('login')=='maintainer']
+            assert checkpoint['status']=='submitting' and checkpoint['intent']['review']['id']==max(x['id'] for x in approvals)
             assert json.loads(request.content) == {'sha': self.head, 'merge_method': 'merge',
                                                    'merge_action': 'direct_merge', 'bypass_rules': False}
             assert request.headers['X-GitHub-Api-Version'] == '2026-03-10'

@@ -45,19 +45,25 @@ def identity(state, forge):
 def local_evidence(state, root):
     from repopilot.orchestration import knowledge
     approval = state.get('approval') or {}
-    require(approval.get('approved') and approval.get('commit') == state.get('reviewed_commit')
-            and approval.get('digest') == approval_digest(state), 'matching_draft_approval_required')
+    update = next((x for x in reversed((state.get('merge') or {}).get('updates') or [])
+                   if x['status'] in {'published', 'superseded'} and x.get('validation_digest')), None)
+    refreshed = bool(update
+        and (state['merge']['policy']).get('auto_update') is True
+        and update.get('new_head') == state.get('reviewed_commit')
+        and update.get('validation_digest') == approval_digest(state))
+    require(refreshed or (approval.get('approved') and approval.get('commit') == state.get('reviewed_commit')
+            and approval.get('digest') == approval_digest(state)), 'matching_draft_approval_required')
     require(not approval_problems(state), 'review_evidence_incomplete')
     require(all(x.get('exit_code') == 0 and not x.get('timed_out') for x in state.get('verified') or [])
             and bool(state.get('verified')), 'independent_checks_required')
     workspace = attach(state, root)
     require(workspace is not None, 'workspace_required')
-    workspace.assert_clean(approval['commit'])
+    workspace.assert_clean(state['reviewed_commit'])
     knowledge.validate(state, root)
-    return approval['commit']
+    return state['reviewed_commit']
 
 
-def pull_identity(state, pull):
+def pull_identity(state, pull, *, expected_head=None):
     pub = state['publication']
     repository = state['issue']['repository'].lower()
     require(pull.get('number') == state['pull_request']['number']
@@ -67,7 +73,10 @@ def pull_identity(state, pull):
                 'pull_repository_changed')
     require(pull['head'].get('ref') == pub['branch'] and pull['base'].get('ref') == pub['base'],
             'pull_branch_changed')
-    require(pull['head'].get('sha') == pub['commit'] == state['reviewed_commit'], 'pull_head_changed')
+    expected = expected_head or ((state.get('merge') or {}).get('policy') or {}).get('head') or state['reviewed_commit']
+    require(pull['head'].get('sha') == expected, 'pull_head_changed')
+    if expected_head is None:
+        require(pub['commit'] == expected, 'publication_head_changed')
 
 
 def strict_checks(api, branch, configured):
@@ -85,11 +94,12 @@ def strict_checks(api, branch, configured):
     return names | set(configured)
 
 
-def enable(run_id, root, forge, *, owner, required_checks=()):
+def enable(run_id, root, forge, *, owner, required_checks=(), auto_update=False, max_updates=3):
     require(bool(re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]{0,38}', owner)), 'invalid_merge_owner')
     require(len(required_checks) <= 40 and all(isinstance(x, str) and 0 < len(x) <= 150
             and not any(ord(c) < 32 for c in x) for x in required_checks), 'invalid_required_checks')
     store = JobStore(root)
+    require(type(auto_update) is bool and type(max_updates) is int and 1 <= max_updates <= 3, 'invalid_update_policy')
     with job_lock(store.root, run_id):
         state = store.get(run_id)
         require(state['status'] == 'published', 'published_run_required')
@@ -103,25 +113,30 @@ def enable(run_id, root, forge, *, owner, required_checks=()):
         metadata = forge.repository_metadata(repository)
         require(metadata['full_name'].lower() == repository.lower()
                 and metadata['default_branch'] == state['publication']['base'], 'target_branch_changed')
-        require(pull['base']['sha'] == state['base_commit']
-                and forge.commit_sha(repository, state['publication']['base']) == state['base_commit'],
+        require(auto_update or (pull['base']['sha'] == state['base_commit']
+                and forge.commit_sha(repository, state['publication']['base']) == state['base_commit']),
                 'base_changed_revalidation_required')
         strict_checks(api, state['publication']['base'], required_checks)
         policy = {'owner': owner, 'required_checks': sorted(set(required_checks)),
                   'head': commit, 'base': state['base_commit'], 'base_ref': state['publication']['base'],
                   'approval_digest': approval_digest(state), 'enabled_at': timestamp(),
-                  'method': 'merge', 'provider': 'github', 'repository': repository}
+                  'method': 'merge', 'provider': 'github', 'repository': repository,
+                  'auto_update': auto_update, 'max_updates': max_updates}
         state['merge'] = {'policy': policy, 'policy_hash': canonical_hash(policy), 'enabled': True,
                           'status': 'waiting_approval', 'reason': 'native_owner_approval_required',
-                          'attempts': 0, 'events': []}
-        request = open_request(state, kind='merge_approval',
-            summary='等待登记负责人在GitHub批准当前候选后受控合并。',
-            questions=['将草稿标为Ready for review，核对当前提交和CI后在GitHub提交Approve。'],
-            context={'run_id': run_id, 'merge_policy': policy})
-        put_request(state, request.model_copy(update={'phase': 'merge'}))
-        state['merge']['human_request_id'] = request.id
+                          'attempts': 0, 'events': [], 'original_require_approval': state.get('require_approval', True)}
+        open_merge_request(state)
         save(store, state, 'enabled')
         return summary(state)
+
+
+def open_merge_request(state):
+    request = open_request(state, kind='merge_approval',
+        summary='等待登记负责人在GitHub批准当前候选后受控合并。',
+        questions=['将草稿标为Ready for review，核对当前提交和CI后在GitHub提交Approve。'],
+        context={'run_id': state['run_id'], 'merge_policy': state['merge']['policy']})
+    put_request(state, request.model_copy(update={'phase': 'merge'}))
+    state['merge']['human_request_id'] = request.id
 
 
 def save(store, state, event, **values):
@@ -253,6 +268,9 @@ def step(run_id, root, forge):
         api, repository = identity(state, forge)
         try:
             require(canonical_hash(merge['policy']) == merge['policy_hash'], 'merge_policy_changed')
+            from repopilot.delivery import base_update
+            if base_update.active(state):
+                return summary(state)
             pull = api.pull()
             pull_identity(state, pull)
             if pull.get('merged'):
@@ -279,6 +297,12 @@ def step(run_id, root, forge):
                 return summary(state)
             if not merge['enabled']:
                 return summary(state)
+            if (merge['policy'].get('auto_update') and not merge.get('intent')
+                    and not merge.get('request_id') and merge['attempts'] == 0):
+                target = forge.commit_sha(repository, merge['policy']['base_ref'])
+                if target != merge['policy']['base']:
+                    base_update.request(state, store, target)
+                    return summary(state)
             require(merge['status'] != 'failed', 'merge_failed_requires_review')
             require(merge['attempts'] < 3, 'merge_submission_limit_requires_review')
             intent = preflight(state, store.root, api, forge, repository)

@@ -60,3 +60,5 @@ evals/runs/
 
 # 嵌套的验证用工作树仓库：只有目录内容随仓库分发，git 元数据留在本机
 **/.git/
+# GitHub App RSA private keys stay local.
+*.private-key.pem

@@ -42,8 +42,27 @@ class GitHub(Forge):
     path_prefix = "/repos/"
     Error = GitHubError
 
-    def __init__(self, token, *, host=GITHUB_HOST, transport=None):
+    def __init__(self, token, *, host=GITHUB_HOST, transport=None, app_auth=None):
+        self.app_auth = app_auth
         super().__init__(token, host=host, transport=transport)
+        if app_auth is not None:
+            self.client.auth = app_auth
+
+    @property
+    def token(self):
+        return self.app_auth.token() if self.app_auth is not None else self._token
+
+    @token.setter
+    def token(self, value):
+        self._token = value
+
+    def viewer(self):
+        return self.app_auth.login() if self.app_auth is not None else super().viewer()
+
+    def close(self):
+        super().close()
+        if self.app_auth is not None:
+            self.app_auth.close()
 
     def headers(self):
         return {"Authorization": f"Bearer {self.token}", "Accept": "application/vnd.github+json",
@@ -125,6 +144,25 @@ class GitHub(Forge):
     def repository_metadata(self, repository):
         value = self.request("GET", f"/repos/{repository}")
         return {"full_name": value["full_name"], "default_branch": value["default_branch"]}
+
+    def push_update(self, workspace, repository, branch, previous, commit):
+        if not re.fullmatch(r'feature-repopilot-[A-Za-z0-9_.-]+', branch):
+            raise GitHubError('invalid_update_branch')
+        if not all(re.fullmatch(r'[0-9a-f]{40,64}', x) for x in (previous, commit)):
+            raise GitHubError('invalid_update_commit')
+        current = self.branch_head(workspace, repository, branch)
+        if current == commit:
+            return
+        if current != previous:
+            raise GitHubError('remote_branch_conflict')
+        if run_git(workspace, 'merge-base', '--is-ancestor', previous, commit, check=False).returncode:
+            raise GitHubError('updated_candidate_not_descendant')
+        try:
+            run_git(workspace, '-c', 'core.hooksPath=', 'push', '--no-verify',
+                f'--force-with-lease=refs/heads/{branch}:{previous}', f'https://{self.host}/{repository}.git',
+                f'{commit}:refs/heads/{branch}', extra_env=git_auth_environment(self.host, 'x-access-token', self.token))
+        except Exception:
+            raise GitHubError('github_update_push_unknown_reconcile_before_retry') from None
 
     def commit_sha(self, repository, ref):
         commit = self.request("GET", f"/repos/{repository}/commits/{quote(ref, safe='')}")["sha"]

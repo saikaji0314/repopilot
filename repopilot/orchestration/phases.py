@@ -54,6 +54,10 @@ class PhaseRunner:
             self.workspace.assert_clean(self.state["expected_head"])
 
     def execute(self, phase):
+        if phase == 'base_update':
+            from repopilot.delivery.base_update import integrate
+            integrate(self)
+            return
         if phase in {"implement", "rework"}:
             self.implement(phase)
             return

@@ -37,7 +37,7 @@ def checked_body(text, secrets=()):
     if not text.strip() or "\0" in text or len(text.encode("utf-8")) > 256_000:
         raise KnowledgeFault("knowledge_body_invalid")
     if any(secret and secret in text for secret in secrets) or re.search(
-        r"(?:sk-[A-Za-z0-9_-]{20,}|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,})", text
+        r"(?:sk-[A-Za-z0-9_-]{20,}|gh[pour]_[A-Za-z0-9]{30,}|ghs_[A-Za-z0-9_.-]{20,}|github_pat_[A-Za-z0-9_]{20,})", text
     ):
         raise KnowledgeFault("knowledge_possible_secret")
     return text

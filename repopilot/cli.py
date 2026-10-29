@@ -38,7 +38,7 @@ def _watch_options(parser):
 
 
 def _execution_options(parser, name):
-    parser.add_argument('--stop-after', choices=['prepare', 'plan', 'implement', 'anchor', 'verify', 'review', 'rework'])
+    parser.add_argument('--stop-after', choices=['prepare', 'plan', 'implement', 'anchor', 'verify', 'review', 'rework', 'base_update'])
     if name == 'resume':
         return
     parser.add_argument('--profile', type=Path, help='执行限额与思考模式 YAML，不含凭证')

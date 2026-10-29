@@ -25,7 +25,7 @@
 
 ## 工作方式
 
-接入 GitHub／GitLab Issue 或本地需求，在独立 worktree 中实现、自检并接受审核返工。人工批准具体提交后，推送分支并创建草稿 PR／MR；GitHub可按运行启用[负责人原生Approve后的受控合并](docs/runtime-v2/MERGING.md)，程序核对CI、版本及分支保护并确认远端结果。软件发布与部署由维护者决定。
+接入 GitHub／GitLab Issue 或本地需求，在独立 worktree 中实现、自检并接受审核返工。人工批准具体提交后，推送分支并创建草稿 PR／MR；GitHub可按运行启用[负责人原生Approve后的受控合并](docs/runtime-v2/MERGING.md)，可更新PR基线并解决冲突，重新检查、双审和批准后核对远端结果。支持[GitHub App机器人身份](docs/runtime-v2/GITHUB-APP.md)，软件发布与部署由维护者决定。
 
 `Issue → worktree → 实现 → 独立检查 → 审核／返工 → 人工批准 → 草稿 PR`
 

@@ -437,4 +437,15 @@ def merge_result(merge, root):
     link = safe_url(review.get('html_url'))
     if link != '#':
         rows.append(['负责人审核', f'<a href="{escape(link)}">GitHub review</a>'])
-    return '<h2>负责人批准后的合并</h2>' + table(['项目', '记录'], rows)
+    output = '<h2>负责人批准后的合并</h2>' + table(['项目', '记录'], rows)
+    updates = merge.get('updates') or []
+    if updates:
+        update_rows = []
+        for item in updates:
+            update_rows.append([escape(str(item.get('id'))), escape(str(item.get('status'))),
+                escape(str(item.get('from_head') or '')), escape(str(item.get('target_base') or '')),
+                escape(str(item.get('new_head') or item.get('integrated_commit') or '')),
+                escape(redact(str((item.get('report') or {}).get('summary') or ''), root))])
+        output += '<h3>PR主分支更新与冲突处理</h3>' + table(
+            ['轮次', '状态', '更新前候选', '新主分支基线', '新候选', '冲突处理'], update_rows)
+    return output

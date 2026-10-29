@@ -27,6 +27,7 @@ dependencies = [
 [project.optional-dependencies]
 test = ["coverage>=7.0"]
 anthropic = ["langchain-anthropic==1.7.6"]
+github-app = ["PyJWT[crypto]>=2.10,<3"]
 
 [project.scripts]
 repopilot = "repopilot.cli:main"

@@ -272,7 +272,7 @@ def recover(run_id, root, *, commit, reason):
         state["in_flight"] = None
         state["status"], state["stop_reason"] = "paused", "operator_recovery"
         # 明确接纳中间改动；只有实现阶段允许从未提交的现场继续。
-        if state["phase"] in {"implement", "rework", "anchor"}:
+        if state["phase"] in {"implement", "rework", "anchor", "base_update"}:
             state["expected_head"] = None
         state["workspace_snapshot"] = source_snapshot(workspace.repository())
         store.save(state)
