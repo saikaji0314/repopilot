@@ -13,6 +13,7 @@ LABELS = {
     'recovery_required': '需要核对现场', 'interrupted': '运行已中断',
     'rejected': '人工已拒绝', 'completed': '报告流程结束',
     'publishing': '正在创建 PR', 'publication_failed': 'PR 创建失败',
+    'merged': '已合并并确认',
 }
 
 
@@ -20,6 +21,8 @@ def delivery_steps(state, changes):
     """每个节点按自己的证据判断，后续状态不能把前面的缺失证据补成成功。"""
     report, checks = state.get('report') or {}, state.get('verified') or []
     review, approval, pull = (state.get(key) or {} for key in ('review_report', 'approval', 'pull_request'))
+    merge = state.get('merge') or {}
+    merged = merge.get('status') == 'merged'
     checked = bool(checks) and all(c.get('exit_code') == 0 and not c.get('timed_out')
                                   and not c.get('error') for c in checks)
     check_failed = bool(checks) and not checked
@@ -42,8 +45,12 @@ def delivery_steps(state, changes):
          review_detail),
         ('人工审批', 'failed' if stale or approval.get('approved') is False else 'done' if approved else 'pending',
          '批准版本已变化' if stale else '已批准' if approved else '已拒绝' if approval.get('approved') is False else '等待人工决定'),
-        ('草稿 PR', 'done' if pull.get('url') else 'pending', '已创建 · 尚未合并' if pull.get('url') else '尚未创建'),
+        ('PR 交付', 'done' if pull.get('url') else 'pending',
+         ('已创建 · 已合并' if merged else '已创建 · 尚未合并') if pull.get('url') else '尚未创建'),
     ]
+    if merge:
+        steps.append(('合并确认', 'done' if merged else 'pending',
+                      '已核对远端主线结果' if merged else '详见负责人批准后的合并记录'))
     return steps
 
 
@@ -52,7 +59,7 @@ def overview(state, changes, headline, action):
     label = LABELS.get(status, '未知状态')
     tone = 'failed' if status in {'failed', 'workspace_error', 'phase_error', 'limit_reached',
         'publication_failed', 'rejected', 'review_inconclusive', 'rework_limit_reached'} else 'waiting'
-    if status == 'published':
+    if status in {'published', 'merged'}:
         tone = 'draft'
     repository = str((state.get('issue') or {}).get('repository') or '本地任务')
     rows = ''.join(
@@ -98,6 +105,11 @@ def shell(title, body, hero, state):
     css = Path(__file__).with_name('report.css').read_text(encoding='utf-8')
     header, content = hero
     metadata = run_metadata(state)
+    merge = state.get('merge') or {}
+    scope = ('已按本次策略核对并确认远端合并。' if merge.get('status') == 'merged' else
+             '本次合并须核对当前提交的负责人 Approve、CI 和分支保护。' if merge.get('enabled') else
+             '合并状态见下方记录；停用后已提交的远端请求仍需核对。' if merge else
+             '本次交付到草稿 PR，尚未启用自动合并。')
     css += "\n" + "\n".join(
         f'body:has(#{identifier}:target) .evidence-tabs a[href="#{identifier}"] {{border-bottom:2px solid #fd8c73;font-weight:600}}'
         for identifier, _ in headings)
@@ -109,8 +121,8 @@ def shell(title, body, hero, state):
             f'<main>{header}<nav class="evidence-tabs" aria-label="报告导航">{nav}</nav>'
             f'<div class="page-columns"><div class="report-content">{content}'
             f'<article>{body}</article></div><aside class="outline"><h2>运行信息</h2>{metadata}'
-            '<div class="scope"><strong>交付边界</strong><p>人工批准后创建草稿 PR。</p>'
-            '<p>合并与部署尚未接入。</p><p>这是已落盘的证据，不是实时监控，也不执行审批。</p></div></aside></div>'
+            f'<div class="scope"><strong>交付边界</strong><p>{scope}</p>'
+            '<p>软件发行和部署需另行授权。</p><p>这是已落盘的证据，不是实时监控，也不执行审批。</p></div></aside></div>'
             '<footer>RepoPilot · 本地运行证据<br>不含原始模型会话与账本；路径及常见凭证已脱敏。分享前请检查业务内容。</footer>'
             '</main></body></html>')
 

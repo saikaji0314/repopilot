@@ -245,13 +245,16 @@ def decide(run_id, root, *, commit, approved, reason):
 
 
 def recover(run_id, root, *, commit, reason):
-    """中途断开的阶段不自动重放；操作者核对现场后才允许从当前文件继续。"""
+    """显式接纳中断现场；无效审核报告只允许在原固定版本上补跑。"""
     if not reason.strip():
         raise StateError("reason_required")
     store = JobStore(root)
     with job_lock(store.root, run_id):
         state = store.get(run_id)
-        if not state["in_flight"]:
+        invalid_review = (not state["in_flight"] and state["phase"] == "review"
+                          and state["status"] == "review_inconclusive"
+                          and state["stop_reason"] == "invalid_review_report")
+        if not state["in_flight"] and not invalid_review:
             raise StateError("no_interrupted_phase")
         if state["in_flight"] == "publish":
             raise StateError("use_publish_to_reconcile_remote_effects")
@@ -266,9 +269,15 @@ def recover(run_id, root, *, commit, reason):
         workspace = attach(state, store.root)
         if workspace is None or head_commit(workspace.repository()) != commit:
             raise StateError("recovery_commit_mismatch")
+        if invalid_review:
+            if state.get("reviewed_commit") != commit or state.get("expected_head") != commit:
+                raise StateError("recovery_commit_mismatch")
+            if source_snapshot(workspace.repository()) != state.get("workspace_snapshot"):
+                raise StateError("reviewed_tree_changed")
         request = human.recovery_request(state, store.root)
         resolve_request(state, request, action="recover", text=reason)
-        state["recovery"] = {"commit": commit, "reason": reason, "phase": state["phase"], "at": timestamp()}
+        state["recovery"] = {"commit": commit, "reason": reason, "phase": state["phase"], "at": timestamp(),
+                             "from_status": state["status"], "from_stop_reason": state["stop_reason"]}
         state["in_flight"] = None
         state["status"], state["stop_reason"] = "paused", "operator_recovery"
         # 明确接纳中间改动；只有实现阶段允许从未提交的现场继续。

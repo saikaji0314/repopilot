@@ -183,7 +183,7 @@ def test_delivery_overview_does_not_turn_completion_into_approval(tmp_path):
     state = {'status': 'completed', 'phase': 'approval', 'report': {'status': 'blocked'}}
     assert all(kind == 'pending' for _, kind, _ in delivery_steps(state, {}))
     html = render(tmp_path, state=state)
-    assert '报告流程结束' in html and '合并与部署尚未接入' in html
+    assert '报告流程结束' in html and '本次交付到草稿 PR，尚未启用自动合并' in html
     assert '不是实时监控' in html
 
 

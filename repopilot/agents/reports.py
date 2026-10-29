@@ -61,7 +61,8 @@ class Finding(Contract):
     basis: Literal["code", "requirement", "material", "check", "missing"] = "code"
     path: str | None = Field(default=None, min_length=1, max_length=500)
     start_line: int | None = Field(default=None, ge=1)
-    reference: str = Field(default="", max_length=1000)
+    reference: str = Field(default="", max_length=1000,
+        description="basis不是code时必须填写具体需求、资料或登记检查的引用，不能留空；code发现使用path和start_line。")
     severity: Literal["blocker", "major", "minor"]
     evidence_status: Literal["reproduced", "source_inference", "insufficient_information"] = "source_inference"
     requirement: str = Field(default="", max_length=1000)
