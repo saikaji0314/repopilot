@@ -13,7 +13,7 @@ class HumanReply(Contract):
     action: Literal["answer", "approve", "reject", "recover", "refresh", "decide"]
     text: str = Field(min_length=1, max_length=8000)
     actor: Literal["local-operator", "registered-owner"] = "local-operator"
-    channel: Literal["cli", "issue"] = "cli"
+    channel: Literal["cli", "issue", "github-review"] = "cli"
     at: str
     source: dict | None = None
 
@@ -22,7 +22,7 @@ class HumanRequest(Contract):
     # 版本1是M1的本地请求；版本2追加集中提问批次、阻塞对象和评论投递记录，旧记录仍可读。
     schema_version: Literal[1, 2] = 2
     id: str
-    kind: Literal["clarification", "approval", "recovery", "context_update", "dispute", "handover"]
+    kind: Literal["clarification", "approval", "merge_approval", "recovery", "context_update", "dispute", "handover"]
     status: Literal["pending", "answered", "superseded"] = "pending"
     phase: str
     summary: str

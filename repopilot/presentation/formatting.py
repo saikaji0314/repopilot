@@ -57,7 +57,7 @@ def tail(output: str, lines: int = 12, limit: int = 1600) -> str:
 
 
 def status_class(status: str | None) -> str:
-    if status in {"published", "approved", "completed", "ok"}:
+    if status in {"published", "merged", "approved", "completed", "ok"}:
         return "ok"
     if status in {"awaiting_approval", "paused", "needs_input"}:
         return "warn"
@@ -172,6 +172,11 @@ def next_action(state: dict) -> str:
     """用一句话说明这次运行为什么停在这里、人需要做什么。"""
 
     status = state.get("status")
+    merge = state.get('merge') or {}
+    if merge.get('status') == 'merged':
+        return '<p class="note">已独立核对远端合并结果；未执行软件发布或部署。</p>'
+    if merge:
+        return '<p class="note">合并状态：' + escape(str(merge.get('status') or '')) + '；' + escape(str(merge.get('reason') or '')) + '。详见负责人批准后的合并记录。</p>'
     run_id = str(state.get("run_id") or "")
     commit = str(state.get("reviewed_commit") or "")
     safe_run, safe_commit = escape(run_id), escape(commit)

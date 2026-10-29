@@ -14,8 +14,8 @@ from repopilot.delivery.forge import ForgeError, open_forge, publish as forge_pu
 from repopilot.storage.jobs import JobStore, StateError
 
 COMMANDS = {'run', 'issue', 'resume', 'retry', 'status', 'jobs', 'report', 'approve', 'reject',
-            'recover', 'publish', 'watch', 'memory', 'human', 'knowledge', 'plan', 'review'}
-SUCCESS_STATUSES = {'ok', 'completed', 'paused', 'needs_input', 'awaiting_approval', 'approved', 'published', 'rejected'}
+            'recover', 'publish', 'watch', 'memory', 'human', 'knowledge', 'plan', 'review', 'merge'}
+SUCCESS_STATUSES = {'ok', 'completed', 'paused', 'needs_input', 'awaiting_approval', 'approved', 'published', 'merged', 'rejected'}
 STATUS_FIELDS = ('run_id', 'status', 'phase', 'in_flight', 'stop_reason', 'reviewed_commit',
                  'report', 'review_report', 'verified', 'issue', 'approval', 'pull_request',
                  'human_requests', 'requirements_revision', 'knowledge_snapshot', 'knowledge_history',
@@ -25,7 +25,7 @@ STATUS_FIELDS = ('run_id', 'status', 'phase', 'in_flight', 'stop_reason', 'revie
                  'platform_preflight', 'parallel_runs', 'integrations', 'parallel_blocked',
                  'pending_integration', 'implementation_slots',
                  'review_rounds', 'review_basis', 'disputes', 'rework_limit', 'rework_extensions',
-                 'review_invalidations', 'review_reuse')
+                 'review_invalidations', 'review_reuse', 'merge')
 
 
 def _watch_options(parser):
@@ -77,6 +77,10 @@ def build_parser():
                              help='持久化运行目录（默认：%(default)s）')
         if name == 'memory':
             from repopilot.memory.cli import configure
+            configure(command)
+            continue
+        if name == 'merge':
+            from repopilot.delivery.merge_cli import configure
             configure(command)
             continue
         if name == 'human':
@@ -182,6 +186,9 @@ def _watch(args):
 
 def execute_command(args):
     """分派应用操作；凭证只在需要模型或仓库平台的命令里加载。"""
+    if args.command == 'merge':
+        from repopilot.delivery.merge_cli import execute
+        return execute(args)
     if args.command == 'human':
         from repopilot.collaboration.cli import execute
         return execute(args)

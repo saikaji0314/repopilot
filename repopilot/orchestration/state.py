@@ -7,7 +7,7 @@ from pathlib import Path
 from repopilot.execution.workspace import Workspace
 
 
-TERMINAL = {"completed", "published", "rejected", "workspace_error", "phase_error", "failed",
+TERMINAL = {"completed", "published", "merged", "rejected", "workspace_error", "phase_error", "failed",
             "limit_reached", "review_inconclusive", "rework_limit_reached", "needs_input"}
 
 

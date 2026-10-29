@@ -39,6 +39,7 @@ def render(state: dict, run_dir: Path, events: list[dict], root: Path) -> str:
         sections.decision(state.get("approval") or {}, root),
         sections.remote(state.get("pull_request") or {}, state.get("publication") or {},
                         state.get("approval") or {}, root),
+        sections.merge_result(state.get("merge") or {}, root),
     ])
     title = f"RepoPilot 运行报告 · {headline}"
     return redact(shell(title, "\n".join(parts), overview(state, changes, headline, next_action(state)), state), root)

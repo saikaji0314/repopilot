@@ -158,7 +158,7 @@ def publish(run_id, root, forge, *, note=None):
     store = JobStore(root)
     with job_lock(store.root, run_id):
         state = store.get(run_id)
-        if state["status"] == "published":
+        if state["status"] in {"published", "merged"}:
             return {"run_id": run_id, "status": "published", "pull_request": state["pull_request"]}
         approval = state.get("approval") or {}
         if (state["status"] not in {"approved", "publication_failed", "publishing"} or

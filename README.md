@@ -25,7 +25,7 @@
 
 ## 工作方式
 
-接入 GitHub／GitLab Issue 或本地需求，在独立 worktree 中实现、自检并接受审核返工。人工批准具体提交后，推送分支并创建草稿 PR／MR；合并与部署由仓库维护者决定。
+接入 GitHub／GitLab Issue 或本地需求，在独立 worktree 中实现、自检并接受审核返工。人工批准具体提交后，推送分支并创建草稿 PR／MR；GitHub可按运行启用[负责人原生Approve后的受控合并](docs/runtime-v2/MERGING.md)，程序核对CI、版本及分支保护并确认远端结果。软件发布与部署由维护者决定。
 
 `Issue → worktree → 实现 → 独立检查 → 审核／返工 → 人工批准 → 草稿 PR`
 
@@ -80,6 +80,7 @@ git -C $demo -c user.name=RepoPilot -c user.email=demo@example.test commit -m "d
 | 我想…… | 入口 |
 | --- | --- |
 | 接 Issue、审批、创建草稿 PR／MR | [平台接入](docs/runtime-v2/FORGES.md) · [自动监听](docs/runtime-v2/WATCH.md) |
+| GitHub负责人Approve后自动合并 | [合并策略、轮询与结果确认](docs/runtime-v2/MERGING.md) |
 | 配置模型、限额或恢复任务 | [模型](docs/runtime-v2/MODELS.md) · [运行协议](docs/runtime-v2/README.md) |
 | 按需规划、集中提问或映射子Issue | [计划与提问](docs/runtime-v2/PLANNING.md) · [人工协作](docs/runtime-v2/HUMAN.md) |
 | 双视角审核、争议复核或修改上限 | [双审与争议](docs/runtime-v2/REVIEW.md) |

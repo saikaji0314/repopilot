@@ -320,6 +320,7 @@ def snapshot(store, state, settings):
         "knowledge_snapshot_id": (state.get("knowledge_snapshot") or {}).get("snapshot_id"),
         "decision_records": state.get("decision_records", []),
         "output_directory": str(directory), "issue": state["issue"], "approval": state["approval"],
+        "merge": state.get("merge"),
         "changes": None if changes is None else {k: changes[k] for k in
             ("changed_files", "additions", "deletions", "base_commit", "head_commit", "worktree")},
         "repository_unchanged": None if state["before"] is None else state["before"] == source_snapshot(Path(state["task"]["repository"])),

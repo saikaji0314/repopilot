@@ -120,7 +120,7 @@ def human_requests(state, root):
     requests = state.get("human_requests") or []
     if not requests:
         return ""
-    kinds = {"clarification": "需求澄清", "approval": "交付批准", "recovery": "现场恢复",
+    kinds = {"clarification": "需求澄清", "approval": "交付批准", "merge_approval": "合并批准", "recovery": "现场恢复",
              "context_update": "资料依据更新", "dispute": "争议判断", "handover": "返工交接"}
     statuses = {"pending": "等待答复", "answered": "已答复", "superseded": "版本已替代"}
     rows = []
@@ -420,3 +420,21 @@ def remote(pull, publication, approval, root):
                      f"<pre>{escape(redact(json.dumps(publication, ensure_ascii=False, indent=1), root))}</pre>")
 
     return "\n".join(parts)
+
+
+def merge_result(merge, root):
+    if not merge:
+        return ''
+    policy = merge.get('policy') or {}
+    review = (merge.get('intent') or {}).get('review') or {}
+    labels = [('状态', merge.get('status')), ('原因', merge.get('reason')),
+              ('自动提交', '启用' if merge.get('enabled') else '停用；已发送的请求仍需核对'),
+              ('负责人', policy.get('owner')), ('批准的候选', policy.get('head')),
+              ('目标基线', policy.get('base')), ('GitHub审核ID', review.get('id')),
+              ('异步请求ID', merge.get('request_id')), ('合并提交', merge.get('commit')),
+              ('远端确认时间', merge.get('confirmed_at'))]
+    rows = [[escape(name), escape(redact(str(value or '—'), root))] for name, value in labels]
+    link = safe_url(review.get('html_url'))
+    if link != '#':
+        rows.append(['负责人审核', f'<a href="{escape(link)}">GitHub review</a>'])
+    return '<h2>负责人批准后的合并</h2>' + table(['项目', '记录'], rows)
