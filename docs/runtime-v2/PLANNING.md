@@ -38,7 +38,11 @@ repopilot plan show RUN_ID --output .local/runtime
 
 `plan show`同时返回`plan_history`、`plan_refresh_history`和按版本排序的`task_brief_versions`，可回查任务说明历史，不需要直接读SQLite。
 
-规划角色只能读文件、检索和读取固定资料，不能编辑。它返回`PlanReport`：
+规划角色只能读文件、检索和读取固定资料，不能编辑。
+
+运行进度提醒同样遵守这个边界：信息充分后直接形成计划，不要求规划者先修改代码或完成交付检查。审核和争议角色也只读；只有实际提供写入工具的实现角色才收到编辑提醒。每个阶段使用当前登记的结构化报告，不把不同角色的完成条件混用。
+
+规划角色返回`PlanReport`：
 
 - `status=ready`：任务说明`brief`加1—6个子任务（默认上限6）；
 - `split=none`：一个子任务，不拆分；

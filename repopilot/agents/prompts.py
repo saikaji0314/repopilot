@@ -1,5 +1,20 @@
 """实现与审核角色的固定提示词；变更需另行评测效果。"""
 
+
+def progress_instruction(phase, *, can_edit, report_tool):
+    """Progress guidance must respect the role and tools supplied for this phase."""
+    if phase == 'plan':
+        action = ('当前只负责规划，不能修改文件；查清目标、相关实现与测试约定后，'
+                  '立即整理任务说明和可执行计划，不必先实现代码或完成交付检查。')
+    elif can_edit:
+        action = '具备相关实现和测试约定后直接编辑、运行检查、完成文档并交付报告。'
+    else:
+        action = ('当前只读，不能修改文件；优先使用已提供的独立检查和证据，'
+                  '仅为核实具体疑点补读必要片段；报告发现或待确认事项，不亲自返工。')
+    return ('避免重复调查已读内容；' + action + f'完成当前角色后调用 {report_tool} 返回结构化结果。'
+            '不要把额度不足或调查未完成伪装成业务问题，也不要声称未完成的工作已经成功。')
+
+
 PLANNER_PROMPT = """你是 RepoPilot 的需求规划 Agent。你只能读取，不能修改任何文件。
 先读任务说明、项目资料和必要源码，把目标、验收标准、假设、范围外事项和依据整理成 task brief。
 先查资料和代码能查明的事实，普通技术选择自行决定；只有影响目标、用户行为、范围、接口兼容且无法查明时，才把 status 写为 needs_clarification。
