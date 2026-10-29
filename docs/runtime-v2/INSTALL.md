@@ -1,6 +1,24 @@
-# 安装 0.1.0rc1 候选包
+# 安装与升级
 
-RepoPilot 当前为实验性预发行候选，适用于可信代码仓库中的小型开发任务。GitHub 有历史真实交付记录；GitLab、Qwen 与 Claude 仅完成离线适配验证。复杂 SymPy 任务的[真实复测](VALIDATION-18.md)仍有调查超限和修复失败，不据此承诺生产修复率或无人值守交付。
+## 当前开发版源码安装
+
+当前指南对应`dev`开发版，尚未发行新包。准备Python 3.11+和Git，在PowerShell执行：
+
+```powershell
+git clone --branch dev https://github.com/saikaji0314/repopilot.git
+cd repopilot
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -c constraints.txt -e .
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+```
+
+本地任务填写模型密钥即可；JavaScript示例另需Node.js。接GitHub App时额外安装`.[github-app]`，再按[App指南](GITHUB-APP.md)配置。首次小任务见[项目首页](../../README.md#快速开始)，当前代码的验证边界见[验证总览](../VALIDATION.md)。
+
+## 早期0.1.0rc1候选
+
+以下wheel安装与冷启动结果对应早期本地候选，不代表当前开发版已经重新打包或发行。新发行需固定提交并重做[预发行检查](PRE-RELEASE.md)。
+
+RepoPilot 当前为实验性预发行候选，适用于可信代码仓库中的小型开发任务。GitHub 有历史真实交付记录；GitLab、Qwen 与 Claude 仅完成离线适配验证。复杂 SymPy 任务的[真实复测](../../evals/reports/scoped-search-20261018.md)仍有调查超限和修复失败，不据此承诺生产修复率或无人值守交付。
 
 需要 Python 3.11+、Git；本候选实际验证为 Windows＋CPython 3.12。其他宿主系统的默认目录规则有单元测试，尚未完成原生冷安装验证。Docker 可选，需另按[沙箱说明](SANDBOX.md)准备固定镜像和仓库依赖。
 
@@ -77,4 +95,4 @@ $env:REPOPILOT_RUNTIME_DIR = 'D:\RepoPilot-data\runtime'
 
 第一代 `legacy` 代码保留作历史参考；本 wheel 只提供新版 `repopilot` 命令，不提供依赖源码题集与配置的 `run-baseline`。源码运行方式见[旧版说明](../legacy/README.md)。
 
-本地候选包尚未代表远端 Release 或 PyPI 已发布。包摘要和本轮实际检查见[增量20](VALIDATION-20.md)。
+本地候选包尚未代表远端 Release 或 PyPI 已发布。包摘要和本轮实际检查见[增量20](../VALIDATION.md#历史机制验收)。

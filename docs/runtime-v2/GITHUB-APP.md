@@ -72,4 +72,4 @@ repopilot human --output RUNTIME preflight RUN_ID
 
 配置依据：[注册App](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app)、[权限选择](https://docs.github.com/en/apps/creating-github-apps/registering-a-github-app/choosing-permissions-for-a-github-app)、[安装身份](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/about-authentication-with-a-github-app)、[安装令牌](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-an-installation-access-token-for-a-github-app)。JWT签名使用可选PyJWT和cryptography，固定RS256，不自行实现RSA。
 
-本轮验证与真实配置前提见[增量32](VALIDATION-32.md)。离线RSA和模拟HTTP通过不代表已安装真实App或具备目标仓库权限。
+本轮验证与真实配置前提见[增量32](../VALIDATION.md#历史机制验收)。离线RSA和模拟HTTP通过不代表已安装真实App或具备目标仓库权限。

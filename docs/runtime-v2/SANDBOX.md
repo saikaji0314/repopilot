@@ -6,7 +6,7 @@
 
 Linux 控制端使用本机 Docker CLI。Windows 控制端使用指定 WSL 发行版内的 Docker Engine，需先启动该服务；本次实际验证环境为 Ubuntu-24.04。两者都需要操作者拥有 Docker 控制权限。
 
-Windows还需确保WSL发行版在等待模型响应时持续存活，例如运行期间保持一个该发行版内的前台进程。M6本机记录过空闲间隙Docker服务终止、下次命令重启后原容器已停止的情况；仅启动systemd服务不足以保证本机WSL一直存活。临时保活由可信操作者管理、结束后关闭，不改变容器权限。若发生此类中断，先核对宿主与容器现场，再用显式`recover`继续同一运行；已用调用、费用与活跃时间不重置。实际记录见[增量30](VALIDATION-30.md)。
+Windows还需确保WSL发行版在等待模型响应时持续存活，例如运行期间保持一个该发行版内的前台进程。M6本机记录过空闲间隙Docker服务终止、下次命令重启后原容器已停止的情况；仅启动systemd服务不足以保证本机WSL一直存活。临时保活由可信操作者管理、结束后关闭，不改变容器权限。若发生此类中断，先核对宿主与容器现场，再用显式`recover`继续同一运行；已用调用、费用与活跃时间不重置。实际记录见[增量30](../VALIDATION.md#历史机制验收)。
 
 ```yaml
 execution:
@@ -73,4 +73,4 @@ flowchart LR
 
 这仍是可信仓库的本机执行后端。Docker daemon 是受信高权限控制面，宿主 Git 仍信任已登记仓库的现有配置、钩子和过滤器；没有隔离宿主管理员。普通容器共享 Linux 内核，尚无 microVM、rootless 或 gVisor 后端。工作卷没有磁盘配额；输出与导出限额不能阻止仓库代码先写满宿主磁盘。归档校验通过后的单文件替换是原子的，但跨文件导入不是事务，磁盘故障或硬杀可能留下部分改动，需人工核对后 recover。
 
-真实执行验证见 [VALIDATION-11](VALIDATION-11.md)；Docker Sandboxes 本机失败及前置资源探针见 [VALIDATION-09](VALIDATION-09.md)。[增量14](VALIDATION-14.md)记录真实模型单题失败及受控超限的产物保存修复；尚无 Docker 后端真实 Issue 到 PR 成功结论，也未做不可信租户或逃逸攻击评估。
+真实执行验证见 [VALIDATION-11](../VALIDATION.md#历史机制验收)；Docker Sandboxes 本机失败及前置资源探针见 [VALIDATION-09](../VALIDATION.md#历史机制验收)。[增量14](../VALIDATION.md#历史机制验收)记录真实模型单题失败及受控超限的产物保存修复；尚无 Docker 后端真实 Issue 到 PR 成功结论，也未做不可信租户或逃逸攻击评估。

@@ -1,100 +1,95 @@
 <div align="center">
-  <a href="https://github.com/saikaji0314/repopilot">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
-      <source media="(prefers-color-scheme: light)" srcset="assets/logo-light.svg">
-      <img src="assets/logo-light.svg" alt="RepoPilot" width="420">
-    </picture>
-  </a>
-  <h3>从 Issue 到可审核的草稿 PR。</h3>
-  <p>面向可信代码仓库的开源研发 Agent，保留改动、检查与审批证据。</p>
-  <p>
-    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="License: MIT"></a>
-    <a href="docs/runtime-v2/INSTALL.md"><img src="https://img.shields.io/badge/Python-3.11%2B-3776ab?logo=python&amp;logoColor=white" alt="Python 3.11+"></a>
-    <a href="https://github.com/langchain-ai/langchain"><img src="https://img.shields.io/badge/Built%20with-LangChain-1c3c3c" alt="Built with LangChain"></a>
-    <a href="https://github.com/langchain-ai/langgraph"><img src="https://img.shields.io/badge/Agent%20loop-LangGraph-1c3c3c" alt="Agent loop: LangGraph"></a>
-    <a href="https://github.com/saikaji0314/repopilot/stargazers"><img src="https://img.shields.io/github/stars/saikaji0314/repopilot?style=flat" alt="GitHub Stars"></a>
-  </p>
-  <p>
-    <a href="#快速开始">快速开始</a> ·
-    <a href="docs/runtime-v2/DEMO.md">交付演示</a> ·
-    <a href="docs/runtime-v2/README.md">使用文档</a> ·
-    <a href="docs/runtime-v2/ARCHITECTURE.md">架构设计</a>
-  </p>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <img src="assets/logo-light.svg" alt="RepoPilot" width="420">
+  </picture>
+  <h3>把 Issue 做成可检查、可批准的代码改动。</h3>
+  <p>Agent 实现、测试和提 PR；负责人批准后，Agent 合并并确认结果。</p>
+  <p><a href="LICENSE">MIT</a> · Python 3.11+ · <a href="docs/README.md">使用文档</a> · <a href="docs/VALIDATION.md">真实验证与限制</a></p>
 </div>
 
-## 工作方式
+## RepoPilot 做什么
 
-接入 GitHub／GitLab Issue 或本地需求，在独立 worktree 中实现、自检并接受审核返工。人工批准具体提交后，推送分支并创建草稿 PR／MR；GitHub可按运行启用[负责人原生Approve后的受控合并](docs/runtime-v2/MERGING.md)，可更新PR基线并解决冲突，重新检查、双审和批准后核对远端结果。支持[GitHub App机器人身份](docs/runtime-v2/GITHUB-APP.md)，软件发布与部署由维护者决定。
+给它一个 GitHub／GitLab Issue，或一份本地需求。RepoPilot 在独立的 Git 工作副本中修改代码，运行你登记的检查，再让两个只读审核视角检查同一个提交。检查和审核通过后，它暂停，等待负责人批准具体提交，再创建草稿 PR／MR。
 
-`Issue → worktree → 实现 → 独立检查 → 审核／返工 → 人工批准 → 草稿 PR`
+GitHub 还可启用后续合并：App 机器人负责提交 PR，你在 GitHub 转为 Ready for review 并点 Approve。RepoPilot 核对批准、CI 和分支保护，然后合并并确认主线确实包含结果。如果主线先发生变化，它可以更新 PR、处理冲突、重新检查和双审，再等你批准新提交。
 
-- **独立验证**：编排层重跑登记检查，审核绑定固定提交，人工审批绑定完整 SHA。
-- **双视角审核**：正确性与需求上下文两个只读视角并行审同一固定提交与依据；发现合并保留来源，具体争议才启动 A／B＋C，最多三次修改后交人。
-- **默认先规划**：新任务先整理任务说明与顺序子任务，集中提问最多 3 批；`--no-plan`保留小任务单Agent路径。依赖有环或缺前置产物不执行，子Issue按需映射。
-- **受控并行**：可并行计划最多2个全局实现槽位，每个子任务独立worktree；单Agent、顺序子任务、返工和整合修复共用同一上限；结果串行整合到父临时分支，再对组合代码独立检查，不直接更新main。
-- **可恢复执行**：SQLite 保存阶段状态与累计预算，支持暂停、显式恢复及轮询接单。
-- **可选 Docker 隔离**：文件工具与检查禁网执行、限制资源，校验产物后导入；失败不回退宿主。
-- **可追溯记忆**：可选文件事实书签，带提交来源、文件指纹和人工确认，变更后失效。
-- **离线交接报告**：集中查看差异、检查、审核、费用、审批和 PR，不依赖前端服务。
+适合已有 Git 仓库、能明确说明需求和验证方法的小型研发任务。你需要准备依赖和检查环境，并对业务取舍与最终批准负责。
 
-## 看一条真实交付
+```mermaid
+flowchart TD
+    A[Issue 或本地需求] --> B[按需规划，在独立工作区实现]
+    B --> C[独立检查、双视角审核、有限返工]
+    C --> D[人批准固定提交，App 创建草稿 PR]
+    D --> E[负责人在 GitHub Approve]
+    E --> F{批准版本、CI、分支保护均满足？}
+    F -->|是| G[App 合并，确认主线结果]
+    F -->|主线变化| H[更新基线或解冲突，重新检查和双审]
+    H --> E
+```
 
-[Issue #1](https://github.com/saikaji0314/zhixianji-jobs/issues/1) → 104 项独立检查 → 两轮审核、一次返工 → 人工批准 → [草稿 PR #2](https://github.com/saikaji0314/zhixianji-jobs/pull/2)（未合并）。
+这里有两次不同决定：批准创建草稿，允许推送这份代码；GitHub Approve，允许合并当前 PR 版本。代码更新后，旧批准不能放行新代码。[完整规则 →](docs/runtime-v2/MERGING.md)
 
-新流程另已跑通[Issue #4](https://github.com/saikaji0314/zhixianji-jobs/issues/4)：默认规划、100项离线检查、独立JSON验收、两个真实审核视角，负责人批准固定SHA后创建[草稿PR #5](https://github.com/saikaji0314/zhixianji-jobs/pull/5)。[本轮验证及失败边界 →](docs/runtime-v2/VALIDATION-30.md)
+## 看一次真实交付
 
-![真实交付报告：改动、检查、审核和草稿 PR](docs/demo/delivery-report.gif)
+[批次列表分页 Issue #6](https://github.com/saikaji0314/zhixianji-jobs/issues/6) → 规划与实现 → 104项测试和独立黑盒验收 → 双审发现文档问题并返工一次 → 人工批准固定提交 → [App 作者的 PR #7](https://github.com/saikaji0314/zhixianji-jobs/pull/7) → 负责人原生 Approve → App 自动合并并确认。
 
-动图为真实历史运行的只读回放。[查看交付证据与失败记录 →](docs/runtime-v2/VALIDATION-05.md)
+成功尝试用了72次模型请求、111次工具执行，估算4.79元。此前失败的规划尝试用了约2.92元，保留在验证记录中，两次合计约7.71元。这是一个开发样本，不能据此推算任意任务的价格或成功率。
+
+![真实运行的离线报告回放：改动、检查、双审、人工批准与合并确认](docs/demo/delivery-report.gif)
+
+动图是已经结束的真实运行的只读回放，不是实时终端录像。[证据与失败记录](docs/VALIDATION.md) · [展示来源与生成方法](docs/demo/README.md)
 
 ## 快速开始
 
-以下为源码安装的 PowerShell 示例，需要 Python 3.12、Git、Node.js 和模型 API。Docker 可选；默认本机执行，仅接入可信仓库。
+以下安装当前 `dev` 开发版，尚未发布新版本。需要 Python 3.11+、Git和模型API密钥；下面的JavaScript示例还需要Node.js。默认在本机执行检查，仅接入可信仓库；[Docker执行](docs/runtime-v2/SANDBOX.md)可选。
+
+在PowerShell中执行：
 
 ```powershell
-git clone https://github.com/saikaji0314/repopilot.git
+git clone --branch dev https://github.com/saikaji0314/repopilot.git
 cd repopilot
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -c constraints.txt -e .
 if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-在 `.env` 填写 `DS_API_KEY`，准备示例的 Git 基线，再运行一项小任务：
+在本机`.env`中填写`DS_API_KEY`，然后准备示例的Git基线并运行。不要把密钥提交到Git。
 
 ```powershell
 $demo = "examples/runtime/fixtures/javascript"
 git -C $demo init -q
 git -C $demo add .
 git -C $demo -c user.name=RepoPilot -c user.email=demo@example.test commit -m "demo baseline"
-# 调用真实模型，会产生 API 费用
+# 下一条会调用真实模型并产生 API 费用
 .\.venv\Scripts\repopilot.exe run examples/runtime/javascript-implement.yaml
-# 将 RUN_ID 替换为运行输出中的 ID
+# RUN_ID 替换为上一条输出的运行 ID
 .\.venv\Scripts\repopilot.exe report RUN_ID --html .local/demo/report.html
 ```
 
-接入自己的仓库时，在任务 YAML 中登记需求、路径和检查命令。工具不限制代码语言，构建依赖与验收环境需自行准备。[安装、配置与升级 →](docs/runtime-v2/INSTALL.md)
+打开生成的HTML，可以查看改动、检查、审核、用量和当前等待事项。接入自己的仓库时，在任务YAML中登记需求、仓库路径和检查命令；模型只能选择这些已登记的检查。[安装与配置](docs/runtime-v2/INSTALL.md) · [任务格式与命令](docs/runtime-v2/README.md)
 
-## 文档
+## 接入 GitHub
 
-| 我想…… | 入口 |
-| --- | --- |
-| 接 Issue、审批、创建草稿 PR／MR | [平台接入](docs/runtime-v2/FORGES.md) · [自动监听](docs/runtime-v2/WATCH.md) |
-| GitHub负责人Approve后自动合并 | [合并策略、轮询与结果确认](docs/runtime-v2/MERGING.md) |
-| 配置模型、限额或恢复任务 | [模型](docs/runtime-v2/MODELS.md) · [运行协议](docs/runtime-v2/README.md) |
-| 按需规划、集中提问或映射子Issue | [计划与提问](docs/runtime-v2/PLANNING.md) · [人工协作](docs/runtime-v2/HUMAN.md) |
-| 双视角审核、争议复核或修改上限 | [双审与争议](docs/runtime-v2/REVIEW.md) |
-| 并行实现、独立worktree或内部整合 | [并行与整合](docs/runtime-v2/PARALLEL.md) |
-| 配置隔离执行、代码记忆或项目资料 | [Docker](docs/runtime-v2/SANDBOX.md) · [Memory](docs/runtime-v2/MEMORY.md) · [项目资料](docs/runtime-v2/KNOWLEDGE.md) |
-| 理解实现与技术取舍 | [架构与代码导航](docs/runtime-v2/ARCHITECTURE.md) · [设计](docs/runtime-v2/DESIGN.md) |
-| 查看评测与安装候选 | [评测方法与结果](evals/swebench/README.md) · [0.1.0rc1](docs/runtime-v2/RELEASE-0.1.0rc1.md) |
+1. 按[GitHub App指南](docs/runtime-v2/GITHUB-APP.md)配置机器人，只安装到需要的仓库。
+2. 按[平台接入指南](docs/runtime-v2/FORGES.md)接入Issue，或配置[监听队列](docs/runtime-v2/WATCH.md)。
+3. 审阅候选报告，批准完整提交SHA，再创建草稿PR。回答问题不等于批准发布。
+4. 如需自动合并，按[合并指南](docs/runtime-v2/MERGING.md)设置负责人、必需CI和分支保护，并运行前台检测。你在GitHub提交Approve，程序核对条件后执行。
 
-## 当前边界
+每次运行分别限制模型请求、工具执行、时间和估算费用；等待人工时不调用模型。暂停或重启不会清零累计额度，也不会自动加额。[模型与限额](docs/runtime-v2/MODELS.md)
 
-当前为实验性候选，适合可信仓库中的明确小任务。GitHub已验证默认规划、真实双视角审核到负责人批准固定提交后的草稿交付；这是小样本开发验证。GitLab、Qwen／兼容接口与Claude仅完成离线适配验证。评论自动往返、子Issue映射、真实模型并行与A／B＋C争议判断仍没有完整真实效果结论。Docker已验证真实容器机制，该后端的真实模型交付及本轮其他仓库结果以[增量30](docs/runtime-v2/VALIDATION-30.md)逐项记录为准；不提供microVM级隔离。
+## 更多能力与边界
 
-评测协议、逐题结果和记忆收益对照见评测文档；开发样本不代表通用修复率。
+- [规划与集中提问](docs/runtime-v2/PLANNING.md)：按需拆任务，小任务可用`--no-plan`。
+- [独立工作区并行](docs/runtime-v2/PARALLEL.md)：最多两个实现槽位，组合代码仍需统一检查和审核。
+- [双审与争议处理](docs/runtime-v2/REVIEW.md)：常规两个视角独立核对；确有争议时才进入额外复核。
+- [项目资料](docs/runtime-v2/KNOWLEDGE.md)与[仓库事实记忆](docs/runtime-v2/MEMORY.md)：带来源和版本，代码改变后核对失效，不能复用旧批准。
+- [持久化与恢复](docs/runtime-v2/README.md)：保存阶段、现场和累计用量，异常后保留证据。
+
+当前仍是实验性开发版。GitHub、DeepSeek和Docker已有真实交付记录；GitLab、其他模型适配、真实模型并行和争议复核等能力须按[验证总览](docs/VALIDATION.md)区分离线覆盖和真实效果。简单任务通过不证明复杂业务冲突一定能自动解决。软件发行、部署、后台常驻服务和大规模成功率仍需后续工作。
+
+[文档导航](docs/README.md) · [架构与代码入口](docs/runtime-v2/ARCHITECTURE.md) · [版本沿革](CHANGELOG.md) · [后续范围](docs/ROADMAP.md) · [公开评测](evals/swebench/README.md)
 
 ## 许可证
 
-RepoPilot 自有代码采用 [MIT](LICENSE)。Flask 源码与教程样例来自 Pallets，保留其 BSD-3-Clause 许可证；第三方材料保留原有许可。
+RepoPilot自有代码采用[MIT](LICENSE)。Flask源码与教程样例来自Pallets，保留其BSD-3-Clause许可证；第三方材料保留原有许可。

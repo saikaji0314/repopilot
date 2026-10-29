@@ -13,7 +13,7 @@ GitHub可使用[App安装身份](GITHUB-APP.md)自动签发／续期令牌，并
 
 只接受 `https` 与 `git@host:path` 两种写法，拒绝带用户名／密码的 URL；未知 host 直接失败，不会猜测。
 
-运行和监听队列的去重键包含平台、host、项目和编号，例如`github:github.com/owner/repo#1`与`gitlab:gitlab.example.com/owner/repo#1`。旧`owner/repo#1`运行在再次接入时，仅在保存的来源URL相同时原子迁移索引，运行ID、批准、费用和计数保持原样；不同来源分别建身份。没有保存来源URL的旧行需人工核查，不能猜测归属或自动重跑。旧队列行保留原key和状态，评论续接按已绑定run_id收尾。相关机制及真实重复接入核对见[增量30](VALIDATION-30.md)。
+运行和监听队列的去重键包含平台、host、项目和编号，例如`github:github.com/owner/repo#1`与`gitlab:gitlab.example.com/owner/repo#1`。旧`owner/repo#1`运行在再次接入时，仅在保存的来源URL相同时原子迁移索引，运行ID、批准、费用和计数保持原样；不同来源分别建身份。没有保存来源URL的旧行需人工核查，不能猜测归属或自动重跑。旧队列行保留原key和状态，评论续接按已绑定run_id收尾。相关机制及真实重复接入核对见[增量30](../VALIDATION.md#历史机制验收)。
 
 索引升级不重写运行JSON或删库。已升级去重索引后，应使用本版继续接单／监听；更早版本不能识别新key，不能直接降级接管同一活动库。旧运行可通过本版继续查看、核对和恢复。
 

@@ -1,59 +1,30 @@
-# 演示材料
+# 真实交付的报告回放
 
-## 首页动图
+![App交付、负责人批准与合并确认](delivery-report.gif)
 
-[delivery-report.gif](delivery-report.gif)：**19.6 秒，1200×733，约 406 KiB**。六幅画面依次是交付概览、候选改动、独立复核、审核与返工、人工决定、远端产物；每一幅都保留页头、证据导航和右侧「运行信息」，只显示当前区块。
+这份动图来自已经结束的真实运行`issue-6-77078d068ae6`：[分页Issue #6](https://github.com/saikaji0314/zhixianji-jobs/issues/6) → [PR #7](https://github.com/saikaji0314/zhixianji-jobs/pull/7)。它是离线HTML报告的只读截图回放，不是实时终端录像，不用字幕合成模型执行过程。
 
-![真实历史运行的只读报告回放](delivery-report.gif)
+## 回放里能核对什么
 
-静态预览为 [delivery-overview.png](delivery-overview.png)（1600×978）。
+七帧依次展示交付概览、候选改动、独立复核、双审与一次返工、人工发布决定、远端PR、原生Approve及合并确认。候选SHA是`73d36465be46538894c15cb193c03bce7cea4203`，确认的合并提交是`f74b92091215ef9db734cefaa0fe40d205c82d51`。
 
-来源是历史运行 `issue-1-1d3bc15b6211`：公开仓库的 [Issue #1](https://github.com/saikaji0314/zhixianji-jobs/issues/1)，104 项测试、两轮审核与一次返工，批准的提交为 `e3ac2677a620a93b844eaae98ab0fa7898efeaed`，产物为[草稿 PR #2](https://github.com/saikaji0314/zhixianji-jobs/pull/2)，尚未合并。
+本次成功尝试72次模型请求、111次工具执行，估算4.79元；原规划失败另保留约2.92元。动图没有展示全部原始消息，也没有覆盖真实冲突路径。[完整结论与失败边界](../VALIDATION.md)
 
-动图是**同一次已结束运行的证据浏览**，不是 Agent 实时执行的录屏；画面切换不表示后台重新执行了实现、检查或发布。生成没有模型费用，也没有远端写入。
+- [动图](delivery-report.gif)：1200×733，7帧，23.2秒。
+- [静态封面](delivery-overview.png)：便于文档或讲解时展示。
+- HTML为单文件报告，原始会话、账本、密钥和本机数据不随媒体公开。报告可能含业务内容，分享自己的报告前应核对。
 
-## 为什么重录
+## 用自己的运行生成回放
 
-上一版是 868×610，源截图只有 1054×741（1 倍像素密度），再以 128 色量化、帧源为 JPEG，正文小字边缘发糊。新版的做法：
-
-| 项 | 旧版 | 现在 |
-| --- | --- | --- |
-| 源截图 | 1054×741，1 倍 | 2880×1760，2 倍像素密度 |
-| 成图宽度 | 868 | 1200（自 2880 缩小，属于超采样） |
-| 帧源格式 | JPEG（有损） | PNG（无损） |
-| 调色板 | 128 色，无抖动 | 256 色，Floyd–Steinberg 抖动 |
-| 取景 | 人工在浏览器滚动截图 | 命令驱动，特写帧只渲染目标区块 |
-
-体积从约 435 KiB 降到约 406 KiB，同时多了一幅「人工决定」。
-
-## 重新生成
-
-三步都是命令，不需要人工在浏览器里翻页：
+以下为PowerShell示例。使用安装了RepoPilot和Pillow的解释器，另需本机Chrome或Edge；这两个截图工具不属于运行时依赖。
 
 ```powershell
-# 1) 生成离线报告（不调用模型）
-.\.venv\Scripts\repopilot.exe report issue-1-1d3bc15b6211 --html .local\demo\report.html
-
-# 2) 用本机 Chrome 无头模式截 2 倍像素密度的帧，并写出清单
-python scripts/capture_report_frames.py --run-id issue-1-1d3bc15b6211 --html .local\demo\report.html
-
-# 3) 编码成 GIF 与静态预览
-python scripts/assemble_report_gif.py .local\demo\frames\frames.json `
-    --output docs/demo/delivery-report.gif --poster docs/demo/delivery-overview.png
+.\.venv\Scripts\python.exe -m pip install Pillow
+.\.venv\Scripts\repopilot.exe report RUN_ID --html .local/demo/report.html
+.\.venv\Scripts\python.exe scripts/capture_report_frames.py --run-id RUN_ID --html .local/demo/report.html --work .local/demo/frames
+.\.venv\Scripts\python.exe scripts/assemble_report_gif.py .local/demo/frames/frames.json --output docs/demo/delivery-report.gif --poster docs/demo/delivery-overview.png
 ```
 
-截图与清单留在被忽略的 `.local/demo/frames/`，不随仓库分发。两个脚本都需要 Pillow；产品运行时本身不依赖 Pillow 或浏览器。
+将`RUN_ID`替换为已有运行ID。导出、截图和编码均不调用模型，也不执行发布或审批。当前素材使用Pillow 12.3.0和本机无头浏览器生成；其他浏览器路径可用`--chrome`指定。
 
-抓帧的约束值得记下来，因为它决定了实现方式：
-
-- 无头 Chrome 的 `--screenshot` **不会**在锚点滚动后重绘，`file:///x.html#evidence-5` 会得到纯白画面。因此特写帧改为为每个区块生成一份只显示该区块的临时页面，不依赖滚动。
-- `--screenshot` 必须给绝对路径，相对路径在部分版本上会被静默忽略。
-- 截图是异步落盘，脚本会等文件尺寸稳定后再继续。
-
-编码器按清单里的 `crop` 统一裁切、按 `scale_to` 等比缩放、按 `trim` 只去掉底部空白，并校验裁切区域在截图范围内；它不生成页面内容，也不访问凭证、模型或 GitHub。
-
-## 历史视频
-
-[run-report.mp4](run-report.mp4) 与 [run-report.gif](run-report.gif) 保留为更早一版报告的 38 秒演示，来源是另一条较小的本地任务 `demo-test-count-sync-07d7b2a3519d`。它没有接入 Issue，也没有发布 PR；不能拿它代表完整交付。视频由脚本排版、截图及字幕合成，终端画面不是现场终端录屏。
-
-那一版基于旧的报告布局，不再随当前页面重新生成；当前首页以上面的 GIF 为准。真实执行演示步骤见[交付演示](../runtime-v2/DEMO.md)。
+截图按实际章节标题定位，不依赖旧章节序号；工作目录可复用，不会被整体删除。缺少某个章节会明确报错，不能用其他章节冒充。旧的合成视频及旧版报告媒体已归档，不再作为当前流程的展示入口；Git历史仍保留原版本。

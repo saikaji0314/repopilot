@@ -4,7 +4,7 @@
 
 ## 为什么清理旧工具结果还不够
 
-早期运行使用 LangChain `ContextEditingMiddleware` 清除旧读取结果，但它保留 assistant 消息、工具参数和供应商要求回传的 reasoning 字段。历史 19254 即使已有大量读取被清除，仍触及 90 KB 请求上限，见[失败轨迹](VALIDATION-18.md)。只提高上限或重复提醒“尽快修改”不能验证问题已解决。
+早期运行使用 LangChain `ContextEditingMiddleware` 清除旧读取结果，但它保留 assistant 消息、工具参数和供应商要求回传的 reasoning 字段。历史 19254 即使已有大量读取被清除，仍触及 90 KB 请求上限，见[失败轨迹](../../evals/reports/scoped-search-20261018.md)。只提高上限或重复提醒“尽快修改”不能验证问题已解决。
 
 ## 有界请求视图
 

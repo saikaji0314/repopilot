@@ -99,7 +99,7 @@ Copy-Item .env.example .env
 .\.venv\Scripts\python.exe -m scripts.verify_flask_source_tasks
 ```
 
-全题对照命令为 `python -m scripts.compare_retrieval`，会产生多次模型调用；指标采集后的严格评分需要按 Oracle 审核。更多说明见 [评测复现](../phase-2/EVALUATION.md)。自动化测试主要使用 Fake/Mock 模型，缺少独立环境或系统条件时部分测试会跳过。
+全题对照命令为 `python -m scripts.compare_retrieval`，会产生多次模型调用；指标采集后的严格评分需要按 Oracle 审核。更多说明见 [评测复现](../../evals/REPRODUCING.md)。自动化测试主要使用 Fake/Mock 模型，缺少独立环境或系统条件时部分测试会跳过。
 
 ## 代码与文档导航
 
@@ -114,9 +114,7 @@ target-repos/         固定版本的被测仓库
 tests/                循环、工具、检索及题集回归测试
 ```
 
-- [任务建模与基线](../phase-0/README.md)
-- [Agent 执行引擎](../phase-1/README.md)
-- [代码检索与上下文](../phase-2/README.md)
+- [历史版本与沿革](../../CHANGELOG.md#更早的诊断原型)
 - [评测任务说明](../../evals/tasks/README.md)
 - [被测仓库与来源](../../target-repos/README.md)
 

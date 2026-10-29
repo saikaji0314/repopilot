@@ -1,8 +1,8 @@
 # GitHub 负责人批准后的受控合并
 
-2026-10-29补充：可显式启用PR主分支更新与冲突修复，并使用[GitHub App安装身份](GITHUB-APP.md)。相关条目以下方“PR更新与冲突”小节为准；结果见[增量32](VALIDATION-32.md)。
+2026-10-29补充：可显式启用PR主分支更新与冲突修复，并使用[GitHub App安装身份](GITHUB-APP.md)。相关条目以下方“PR更新与冲突”小节为准；结果见[增量32](../VALIDATION.md#历史机制验收)。
 
-2026-10-29范围补充：保留现有草稿交付，在单次运行显式启用后，检测登记负责人在GitHub PR页面提交的Approve，核对当前版本、CI和分支保护，再执行合并并确认远端结果。合并协调由程序完成，不调用模型。部署、软件发布、多人风险分级、跨仓库联动和GitLab自动合并仍未纳入。
+2026-10-29范围补充：保留现有草稿交付，在单次运行显式启用后，检测登记负责人在GitHub PR页面提交的Approve，核对当前版本、CI和分支保护，再执行合并并确认远端结果。正常合并协调由程序完成，不调用模型；基线更新或冲突修复可能调用模型，并沿用原运行额度。部署、软件发布、多人风险分级、跨仓库联动和GitLab自动合并仍未纳入。
 
 ## 使用前提
 
@@ -74,4 +74,4 @@ repopilot merge --output RUNTIME watch RUN_ID
 - [GitHub异步合并API](https://docs.github.com/en/rest/pulls/pulls#merge-a-pull-request-asynchronously)：请求、UUID、查询结果与合并确认分开。
 - [分支保护API](https://docs.github.com/en/rest/branches/branch-protection#get-branch-protection)：读取strict必需检查。
 
-本轮先验证真实本地Git／SQLite和模拟GitHub HTTP，不以模拟通过冒充远端合并。历史Support PR #2只读预检确认作者和负责人同为saikaji0314，不能进行本人Approve的真实闭环；没有替用户发送审核或合并。结果和命令见[增量31](VALIDATION-31.md)。
+本轮先验证真实本地Git／SQLite和模拟GitHub HTTP，不以模拟通过冒充远端合并。历史Support PR #2只读预检确认作者和负责人同为saikaji0314，不能进行本人Approve的真实闭环；没有替用户发送审核或合并。结果和命令见[增量31](../VALIDATION.md#历史机制验收)。

@@ -13,6 +13,6 @@
 
 执行入口：[本地预检脚本](../../scripts/verify_ticket_tasks.py)，脚本输出每个阶段的命令、退出码、stdout 和 stderr。自动化防退化检查见 [题集测试](../../tests/test_ticket_task_fixtures.py)。
 
-新增内容及运行说明见 [第二期题集说明](../../docs/phase-2/TASK_SET.md)。两题的正式模型成绩均尚未产生；008 尚未用于模型调参。
+新增内容及运行说明见 [第二期题集说明](../tasks/README.md)。两题的正式模型成绩均尚未产生；008 尚未用于模型调参。
 
 最终全量测试：`python -X utf8 -m pytest -q`，174 passed、2 skipped（12.12 秒）。新增四项检查包括两条完整预检和两条真实符号工具取证检查。共 8 份 task.yaml 均可加载，所有 Oracle YAML 均可解析；两题附加的干净模块快照逐文件哈希一致。跳过项仍不视为安全验证通过。

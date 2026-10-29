@@ -1,17 +1,16 @@
 """用本机 Chrome 无头模式把离线报告截成高清帧，并写出 GIF 清单。
 
-这一步以前靠人工在浏览器里翻页截图，既不可复现，也会因为拿不到浏览器画面而卡住。
-现在改成命令驱动：概览帧截完整页头，其余帧各自生成一份只显示目标区块的临时页面，
-因此**不依赖滚动定位**（无头截屏在锚点滚动后不会重绘，实测会得到空白画面）；
-截图按 2 倍像素密度输出，交给 `assemble_report_gif.py` 编码。
+概览帧截页头，其余帧按章节标题定位并生成单独的临时页面，避免章节增删后截错内容。
+截图按 2 倍像素密度输出，交给 `assemble_report_gif.py` 编码；只覆盖本工具的命名输出，
+不会清空工作目录。
 
 只读已落盘的报告 HTML，不调用模型、不访问 GitHub、不含凭证。
 """
 
 import argparse
+from html.parser import HTMLParser
 import json
 from pathlib import Path
-import shutil
 import subprocess
 import sys
 import time
@@ -23,15 +22,40 @@ CHROME_CANDIDATES = [
     r"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
 ]
 
-# 报告 article 里的区块按 evidence-N 编号（第 N 个 h2），对应 sections.py 的顺序。
+# 标题匹配后再解析当前 evidence-N；不把展示脚本绑定到某一版报告的章节序号。
 TOUR = [
     ("01-overview", None, 3600, "交付概览"),
-    ("02-changes", 5, 3200, "候选改动"),
-    ("03-checks", 6, 3000, "独立复核"),
-    ("04-review", 7, 3400, "审核与返工"),
-    ("05-approval", 8, 3000, "人工决定"),
-    ("06-remote", 9, 3400, "远端产物"),
+    ("02-changes", "候选改动", 3200, "候选改动"),
+    ("03-checks", "独立复核", 3000, "独立复核"),
+    ("04-review", "审核与返工", 3400, "审核与返工"),
+    ("05-approval", "人工决定", 3000, "人工决定"),
+    ("06-remote", "远端产物", 3000, "远端产物"),
+    ("07-merge", "负责人批准后的合并", 4000, "原生批准与合并确认"),
 ]
+
+
+class EvidenceHeadings(HTMLParser):
+    """只索引报告已有的 evidence 编号，不执行 HTML 或脚本。"""
+
+    def __init__(self):
+        super().__init__()
+        self.current = None
+        self.headings = {}
+
+    def handle_starttag(self, tag, attrs):
+        identifier = dict(attrs).get("id", "")
+        if tag == "h2" and identifier.startswith("evidence-") and identifier[9:].isdigit():
+            self.current = (int(identifier[9:]), [])
+
+    def handle_data(self, data):
+        if self.current is not None:
+            self.current[1].append(data)
+
+    def handle_endtag(self, tag):
+        if tag == "h2" and self.current is not None:
+            index, parts = self.current
+            self.headings["".join(parts).strip()] = index
+            self.current = None
 
 ISOLATION = """<style id="capture-isolation">
 .report-content > .handoff {{ display: none !important; }}
@@ -101,20 +125,24 @@ def main() -> int:
     root = Path(__file__).resolve().parents[1]
     html_path = args.html or (args.work / "generated.html")
     if not html_path.exists():
-        subprocess.run([str(root / ".venv" / "Scripts" / "repopilot.exe"), "report", args.run_id,
+        subprocess.run([sys.executable, "-m", "repopilot.cli", "report", args.run_id,
                         "--html", str(html_path)], check=True, capture_output=True)
     html = html_path.resolve().read_text(encoding="utf-8")
+    headings = EvidenceHeadings()
+    headings.feed(html)
+    missing = [title for _, title, _, _ in TOUR if title and title not in headings.headings]
+    if missing:
+        raise SystemExit("report_sections_missing: " + ", ".join(missing))
 
-    if args.work.exists():
-        shutil.rmtree(args.work)
     work = args.work.resolve()
-    work.mkdir(parents=True)
+    work.mkdir(parents=True, exist_ok=True)
     plain = work / "report.html"
     plain.write_text(html, encoding="utf-8")
     chrome = find_chrome(args.chrome)
 
     frames = []
-    for name, index, duration, label in TOUR:
+    for name, title, duration, label in TOUR:
+        index = headings.headings[title] if title else None
         if index is None:
             page = plain
         else:

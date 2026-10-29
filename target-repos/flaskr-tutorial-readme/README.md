@@ -2,7 +2,7 @@
 
 Flaskr 是 Pallets 官方 Flask 教程中的博客应用，本仓库使用 Flask 3.1.3 标签下的固定源码作为诊断基线。RepoPilot 围绕该样例构造鉴权、密码校验、输入边界、排序、事务与配置问题；Agent 实现位于仓库根目录的 `repopilot/`。
 
-源码位于 [flaskr-tutorial](../flaskr-tutorial)，来源与固定版本见 [仓库选型说明](../../docs/phase-0/MAIN_REPOSITORY.md)。上游 README 和 BSD-3-Clause 许可证保留在样例目录中。
+源码位于 [flaskr-tutorial](../flaskr-tutorial)，来源与固定版本见 [仓库选型说明](../FLASKR.md)。上游 README 和 BSD-3-Clause 许可证保留在样例目录中。
 
 ## 业务与代码结构
 

@@ -41,6 +41,7 @@ name = "repopilot"
 
 [tool.flit.sdist]
 include = [
+    "CHANGELOG.md",
     "assets/",
     "tests/",
     "docs/",

@@ -72,11 +72,11 @@ swebench eval case-01/scoring-record.jsonl -p reference-01/predictions.jsonl \
 
 API 推理可能收费；本地评分也需要下载与算力。“离线评测”不等于无网络或零成本。恢复、审批、预算、监听和执行隔离继续用专门协议测试，不能由 SWE-bench 分数代替。
 
-上游来源：[评分器源码与许可](https://github.com/SWE-bench/SWE-bench)、[Lite 数据集](https://huggingface.co/datasets/SWE-bench/SWE-bench_Lite)。下载的数据、答案、日志与第三方 checkout 留在本地，不随本仓库分发。实际验证见 [增量13](../../docs/runtime-v2/VALIDATION-13.md)。
+上游来源：[评分器源码与许可](https://github.com/SWE-bench/SWE-bench)、[Lite 数据集](https://huggingface.co/datasets/SWE-bench/SWE-bench_Lite)。下载的数据、答案、日志与第三方 checkout 留在本地，不随本仓库分发。实际验证见 [增量13](../../docs/VALIDATION.md#历史机制验收)。
 
-首轮完整开发子集见[冻结的5题协议](development-20261018.json)、[脱敏结果](results-20261018.json)与[增量15](../../docs/runtime-v2/VALIDATION-15.md)：2/5官方验收通过，1/5同时完成本地复核与审核，估算费用2.703557元。与同一工具调用序列的生命周期对照一起，验证了超限产物保存修复；不据此宣称生产级可靠性或组件带来修复率提升。
+首轮完整开发子集见[冻结的5题协议](development-20261018.json)、[脱敏结果](results-20261018.json)与[增量15](../reports/swebench-pilot-20261018.md)：2/5官方验收通过，1/5同时完成本地复核与审核，估算费用2.703557元。与同一工具调用序列的生命周期对照一起，验证了超限产物保存修复；不据此宣称生产级可靠性或组件带来修复率提升。
 
-普通应用库任务的后续开发评测见[2026-10-26冻结协议](ordinary-20261026.json)、[完整指标](ordinary-results-20261026.json)与[实际复盘](../../docs/runtime-v2/VALIDATION-23.md)。同时保存原始整补丁评分和候选测试／官方测试冲突的[独立评分诊断](ordinary-grading-diagnostic-20261026.json)，不覆盖旧结果。难度与限额的人工评估方法见[任务评估](../../docs/runtime-v2/TASK-ASSESSMENT.md)。
+普通应用库任务的后续开发评测见[2026-10-26冻结协议](ordinary-20261026.json)、[完整指标](ordinary-results-20261026.json)与[实际复盘](../reports/flask-tasks-20261026.md)。同时保存原始整补丁评分和候选测试／官方测试冲突的[独立评分诊断](ordinary-grading-diagnostic-20261026.json)，不覆盖旧结果。难度与限额的人工评估方法见[任务评估](../../docs/runtime-v2/TASK-ASSESSMENT.md)。
 
 ## 显式仓库记忆对照
 
@@ -89,4 +89,4 @@ API 推理可能收费；本地评分也需要下载与算力。“离线评测�
 
 ## 2026-10-19：上下文与仓库记忆对照结果
 
-[首轮九次](context-memory-results-20261019.json)与[修正四次](context-memory-refinement-results-20261019.json)分别保留。首轮同代码、同配置关闭记忆的五题开发回归为4/5官方验收、1/5完整复核审核；不能与新基线、开启记忆或修正组挑选拼接成绩。记忆结果方向不一致，另有两次解题执行错误，未证明稳定收益。方法、完整分母、费用和未解决项见[验证记录](../../docs/runtime-v2/VALIDATION-22.md)。
+[首轮九次](context-memory-results-20261019.json)与[修正四次](context-memory-refinement-results-20261019.json)分别保留。首轮同代码、同配置关闭记忆的五题开发回归为4/5官方验收、1/5完整复核审核；不能与新基线、开启记忆或修正组挑选拼接成绩。记忆结果方向不一致，另有两次解题执行错误，未证明稳定收益。方法、完整分母、费用和未解决项见[验证记录](../reports/context-memory-20261019.md)。

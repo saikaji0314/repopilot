@@ -97,6 +97,6 @@ worktree 隔离不等于操作系统隔离。两个任务仍共享宿主权限�
 
 已真实验证单监听器、一个独立 worker 自动处理新 Issue 到人审暂停；已用两个真实 spawn 进程、虚构队列验证不同仓库可以同时运行，并用回归验证同仓库限额。它不是两个真实模型工单的并发效果证明。
 
-重启去重、停止入口、故障退避与既有任务不重复接入都有回归／本机验证；没有长期运行、机器重启恢复、网络长时间故障或多主机部署证据。评论自动投递／轮询只有Fake／MockTransport机制和本地队列验证，没有真实GitHub Issue评论往返或平台限流长期运行证据；完整事实见 [验证记录](VALIDATION-05.md)。
+重启去重、停止入口、故障退避与既有任务不重复接入都有回归／本机验证；没有长期运行、机器重启恢复、网络长时间故障或多主机部署证据。评论自动投递／轮询只有Fake／MockTransport机制和本地队列验证，没有真实GitHub Issue评论往返或平台限流长期运行证据；完整事实见 [验证记录](../VALIDATION.md#历史机制验收)。
 
 接口来源：[GitHub List repository issues](https://docs.github.com/en/rest/issues/issues#list-repository-issues)、[GitHub REST 最佳实践](https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api)。

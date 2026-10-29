@@ -24,7 +24,8 @@
 | `approved` / `rejected` | 已记录人工决定；approved 可显式 publish |
 | `recovery_required` | 检查点有未完成阶段，必须先核对现场并 recover |
 | `publication_failed` / `publishing` | publish 可核对 GitHub 副作用后重试 |
-| `published` | 已创建或核对到同一草稿 PR，不代表合并 |
+| `published` | 已创建或核对到同一草稿PR；如启用合并，另看`merge.status`，不能据此认定已合并 |
+| `merged` | 已核对远端合并结果，确认合并提交包含候选与基线且位于目标主线；不表示软件发行或部署 |
 | `completed` | 只读、未实现或关闭审核的报告完成，需另看 report.status |
 | `limit_reached` / `review_inconclusive` / `rework_limit_reached` | 超限、审核无法判断或返工到限，交人工处理；`rework_limit_reached`可经`review continue`明确延长 |
 | `workspace_error` / `phase_error` / `failed` / `interrupted` | 工作区、结构化协议、执行异常或中断，保留现场和原因 |
@@ -63,13 +64,13 @@ GitHub 仅接收标准 `https://github.com/OWNER/REPO/issues/N`；Issue 必须�
 
 ## 验证与来源
 
-当前版本的完整免费回归、真实Docker补测及新题实测准备见[增量33](VALIDATION-33.md)。798项去重通过不代表新增Approve／冲突更新／合并链路已完成真实验收。
+当前版本的完整免费回归、真实Docker补测及新题实测准备见[增量33](../VALIDATION.md#历史机制验收)。798项去重通过不代表新增Approve／冲突更新／合并链路已完成真实验收。
 
-历史增量：[调查](VALIDATION-01.md)、[工作区](VALIDATION-02.md)、[审核返工](VALIDATION-03.md)。持久化与审批的历史实现见[增量 4](VALIDATION-04.md)，真实交付与常驻监听见[增量 5](VALIDATION-05.md)，展示步骤见[演示](DEMO.md)，区分确定性模拟、真实本地 Git／检查、真实模型和真实 GitHub 写入，不能互相代替。
+历史增量：[调查](../VALIDATION.md#历史机制验收)、[工作区](../VALIDATION.md#历史机制验收)、[审核返工](../VALIDATION.md#历史机制验收)。持久化与审批的历史实现见[增量 4](../VALIDATION.md#历史机制验收)，真实交付与常驻监听见[增量 5](../VALIDATION.md#历史机制验收)，展示步骤见[演示](DEMO.md)，区分确定性模拟、真实本地 Git／检查、真实模型和真实 GitHub 写入，不能互相代替。
 
-[SWE-bench 接入协议](../../evals/swebench/README.md)提供单题输入边界与官方补丁导出；[增量13](VALIDATION-13.md)记录实际评分环境预检，尚非模型修复效果评测。[增量27](VALIDATION-27.md)记录M3计划、集中提问、评论渠道和子Issue映射的本地机制验证；[增量28](VALIDATION-28.md)记录M4并行与整合的本地机制验证。
+[SWE-bench 接入协议](../../evals/swebench/README.md)提供单题输入边界与官方补丁导出；[增量13](../VALIDATION.md#历史机制验收)记录实际评分环境预检，尚非模型修复效果评测。[增量27](../VALIDATION.md#历史机制验收)记录M3计划、集中提问、评论渠道和子Issue映射的本地机制验证；[增量28](../VALIDATION.md#历史机制验收)记录M4并行与整合的本地机制验证。
 
-[增量15](VALIDATION-15.md)提供冻结5题的真实开发基线，以及同一工具响应重放的产物保存对照；区分官方验收、审核完成、空补丁与未修复，不外推完整Lite或生产能力。
+[增量15](../../evals/reports/swebench-pilot-20261018.md)提供冻结5题的真实开发基线，以及同一工具响应重放的产物保存对照；区分官方验收、审核完成、空补丁与未修复，不外推完整Lite或生产能力。
 
 - [LangChain Agent](https://docs.langchain.com/oss/python/langchain/agents)
 - [LangGraph 暂停与副作用](https://docs.langchain.com/oss/python/langgraph/interrupts)
@@ -80,7 +81,7 @@ GitHub 仅接收标准 `https://github.com/OWNER/REPO/issues/N`；Issue 必须�
 
 ## 交付 profile 与模型接线
 
-供应商选择、参数边界和恢复凭证规则见[模型配置](MODELS.md)，离线适配证据见[增量16](VALIDATION-16.md)。5 题开发基线暴露的工具、上下文、阶段预算及记忆证据边界见[Harness 诊断](HARNESS-FINDINGS.md)。
+供应商选择、参数边界和恢复凭证规则见[模型配置](MODELS.md)，离线适配证据见[增量16](../VALIDATION.md#历史机制验收)。5 题开发基线暴露的工具、上下文、阶段预算及记忆证据边界见[Harness 诊断](HARNESS-FINDINGS.md)。
 
 `run / issue / retry --profile PATH` 接收经过校验的执行参数 YAML，直接命令行参数优先。只允许调整单次执行限制与思考选项，不接受 API key、端点、模型名或累计预算。`examples/runtime/deepseek-delivery.yaml` 是真实功能演示使用的参数；凭证与模型配置仍来自 .env，resume 不改变已冻结的参数。
 
@@ -95,4 +96,4 @@ GitHub CLI 的新任务／retry 和监听 worker 都先获取远端默认分支�
 
 在旧读取清理之外，新增按消息预算90%触发的有界上下文视图，保留任务、工具观察和完整近期工具轮次；模型响应后通过LangGraph消息reducer保存到阶段会话。外层SQLite与显式恢复规则不变，这不是LangGraph数据库checkpointer。原始工具事件与累计预算保留，工作集不作为系统指令；见[上下文协议](CONTEXT.md)。
 
-跨运行仓库记忆仍为默认关闭的文件事实书签。实际开关对照、失败分母与执行错误见[增量22](VALIDATION-22.md)，目前不宣称稳定降本或修复率收益。
+跨运行仓库记忆仍为默认关闭的文件事实书签。实际开关对照、失败分母与执行错误见[增量22](../../evals/reports/context-memory-20261019.md)，目前不宣称稳定降本或修复率收益。
