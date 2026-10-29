@@ -18,7 +18,7 @@
 | [zhixianji-jobs #4](https://github.com/saikaji0314/zhixianji-jobs/issues/4) | 默认规划、100项离线测试、独立JSON验收、两个真实审核视角，固定提交`145194b011b51be383c32d9da279ff78c32f6197`经人工批准后创建[PR #5](https://github.com/saikaji0314/zhixianji-jobs/pull/5) | 新流程的小型草稿交付，估算约2.42元；不作为自动合并证据 |
 | [SupportPilot #1](https://github.com/saikaji0314/SupportPilot/issues/1) | 最终112项测试执行、2项按原条件跳过，独立HTTP验收及双审通过；批准`0d40e3100a4efa7681560f597b53ff6f56d3d384`后创建[PR #2](https://github.com/saikaji0314/SupportPilot/pull/2) | 第三次尝试44次请求、约3.13元；三次合计约14.85元。PR后由负责人手动合并，不能算App自动合并 |
 | [zhixianji-jobs #6](https://github.com/saikaji0314/zhixianji-jobs/issues/6) | 批次列表分页；默认规划、104项测试、冻结黑盒验收、双审及一次返工；[PR #7](https://github.com/saikaji0314/zhixianji-jobs/pull/7)由App创建，负责人原生Approve，App自动合并并确认 | 证明这一小任务的正常合并路径；没有在该次运行制造基线更新或文本冲突 |
-| [zhixianji-jobs #8](https://github.com/saikaji0314/zhixianji-jobs/issues/8) | 补齐分页命令的本地只读帮助与示例；106项测试和独立验收通过；审核格式错误经显式恢复后双审通过，负责人批准固定SHA，App创建[PR #9](https://github.com/saikaji0314/zhixianji-jobs/pull/9)，远端offline CI通过 | 累计37次模型请求、58次工具、估算1.849927元；正等首次原生Approve，冲突更新和再次批准尚未算通过 |
+| [zhixianji-jobs #8](https://github.com/saikaji0314/zhixianji-jobs/issues/8) | 本地只读帮助；首次106项测试及双审后创建[PR #9](https://github.com/saikaji0314/zhixianji-jobs/pull/9)。首次原生Approve后推进主线，产生并修复真实文本冲突；新提交107项测试、独立验收及CI通过 | 上游回归原字节保留、旧Approve已撤销；重新双审仅保留原2条minor建议，整体按规则通过。累计56次模型、92次工具、估算2.780683元；新SHA再次原生Approve后，App自动合并并确认main |
 
 ### 分页任务的自动合并证据
 
@@ -27,6 +27,18 @@
 负责人`saikaji0314`在GitHub对该SHA提交原生Approve（review `5696570649`）；必需`offline`检查通过，传统分支保护要求一人审核并撤销过期批准。RepoPilot前台检测到满足条件后执行合并，确认合并提交`f74b92091215ef9db734cefaa0fe40d205c82d51`在main中，候选和原基线均是其祖先。重复核对复用同一远端合并结果，不再调用模型。
 
 分支保护保留负责人管理员的应急手动通道（`enforce_admins=false`）；App合并始终不请求绕过规则。不能把“配置了保护”理解为所有身份均无法手动绕过。
+
+### 帮助任务的真实冲突验证
+
+负责人第一次对`f4d03ed1b61148c977160c99b1edd366ed17ac10`提交原生Approve（review `5697804534`）后，按事前授权把固定测试提交`aa001cabbd0cc4c0cf975f1a1e7fabe7c978b956`普通快进到main。该提交在同一行帮助中增加“离线”，并增加回归测试；GitHub实际返回`mergeable=false / dirty`，没有提前合并PR。
+
+产品合入最新main，在`src/zhixianji/cli.py`遇到真实文本冲突，模型修复后得到`86d614db03a834eaad0f8cce1cff80b3288d486e`。原候选与新主线均是其祖先；主线新增回归的原字节保持不变。107项测试、冻结黑盒验收与新提交的`offline` CI均通过，主线“离线”和任务“分页”语义同时保留。
+
+两个审核视角重新核对，均只要求处理原先的两条文档计数建议，原始verdict为`changes_requested`。程序依既定M5规则将minor作为非阻断建议，整体verdict为`approved`，未将原始意见改成批准。此次没有阻断发现，但不能表述为“两位原始报告均批准”。
+
+GitHub已把旧review标为`DISMISSED`；程序使用实际审核记录调用当前SHA的负责人批准校验，也拒绝旧批准。在第二次Approve之前，检测未发出合并请求。随后负责人对新SHA提交review `5698066657`，App发起一次异步请求`dc7affff-016b-4ec8-9315-687183574221`并确认合并提交`6c510e43f4c3fee7619c6acb98708449f640cb42`就是当前main；PR作者与合并者均为App机器人。独立API复核原候选、新候选和主线测试提交均包含在合并结果中；重复检测复用同一请求与提交，不新增模型调用。最终累计56次模型请求、92次工具、估算2.780683元，其中冲突更新及再次双审新增19次请求、约0.930756元。等待和平台核对不调用模型。
+
+本次平台连接曾多次在App凭证获取、读取及Git TLS握手时失败；操作者只在核对无副作用后有限重试。固定主线推送使用仍验证证书的OpenSSL后端完成，不更改全局Git配置。这些环境故障保留，不能从此样本承诺长期无人值守可靠性。
 
 ### 保留的失败与人工介入
 
@@ -52,7 +64,7 @@
 | 并行与内部整合（M4） | 独立worktree、最多两个全局实现槽位、串行整合和组合检查有确定性验证；真实模型并行收益尚未证明 |
 | 双审与争议（M5） | 两个常规视角已有真实交付，固定提交和依据；A／B＋C争议分支仍以确定性模型验证为主 |
 | 交付组合与来源（M6） | 两仓库交付、报告与原始来源回查；不把API正常、合法报告与修复正确混为一项 |
-| 原生Approve与基线更新 | 正常自动合并已有真实记录；更新、冲突、重验与新SHA批准有离线覆盖，真实冲突样本正在执行 |
+| 原生Approve与基线更新 | 正常自动合并已有真实记录；更新、冲突、重验与新SHA批准有离线覆盖，简单帮助任务的真实冲突修复、旧批准撤销、再次原生Approve及App合并确认均已验证 |
 
 ## 模型效果评测
 

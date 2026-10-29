@@ -38,6 +38,8 @@ flowchart TD
 
 ![真实运行的离线报告回放：改动、检查、双审、人工批准与合并确认](docs/demo/delivery-report.gif)
 
+另以[帮助任务PR #9](https://github.com/saikaji0314/zhixianji-jobs/pull/9)验证了真实冲突：第一次Approve后主线修改同一行，Agent保留双方要求、重跑107项测试与独立验收、重新双审，旧Approve撤销；负责人批准新提交后，App合并并确认。整轮56次模型请求、估算2.78元；保留两条非阻断的文档计数建议。[详细证据](docs/VALIDATION.md#帮助任务的真实冲突验证)
+
 动图是已经结束的真实运行的只读回放，不是实时终端录像。[证据与失败记录](docs/VALIDATION.md) · [展示来源与生成方法](docs/demo/README.md)
 
 ## 快速开始
