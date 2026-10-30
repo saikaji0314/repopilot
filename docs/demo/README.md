@@ -1,4 +1,25 @@
-# 真实交付的报告回放
+# 演示素材
+
+## 桌面版预览
+
+![RepoPilot桌面执行详情、候选审核与连接设置](desktop-preview.gif)
+
+这份动图由实际桌面界面截图组成，使用应用内置示例数据，依次展示执行详情、候选审核和 GitHub 连接设置。
+
+- [动图](desktop-preview.gif)：1440×960，3 帧，17 秒。
+- [静态封面](desktop-overview.png)。
+- 截图入口：`desktop/scripts/capture-preview.cjs`；GIF 编码沿用 `scripts/assemble_report_gif.py`。
+
+重新生成需要桌面开发依赖、本机 Chromium 和安装了 Pillow 的 Python：
+
+```powershell
+cd desktop
+node scripts/capture-preview.cjs
+cd ..
+python scripts/assemble_report_gif.py .local/desktop-preview/frames.json --output docs/demo/desktop-preview.gif --poster docs/demo/desktop-overview.png
+```
+
+## 真实交付的报告回放
 
 ![App交付、负责人批准与合并确认](delivery-report.gif)
 

@@ -52,6 +52,23 @@ pnpm test:native-settings
 
 若其他开发机有同类问题，可通过 Electron 的 `ELECTRON_OVERRIDE_DIST_PATH` 指向同版本的正常运行时目录。此源码启动器也支持被忽略的 `.local/desktop-launch.json`，格式为 `{ "electron_dist": "绝对运行时目录" }`；该目录必须包含 `electron.exe`。本机配置已保存，路径不进入公共代码。尚未确认导致原目录失败的完整根因，不自动修改系统或父目录权限。
 
+## 构建 Windows 安装程序
+
+在 Windows 仓库根目录安装构建依赖，然后构建界面、冻结服务和安装程序：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -c constraints.txt -e ".[desktop,desktop-build]"
+cd desktop
+pnpm install --frozen-lockfile
+pnpm build
+cd ..
+.\.venv\Scripts\python.exe scripts/build_desktop_service.py
+cd desktop
+pnpm dist:win
+```
+
+生成文件位于 `desktop/release/`。图标重新生成入口为 `node scripts/build-icon.cjs`，截图入口为 `node scripts/capture-preview.cjs`；均可通过 `REPOPILOT_BROWSER` 指定本机 Chromium。
+
 ## 代码入口
 
 - `src/App.tsx`、`src/panels.tsx`：执行页、可调分栏、证据与人工操作。

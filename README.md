@@ -15,10 +15,10 @@
     <a href="https://github.com/saikaji0314/repopilot/stargazers"><img src="https://img.shields.io/github/stars/saikaji0314/repopilot?style=flat" alt="GitHub Stars"></a>
   </p>
   <p>
+    <a href="#桌面预览">桌面预览</a> ·
     <a href="#核心特性">核心特性</a> ·
     <a href="#工作流程">工作流程</a> ·
     <a href="#快速开始">快速开始</a> ·
-    <a href="#交付示例">交付示例</a> ·
     <a href="docs/README.md">文档</a>
   </p>
 </div>
@@ -29,10 +29,19 @@ RepoPilot 将代码实现、验证、审核和交付组织成可追溯的研发�
 
 项目面向可信仓库中的明确开发任务，帮助维护者把精力集中在需求、业务取舍和最终审批上，同时保留每次改动的检查依据、审核意见与交付记录。
 
+## 桌面预览
+
+查看 Agent 执行动作、命令输出与代码改动，核对候选审核，并在桌面配置自己的 GitHub 机器人。
+
+![RepoPilot桌面预览：执行详情、候选审核和GitHub连接设置](docs/demo/desktop-preview.gif)
+
+动图使用示例数据展示桌面界面。[下载 Windows 桌面版](https://github.com/saikaji0314/repopilot/releases/download/v0.2.0rc1/RepoPilot-Setup-0.2.0-rc.1-x64.exe) · [演示说明](docs/demo/README.md)
+
 ## 核心特性
 
 | 能力 | 说明 |
 | --- | --- |
+| 桌面工作台 | 执行详情、日志、改动与审核集中展示；可调整分栏、配置机器人并参与 Issue 讨论 |
 | 任务规划与协作 | 按需澄清、拆分子任务；支持独立工作区并行执行和统一整合 |
 | 独立验证与双审 | 程序重跑登记检查，正确性与需求上下文分别审核，支持有限返工和争议复核 |
 | 明确的审批边界 | 草稿发布绑定固定提交；GitHub 合并另需负责人对当前版本的原生 Approve |
@@ -95,16 +104,6 @@ git -C $demo -c user.name=RepoPilot -c user.email=demo@example.test commit -m "d
 
 按[GitHub App 指南](docs/runtime-v2/GITHUB-APP.md)配置机器人，并通过[平台接入](docs/runtime-v2/FORGES.md)或[监听队列](docs/runtime-v2/WATCH.md)接收 Issue。负责人批准候选提交后创建草稿 PR；启用自动合并时，负责人在 GitHub 提交 Approve，程序核对 CI、分支保护和版本，再合并并确认结果。
 
-## 交付示例
-
-**本地批次列表分页**：从需求规划到实现与独立验收，审核发现文档结构问题后完成返工，最终由 App 创建 PR，并在负责人 Approve 后自动合并。[需求](https://github.com/saikaji0314/zhixianji-jobs/issues/6) · [已合并 PR](https://github.com/saikaji0314/zhixianji-jobs/pull/7)
-
-![RepoPilot交付报告：候选改动、独立验证、审核意见、人工审批与合并确认](docs/demo/delivery-report.gif)
-
-**主线冲突处理**：在首次 Approve 后引入同一行代码的主线改动，Agent 保留双方要求完成冲突修复，重新验证与审核；旧批准失效，负责人批准新提交后完成合并。[已合并 PR](https://github.com/saikaji0314/zhixianji-jobs/pull/9)
-
-动图为真实运行报告的只读回放。[演示说明](docs/runtime-v2/DEMO.md) · [验证记录与适用边界](docs/VALIDATION.md)
-
 ## 文档
 
 | 主题 | 入口 |
@@ -129,7 +128,7 @@ Docker 与独立环境用例按环境条件运行；测试范围与复现方法�
 
 ## 项目状态
 
-当前为实验性开发版，尚未发行新版本。GitHub、DeepSeek 和 Docker 已有真实交付记录；其他平台、模型适配及复杂协作路径的验证状态分别记录在文档中。简单冲突样本不代表复杂业务冲突都能自动解决；软件发行、部署和长期无人值守运行属于[后续范围](docs/ROADMAP.md)。
+Windows 桌面版已发布预发行版本，任务启动、自动接单和运行中协作将继续完善。CLI 与桌面的能力范围、后续开发方向见[路线图](docs/ROADMAP.md)；已有交付案例见[演示记录](docs/runtime-v2/DEMO.md)。
 
 ## 许可证
 
