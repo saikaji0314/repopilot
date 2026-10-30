@@ -1,5 +1,10 @@
 # Tested dependency constraints: CPython 3.12, Windows.
 # Install with: python -m pip install -c constraints.txt -e ".[test]"
+# Optional desktop loopback service (install .[desktop]):
+fastapi==0.162.0
+uvicorn==0.54.0
+starlette==1.10.0
+annotated-doc==0.0.5
 # Optional native Claude adapter (install .[anthropic]):
 langchain-anthropic==1.7.6
 anthropic==1.15.0
@@ -66,8 +71,14 @@ uuid_utils==0.17.1
 websockets==16.1.1
 xxhash==4.0.1
 zstandard==0.25.0
-# Optional github-app authentication dependencies.
+# Optional github-app / desktop authentication dependencies.
 PyJWT==2.15.1
 cryptography==50.0.2
 cffi==2.1.1
 pycparser==3.12
+# Windows desktop build toolchain (install .[desktop-build]):
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.9
+altgraph==0.17.5
+pefile==2024.8.26
+pywin32-ctypes==0.2.3

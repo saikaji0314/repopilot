@@ -1,6 +1,6 @@
 [project]
 name = "repopilot"
-version = "0.1.0rc1"
+version = "0.2.0rc1"
 description = "受控的 Issue 到草稿 PR/MR 研发 Agent"
 readme = "README.md"
 license = "MIT"
@@ -28,6 +28,8 @@ dependencies = [
 test = ["coverage>=7.0"]
 anthropic = ["langchain-anthropic==1.7.6"]
 github-app = ["PyJWT[crypto]>=2.10,<3"]
+desktop = ["fastapi>=0.115,<1", "uvicorn>=0.34,<1", "PyJWT[crypto]>=2.10,<3"]
+desktop-build = ["pyinstaller==6.22.3"]
 
 [project.scripts]
 repopilot = "repopilot.cli:main"
@@ -52,6 +54,17 @@ include = [
     "scripts/",
     "configs/",
     "evals/",
+    "desktop/electron/",
+    "desktop/scripts/",
+    "desktop/src/",
+    "desktop/assets/",
+    "desktop/tests/",
+    "desktop/*.json",
+    "desktop/*.yaml",
+    "desktop/*.ts",
+    "desktop/*.cjs",
+    "desktop/*.md",
+    "desktop/index.html",
 ]
 exclude = ["**/.git", "**/.git/**", "**/__pycache__", "**/__pycache__/**", "**/*.pyc",
            "evals/runs", "evals/runs/**"]

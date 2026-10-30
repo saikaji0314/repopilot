@@ -51,6 +51,12 @@ RepoPilot 将代码实现、验证、审核和交付组织成可追溯的研发�
 
 ## 快速开始
 
+### Windows 桌面预发行
+
+**[下载 Windows x64 安装程序（.exe）](https://github.com/saikaji0314/repopilot/releases/download/v0.2.0rc1/RepoPilot-Setup-0.2.0-rc.1-x64.exe)** · [v0.2.0rc1 Release 与校验文件](https://github.com/saikaji0314/repopilot/releases/tag/v0.2.0rc1)
+
+内置本机服务，打开桌面无需另装 Python 或 Node.js。当前支持执行详情、可调分栏、加密连接配置与普通评论；完整桌面执行入口仍在开发。[安装与限制](docs/desktop/RELEASE-0.2.0rc1.md) · [配置自己的机器人](docs/desktop/SETUP.md)
+
 ### 环境要求
 
 Python 3.11+、Git 和模型 API 密钥。下方 JavaScript 示例另需 Node.js。默认在本机执行检查，仅接入可信仓库；Docker 可选。[完整安装指南](docs/runtime-v2/INSTALL.md)

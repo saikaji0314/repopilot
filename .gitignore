@@ -58,6 +58,13 @@ evals/runs/
 # Local collaboration notes
 /.local/
 
+# Desktop dependencies and generated bundles
+node_modules/
+desktop/out/
+desktop/release/
+desktop/test-results/
+desktop/playwright-report/
+
 # 嵌套的验证用工作树仓库：只有目录内容随仓库分发，git 元数据留在本机
 **/.git/
 # GitHub App RSA private keys stay local.

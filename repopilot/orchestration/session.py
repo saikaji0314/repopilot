@@ -162,12 +162,19 @@ class RunSession:
 
 
 def execute_run(store, state, settings, *, model=None, stop_after=None):
+    from repopilot.desktop.control import consume_pause
+    consume_pause(store.root, state['run_id'])  # discard an unacknowledged request from an earlier execution
     session = RunSession(store, state, settings, model)
     state["status"], state["stop_reason"] = "running", "running"
     try:
         session.runner.restore_workspace()
         while state["status"] == "running":
             phase = session.step()
+            pause = consume_pause(store.root, state['run_id'])
+            if pause and state['status'] == 'running':
+                state['status'], state['stop_reason'] = 'paused', 'operator_pause'
+                session.trace.event('operator_paused', phase=phase)
+                session.checkpoint()
             if stop_after == phase and state["status"] == "running":
                 state["status"], state["stop_reason"] = "paused", "checkpoint"
                 session.checkpoint()

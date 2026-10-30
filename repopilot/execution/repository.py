@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import codecs
 from threading import Lock
 import time
 
@@ -48,13 +49,37 @@ def run_check(task: Task, name: str, timeout: float, root: Path | None = None) -
     env = {key: value for key, value in os.environ.items() if key.upper() in keep}
     env.update(PYTHONIOENCODING="utf-8", PYTHONDONTWRITEBYTECODE="1")
     started, timed_out = time.monotonic(), False
-    with tempfile.TemporaryFile() as output:
+    from repopilot.execution.telemetry import emit_output
+    with tempfile.TemporaryDirectory(prefix='repopilot-check-') as directory, \
+            (Path(directory) / 'output').open('w+b') as output, \
+            (Path(directory) / 'output').open('rb') as reader:
         process = subprocess.Popen(
             argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL, stdout=output,
             stderr=subprocess.STDOUT, shell=False, start_new_session=os.name != "nt",
         )
         try:
-            process.wait(timeout=min(timeout, check.timeout_seconds))
+            deadline = started + min(timeout, check.timeout_seconds)
+            position, pending = 0, ''
+            decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
+            while True:
+                # Independent handles preserve the child's file offset on Windows and POSIX.
+                data = reader.read(max(0, MAX_OUTPUT_BYTES - position))
+                if data:
+                    position += len(data)
+                    pending += decoder.decode(data)
+                    if '\n' in pending:
+                        complete, pending = pending.rsplit('\n', 1)
+                        emit_output(complete + '\n')
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise subprocess.TimeoutExpired(argv, timeout)
+                try:
+                    process.wait(timeout=min(.15, remaining))
+                    break
+                except subprocess.TimeoutExpired:
+                    pass
+            data = reader.read(max(0, MAX_OUTPUT_BYTES - position))
+            emit_output(pending + decoder.decode(data, final=True))
         except subprocess.TimeoutExpired:
             timed_out = True
             kill_tree(process)

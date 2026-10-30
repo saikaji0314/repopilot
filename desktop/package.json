@@ -1,0 +1,40 @@
+{
+  "name": "repopilot-desktop",
+  "version": "0.2.0-rc.1",
+  "description": "RepoPilot 本机研发任务工作台",
+  "author": "RepoPilot contributors",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "start": "node scripts/launch.cjs",
+    "test": "playwright test",
+    "test:native": "node tests/native-smoke.cjs",
+    "test:native-settings": "node tests/native-settings.cjs",
+    "dist:win": "electron-builder --config electron-builder.cjs --win nsis --x64 --publish never",
+    "preview": "vite preview --host 127.0.0.1"
+  },
+  "dependencies": {
+    "@fontsource-variable/mona-sans": "5.3.0",
+    "@fontsource/cascadia-mono": "5.3.0",
+    "@fontsource/noto-sans-sc": "5.3.1",
+    "@primer/primitives": "11.10.0",
+    "@primer/react": "38.43.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1",
+    "@types/node": "26.6.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  }
+}

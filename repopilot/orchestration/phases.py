@@ -718,6 +718,7 @@ class PhaseRunner:
                                          base_commit=base_commit, worktree=str(workspace.path))
                         self.checkpoint()
                         control = self.control.fork("implement")
+                        control.subtask_id = subtask['id']
                         trace = self.trace.fork()
                         future = pool.submit(parallel.run_subtask, task=self.task,
                             settings=self.settings, control=control, trace=trace,

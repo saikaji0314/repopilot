@@ -29,6 +29,7 @@
 
 ## 结果、历史与维护
 
+- [桌面版需求与验收](desktop/REQUIREMENTS.md)：执行详情、可调分栏、连接向导和普通评论已有开发实现；[配置步骤](desktop/SETUP.md)与[验证和限制](desktop/IMPLEMENTATION.md)区分现有功能与自动接单等后续范围。
 - [当前验证总览](VALIDATION.md)：哪些离线测过、哪些真实跑过、哪些尚未验证；失败记录继续保留。
 - [公开评测](../evals/swebench/README.md)：冻结题目、逐题指标和效果边界；[旧版诊断](legacy/README.md)保留历史命令和复现说明。
 - [版本沿革](../CHANGELOG.md)：只记录产品变化；[后续范围](ROADMAP.md)描述尚未完成的工作。

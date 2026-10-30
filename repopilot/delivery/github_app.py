@@ -12,11 +12,12 @@ from repopilot.delivery.forge import ForgeError
 
 
 class InstallationAuth(httpx.Auth):
-    def __init__(self, app_id, installation_id, private_key_file, *, transport=None, clock=time.time):
+    def __init__(self, app_id, installation_id, private_key_file=None, *, private_key=None, transport=None, clock=time.time):
         if not all(re.fullmatch(r'[1-9][0-9]{0,19}', str(x)) for x in (app_id, installation_id)):
             raise ForgeError('github_app_ids_required')
         self.app_id, self.installation_id = str(app_id), str(installation_id)
-        self.key_file = Path(private_key_file)
+        self.key_file = Path(private_key_file) if private_key_file is not None else None
+        self._private_key = private_key
         self.clock = clock
         self.lock = RLock()
         self._token, self._expires, self._login = '', 0, None
@@ -31,7 +32,7 @@ class InstallationAuth(httpx.Auth):
         except ImportError:
             raise ForgeError('install_github_app_extra_required') from None
         try:
-            key = self.key_file.read_bytes()
+            key = self._private_key if self._private_key is not None else self.key_file.read_bytes()
             now = int(self.clock())
             return jwt.encode({'iat': now - 60, 'exp': now + 540, 'iss': self.app_id}, key, algorithm='RS256')
         except Exception:

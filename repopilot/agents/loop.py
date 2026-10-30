@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import time
 from threading import Lock, RLock
+from uuid import uuid4
 
 from langchain.agents import create_agent
 from langchain.agents.middleware import AgentMiddleware
@@ -63,6 +64,8 @@ class RunControl(AgentMiddleware):
         self.quota = quota or Quota(settings, budget,
                                     time.monotonic() + settings.run_timeout_seconds)
         self.phase = phase
+        self.agent_id = uuid4().hex
+        self.subtask_id = None
         self.report_tool = 'ImplementationReport'
         self.progress = {"phase": phase, "reads": [], "edited_files": []}
         self.observation = ModelObservation()
@@ -268,12 +271,18 @@ class RunControl(AgentMiddleware):
                 self.halt_reason = "max_tool_calls"
                 raise RunLimit("max_tool_calls")
             self.tool_calls += 1
-        self.trace.event("tool_started", phase=self.phase, name=request.tool_call["name"],
+        action_id = uuid4().hex
+        started = time.monotonic()
+        self.trace.event("tool_started", phase=self.phase, agent_id=self.agent_id,
+                         action_id=action_id, subtask_id=self.subtask_id, name=request.tool_call["name"],
                          args=request.tool_call["args"])
         try:
-            result = handler(request)
+            from repopilot.execution.telemetry import command_output
+            with command_output(lambda text: self.trace.event('command_output', phase=self.phase,
+                                action_id=action_id, agent_id=self.agent_id, output=text)):
+                result = handler(request)
         except BaseException as exc:
-            self.trace.event("tool_failed", phase=self.phase, name=request.tool_call["name"],
+            self.trace.event("tool_failed", phase=self.phase, action_id=action_id, name=request.tool_call["name"],
                              error_type=type(exc).__name__)
             raise
         name, args = request.tool_call["name"], request.tool_call["args"]
@@ -289,7 +298,8 @@ class RunControl(AgentMiddleware):
                     self.progress["edited_files"].append(args["path"])
         if request.tool_call["name"] == "run_registered_check":
             self.record_check(args.get("name"), observation)
-        self.trace.event("tool_finished", phase=self.phase, name=name, result=result.content)
+        self.trace.event("tool_finished", phase=self.phase, action_id=action_id,
+                         duration_seconds=round(time.monotonic() - started, 3), name=name, result=result.content)
         return result
 
     def record_check(self, name: str | None, observation: dict) -> None:
@@ -391,12 +401,18 @@ def verify_checks(task: Task, root: Path, control: RunControl, trace: Trace, dea
     results = []
     for name in task.checks:
         check = task.checks[name]
+        action_id = uuid4().hex
+        trace.event('verify_started', phase='verify', name=name, action_id=action_id,
+                    args={'name': name, 'argv': check.argv, 'cwd': check.cwd})
         try:
             remaining = min(deadline(), check.timeout_seconds)
             if remaining <= 0:
                 raise RunLimit("run_timeout")
-            outcome = (checker(name, remaining) if checker is not None else
-                       run_check(task, name, remaining, root=root))
+            from repopilot.execution.telemetry import command_output
+            with command_output(lambda text: trace.event('command_output', phase='verify',
+                                action_id=action_id, output=text)):
+                outcome = (checker(name, remaining) if checker is not None else
+                           run_check(task, name, remaining, root=root))
         except RunLimit:
             raise
         except Exception as exc:
@@ -407,7 +423,8 @@ def verify_checks(task: Task, root: Path, control: RunControl, trace: Trace, dea
                          "error": outcome.get("error"),
                          "output_tail": _tail(outcome.get("output", "")),
                          }.items() if value is not None})
-        trace.event("verify_finished", name=name, exit_code=outcome.get("exit_code"),
+        trace.event("verify_finished", phase='verify', action_id=action_id, name=name,
+                    result=json.dumps(outcome, ensure_ascii=False), exit_code=outcome.get("exit_code"),
                     timed_out=outcome.get("timed_out"), error=outcome.get("error"))
     return results
 
